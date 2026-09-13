@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_v2ray/flutter_v2ray.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'app_log.dart';
 import 'engine.dart';
+import 'free_routes.dart';
 import 'server.dart';
 import 'singbox_outbound.dart';
 import 'warp.dart';
@@ -165,6 +167,7 @@ class AndroidEngine implements VpnEngine {
   @override
   bool supports(Server server) =>
       server.uri.startsWith('warp://') ||
+      FreeRoutes.isFree(server) ||
       (_supported.contains(server.protocol) && _valid.putIfAbsent(server.uri, () => parseOutbound(server.uri) != null));
 
   @override
@@ -191,6 +194,8 @@ class AndroidEngine implements VpnEngine {
       {void Function(int done)? onProgress, bool Function()? isCancelled, void Function(int index, int delay)? onResult}) {
     final pingOptions = options.forPing;
     return runPool(servers.length, 1, (i) async {
+      // Psiphon/Tor have nothing to ping before they start.
+      if (FreeRoutes.isFree(servers[i])) return -1;
       final config = _config(servers[i], pingOptions, forPing: true);
       if (config == null || (isCancelled?.call() ?? false)) return -1;
       final raw = await _v2
@@ -211,11 +216,44 @@ class AndroidEngine implements VpnEngine {
     return _coreState == state;
   }
 
+  /// Status line while a free route (Psiphon / Tor) is starting.
+  void Function(String phase)? onPhase;
+
+  /// Set by the controller so a slow Psiphon/Tor start can be cancelled.
+  bool Function() isCancelled = () => false;
+
+  bool _freeActive = false;
+
   @override
   Future<bool> connect(Server server, EngineOptions options) async {
+    if (FreeRoutes.isFree(server)) return _connectFree(server, options);
     final config = _config(server, options);
     if (config == null) return false;
     return startTunnel(remark: server.displayName, config: config, options: options);
+  }
+
+  Future<bool> _connectFree(Server server, EngineOptions options) async {
+    if (!options.proxyOnly && !await _v2.requestPermission()) throw const PermissionDeniedError();
+    _freeActive = true;
+    if (!await FreeRoutes.start(server, isCancelled: isCancelled, onProgress: onPhase)) {
+      AppLog.add('${server.remark}: could not start');
+      await FreeRoutes.stop();
+      _freeActive = false;
+      return false;
+    }
+    final package = (await PackageInfo.fromPlatform()).packageName;
+    final ok = await startTunnel(
+      remark: server.remark,
+      config: FreeRoutes.tunnelConfig(server, dns: options.dns, bypassIran: options.bypassIran),
+      options: options,
+      // Psiphon/Tor run inside this app: keep the app itself outside the VPN so they do not loop.
+      extraBlockedApps: [package],
+    );
+    if (!ok) {
+      await FreeRoutes.stop();
+      _freeActive = false;
+    }
+    return ok;
   }
 
   /// Starts the VpnService with any Xray [config] and returns true once traffic passes through it.
@@ -255,6 +293,10 @@ class AndroidEngine implements VpnEngine {
 
   @override
   Future<void> disconnect() async {
+    if (_freeActive) {
+      _freeActive = false;
+      await FreeRoutes.stop();
+    }
     if (_coreState == 'DISCONNECTED') return;
     await _v2.stopV2Ray();
     await _waitFor('DISCONNECTED', const Duration(seconds: 3));

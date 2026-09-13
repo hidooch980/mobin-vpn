@@ -70,4 +70,6 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // Psiphon tunnel library (GPL-3.0), downloaded into android/app/libs by CI.
+    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
 }

@@ -53,6 +53,20 @@ jobs:
             echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
             echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
           fi
+      - name: Bundle free routes (Psiphon library, Tor and lyrebird binaries from MSN-GUARD)
+        run: |
+          set -e
+          SRC=https://raw.githubusercontent.com/mbm110/MSN-GUARD/master
+          mkdir -p android/app/libs android/app/src/main/assets
+          curl -fL --retry 3 -o android/app/libs/psiphontunnel.aar "https://github.com/mbm110/MSN-GUARD/raw/master/app/libs/psiphontunnel-2.0.39.aar"
+          curl -fL --retry 3 -o android/app/src/main/assets/server_entries.txt "$SRC/app/src/main/assets/server_entries.txt" || echo "no embedded Psiphon server list"
+          for abi in arm64-v8a armeabi-v7a; do
+            mkdir -p "android/app/src/main/jniLibs/$abi"
+            for lib in libtor.so libobfs4proxy.so; do
+              curl -fL --retry 3 -o "android/app/src/main/jniLibs/$abi/$lib" "https://github.com/mbm110/MSN-GUARD/raw/master/app/src/main/jniLibs/$abi/$lib"
+            done
+          done
+          ls -la android/app/libs android/app/src/main/jniLibs/*
       - name: Build APKs
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

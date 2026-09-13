@@ -27,6 +27,20 @@ class MainActivity : FlutterActivity() {
                 }
                 // Executables must live in the extracted native library dir (bundled sing-box: libsingbox.so).
                 "nativeLibDir" -> result.success(applicationInfo.nativeLibraryDir)
+                // Free routes (Psiphon / Tor): start, stop and poll their state.
+                "freeStart" -> {
+                    when (call.argument<String>("route")) {
+                        "psiphon" -> FreeTunnels.startPsiphon(this)
+                        "tor" -> FreeTunnels.startTor(this)
+                    }
+                    result.success(null)
+                }
+                "freeStop" -> {
+                    FreeTunnels.stopPsiphon()
+                    FreeTunnels.stopTor()
+                    result.success(null)
+                }
+                "freeStatus" -> result.success(FreeTunnels.status())
                 // Connection type of the underlying (non-VPN) network and the SIM operator name.
                 "networkInfo" -> {
                     val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager

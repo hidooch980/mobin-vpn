@@ -20,7 +20,7 @@ class AppSettings extends ChangeNotifier {
   // Connection
   String androidCore = 'auto'; // auto | xray | singbox
   String connectMode = 'direct'; // direct (like v2rayNG, no ping) | test (ping first, pick fastest)
-  String transport = 'auto'; // auto (V2Ray servers, then WARP) | v2ray | warp
+  String transport = 'auto'; // auto (V2Ray servers, WARP, then Psiphon) | v2ray | warp | psiphon | tor
   bool autoReconnect = true;
   bool connectOnLaunch = false;
   bool proxyOnly = false; // Android: local proxy without VPN tunnel

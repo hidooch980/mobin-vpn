@@ -6,8 +6,10 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'account.dart';
+import 'android_engine.dart';
 import 'app_log.dart';
 import 'countries.dart';
+import 'free_routes.dart';
 import 'engine.dart';
 import 'server.dart';
 import 'settings.dart';
@@ -232,8 +234,15 @@ class VpnController extends ChangeNotifier {
   /// Applies the route setting to a candidate pool.
   List<Server> _byTransport(List<Server> pool) => switch (settings.transport) {
         'warp' => warpServers,
+        'psiphon' when Platform.isAndroid => [FreeRoutes.psiphon],
+        'tor' when Platform.isAndroid => [FreeRoutes.tor],
         'v2ray' => pool.where((s) => !_isWarp(s)).toList(),
-        _ => [...pool.where((s) => !_isWarp(s)), ...warpServers.take(4)],
+        // Automatic: V2Ray servers, then free WARP, then Psiphon as the last resort (like MSN-GUARD's ladder).
+        _ => [
+            ...pool.where((s) => !_isWarp(s)),
+            ...warpServers.take(4),
+            if (Platform.isAndroid) FreeRoutes.psiphon,
+          ],
       };
 
   void _apply(SubscriptionData data) {
@@ -523,6 +532,14 @@ class VpnController extends ChangeNotifier {
     progressDone = progressTotal = 0;
     notifyListeners();
     var options = _options;
+    final eng = engine;
+    if (eng is AndroidEngine) {
+      eng.isCancelled = () => _cancel;
+      eng.onPhase = (text) {
+        phase = text;
+        notifyListeners();
+      };
+    }
     try {
       if (Account.configured && await account.refreshStatus() != AccountStatus.ok) {
         throw const _UserError('حساب شما اجازه‌ی اتصال ندارد (غیرفعال یا روی دستگاه دیگر).');

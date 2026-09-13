@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -312,8 +313,12 @@ class _RoutePicker extends StatelessWidget {
   static String label(String transport) => switch (transport) {
         'v2ray' => 'سرورهای V2Ray',
         'warp' => 'Cloudflare WARP (رایگان)',
+        'psiphon' => 'Psiphon (رایگان)',
+        'tor' => 'Tor (رایگان)',
         _ => 'خودکار',
       };
+
+  static bool _serverless(String transport) => transport == 'warp' || transport == 'psiphon' || transport == 'tor';
 
   @override
   Widget build(BuildContext context) {
@@ -332,7 +337,7 @@ class _RoutePicker extends StatelessWidget {
         Icon(Icons.alt_route_rounded, color: Palette.muted, size: 20),
         const SizedBox(width: 10),
         Expanded(
-          child: Text('مسیر: ${label(c.settings.transport)}${c.settings.transport == 'warp' ? '' : country}',
+          child: Text('مسیر: ${label(c.settings.transport)}${_serverless(c.settings.transport) ? '' : country}',
               maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, color: locked ? Palette.muted : Palette.text)),
         ),
         Icon(Icons.expand_more_rounded, color: Palette.muted),
@@ -368,12 +373,14 @@ class _RoutePicker extends StatelessWidget {
             const SizedBox(height: 12),
             Text('انتخاب مسیر', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Palette.text)),
             const SizedBox(height: 6),
-            option('auto', Icons.auto_mode_rounded, 'خودکار', 'اول سرورهای V2Ray، اگر نشد WARP رایگان'),
+            option('auto', Icons.auto_mode_rounded, 'خودکار', 'سرورهای V2Ray، بعد WARP رایگان، و در آخر Psiphon'),
             option('v2ray', Icons.dns_outlined, 'سرورهای V2Ray', 'لیست سرورهای تست‌شده؛ کشور را هم می‌توانید انتخاب کنید'),
             option('warp', Icons.cloud_outlined, 'Cloudflare WARP', 'رایگان و بدون سرور؛ چند آدرس کلادفلر امتحان می‌شود'),
-            option('psiphon', Icons.hub_outlined, 'Psiphon', '', soon: true),
-            option('tor', Icons.lan_outlined, 'Tor', '', soon: true),
-            if (c.settings.transport != 'warp')
+            option('psiphon', Icons.hub_outlined, 'Psiphon', 'رایگان؛ خودش سرور پیدا می‌کند؛ اتصال ممکن است تا یک دقیقه طول بکشد',
+                soon: !Platform.isAndroid),
+            option('tor', Icons.lan_outlined, 'Tor', 'رایگان و ناشناس؛ کندتر؛ اگر مسدود بود از پل meek استفاده می‌کند',
+                soon: !Platform.isAndroid),
+            if (!_serverless(c.settings.transport))
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
                 child: OutlinedButton.icon(
