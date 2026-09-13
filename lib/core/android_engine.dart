@@ -41,10 +41,14 @@ class AndroidEngine implements VpnEngine {
           p.dns = {
             'servers': [o.dns],
           };
+          // Same as v2rayNG: sniff only for routing decisions (don't rewrite destinations) and
+          // route by domain as-is instead of resolving every domain first (UseIp was slow).
           p.inbound['sniffing'] = {
             'enabled': true,
             'destOverride': ['http', 'tls'],
+            'routeOnly': true,
           };
+          p.routing['domainStrategy'] = 'AsIs';
           p.routing['rules'] = [
             {'type': 'field', 'ip': _privateRanges, 'outboundTag': 'direct'},
             if (o.bypassIran) {'type': 'field', 'domain': ['domain:ir'], 'outboundTag': 'direct'},

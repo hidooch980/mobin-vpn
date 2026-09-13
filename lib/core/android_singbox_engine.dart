@@ -177,11 +177,16 @@ class AndroidHybridEngine implements VpnEngine {
   VpnEngine? _connected;
 
   bool get _auto => _coreSetting() == 'auto';
-  bool get _usingSingbox => (_auto ? _preferred != _xray : _coreSetting() == 'singbox') && _singbox.available;
+  bool get _usingSingbox => !_auto && _coreSetting() == 'singbox' && _singbox.available;
   VpnEngine get _active => _usingSingbox ? _singbox : _xray;
 
-  /// Auto mode: the core that last connected is tried first next time.
-  VpnEngine? _preferred;
+  /// Auto mode picks per server: Xray directly (single hop, full speed like v2rayNG) for protocols it
+  /// supports; the sing-box chain only for the rest (Hysteria2, TUIC, WireGuard, AnyTLS...).
+  VpnEngine _coreFor(Server server) {
+    if (!_auto) return _active;
+    if (_xray.supports(server) || !_singbox.available) return _xray;
+    return _singbox;
+  }
 
   @override
   Stream<VpnState> get states => _states.stream;
@@ -214,13 +219,16 @@ class AndroidHybridEngine implements VpnEngine {
   @override
   Future<List<int>> pingAll(List<Server> servers, EngineOptions options,
           {void Function(int done)? onProgress, bool Function()? isCancelled, void Function(int index, int delay)? onResult}) =>
-      _active.pingAll(servers, options, onProgress: onProgress, isCancelled: isCancelled, onResult: onResult);
+      // Auto: sing-box tests many servers in parallel (much faster than Xray's one-at-a-time test).
+      (_auto && _singbox.available ? _singbox : _active)
+          .pingAll(servers, options, onProgress: onProgress, isCancelled: isCancelled, onResult: onResult);
 
   @override
   Future<bool> connect(Server server, EngineOptions options) async {
-    final order = <VpnEngine>[_active];
+    final first = _coreFor(server);
+    final order = <VpnEngine>[first];
     if (_auto) {
-      final other = identical(_active, _singbox) ? _xray : _singbox;
+      final other = identical(first, _singbox) ? _xray : _singbox;
       if (other.supports(server)) order.add(other);
     }
     for (final core in order) {
@@ -230,7 +238,7 @@ class AndroidHybridEngine implements VpnEngine {
       _connected = null;
       if (await core.connect(server, options)) {
         _connected = core;
-        if (_auto) _preferred = core;
+        AppLog.add('core: ${identical(core, _singbox) ? 'sing-box (chained)' : 'Xray (direct)'} for ${server.displayName}');
         return true;
       }
       if (order.length > 1) AppLog.add('auto core: ${identical(core, _singbox) ? 'sing-box' : 'Xray'} failed, trying the other core');

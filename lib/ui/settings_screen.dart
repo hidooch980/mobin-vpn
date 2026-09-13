@@ -112,7 +112,7 @@ class SettingsScreen extends StatelessWidget {
                         _ChoiceRow<String>(
                           icon: Icons.memory_rounded,
                           title: 'هسته‌ی اتصال',
-                          subtitle: 'خودکار: sing-box (همه‌ی پروتکل‌ها، پینگ سریع) و اگر وصل نشد Xray — بهترین را خودش انتخاب می‌کند',
+                          subtitle: 'خودکار (پیشنهادی): VLESS/VMess/Trojan/SS مستقیم با Xray با بیشترین سرعت؛ Hysteria2، TUIC و بقیه با sing-box',
                           options: const {'auto': 'خودکار ✨', 'xray': 'Xray', 'singbox': 'sing-box'},
                           value: s.androidCore,
                           onChanged: (v) async {
