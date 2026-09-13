@@ -163,14 +163,12 @@ jobs:
           AppName=MolidoVPN
           AppVersion=$env:VERSION
           AppPublisher=MolidoVPN
-          DefaultDirName={localappdata}\Programs\MolidoVPN
+          DefaultDirName={localappdata}/Programs/MolidoVPN
           PrivilegesRequired=lowest
           DisableProgramGroupPage=yes
           OutputDir=dist
           OutputBaseFilename=MolidoVPN-windows-setup
-          SetupIconFile=windows
-unner
-esourcespp_icon.ico
+          SetupIconFile=windows/runner/resources/app_icon.ico
           Compression=lzma2
           SolidCompression=yes
           WizardStyle=modern
@@ -179,16 +177,15 @@ esourcespp_icon.ico
           [Tasks]
           Name: "desktopicon"; Description: "Desktop shortcut"; Flags: checkedonce
           [Files]
-          Source: "build\windowsd
-unner\Release\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
+          Source: "build/windows/x64/runner/Release/*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
           [Icons]
-          Name: "{autoprograms}\MolidoVPN"; Filename: "{app}\mobin_vpn.exe"
-          Name: "{autodesktop}\MolidoVPN"; Filename: "{app}\mobin_vpn.exe"; Tasks: desktopicon
+          Name: "{autoprograms}/MolidoVPN"; Filename: "{app}/mobin_vpn.exe"
+          Name: "{autodesktop}/MolidoVPN"; Filename: "{app}/mobin_vpn.exe"; Tasks: desktopicon
           [Run]
-          Filename: "{app}\mobin_vpn.exe"; Description: "Start MolidoVPN"; Flags: nowait postinstall skipifsilent
+          Filename: "{app}/mobin_vpn.exe"; Description: "Start MolidoVPN"; Flags: nowait postinstall skipifsilent
           "@
           Set-Content -Path molido.iss -Value $iss -Encoding UTF8
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" molido.iss
+          & "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe" molido.iss
       - uses: actions/upload-artifact@v4
         with:
           name: windows
