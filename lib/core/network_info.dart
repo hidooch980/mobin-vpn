@@ -56,6 +56,19 @@ class NetworkInfo extends ChangeNotifier {
 
   String get countryLabel => countryCode == null ? '' : countryName(countryCode!);
 
+  /// Stable id of the current underlying network for per-network memory: "wifi", "mobile:Irancell", "desktop".
+  static Future<String> networkKey() async {
+    if (!Platform.isAndroid) return 'desktop';
+    try {
+      final m = await _channel.invokeMapMethod<String, dynamic>('networkInfo');
+      final type = m?['type'] as String? ?? 'unknown';
+      final op = (m?['operator'] as String? ?? '').trim().toLowerCase();
+      return type == 'mobile' && op.isNotEmpty ? 'mobile:$op' : type;
+    } catch (_) {
+      return 'unknown';
+    }
+  }
+
   Future<void> refresh({String? proxy}) async {
     if (loading) return;
     loading = true;

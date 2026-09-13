@@ -11,6 +11,7 @@ import 'app_log.dart';
 import 'countries.dart';
 import 'free_routes.dart';
 import 'engine.dart';
+import 'network_info.dart';
 import 'server.dart';
 import 'settings.dart';
 import 'subscription.dart';
@@ -135,7 +136,7 @@ class VpnController extends ChangeNotifier {
       if (settings.autoReconnect) unawaited(_switchAway(dropped, alreadyDisconnected: true));
     });
     // Watchdog: a tunnel can stay "up" while the server stops passing traffic.
-    Timer.periodic(const Duration(seconds: 15), (_) => _watchdog());
+    Timer.periodic(const Duration(seconds: 5), (_) => _watchdog());
     engine.traffic.listen((t) {
       if (state != VpnState.connected) return;
       usage.add(t);
@@ -173,7 +174,15 @@ class VpnController extends ChangeNotifier {
 
   bool _isBad(Server s) => _badUntil[s.uri]?.isAfter(DateTime.now()) ?? false;
 
+  /// Last working server is remembered per network (Wi-Fi, each SIM operator), like MSN-GUARD's per-SIM ladder.
+  Future<String> _networkServerKey() async => '$_lastServerKey:${await NetworkInfo.networkKey()}';
+
+  int _watchTick = 0;
+
   Future<void> _watchdog() async {
+    _watchTick++;
+    final fresh = connectedAt != null && DateTime.now().difference(connectedAt!) < const Duration(seconds: 40);
+    if (!fresh && _watchTick % 3 != 0) return; // every 5 s while fresh, then every 15 s
     if (_watching || state != VpnState.connected || !settings.autoReconnect) {
       if (state != VpnState.connected) _healthFailures = 0;
       return;
@@ -184,7 +193,9 @@ class VpnController extends ChangeNotifier {
       if (state != VpnState.connected) return;
       _healthFailures = ok ? 0 : _healthFailures + 1;
       if (!ok) AppLog.add('watchdog: no traffic through ${current?.displayName} ($_healthFailures)');
-      if (_healthFailures >= 3) await _switchAway(current);
+      // Right after connecting, two failed checks (~10 s) are enough to move on; later three (~45 s).
+      final fresh = connectedAt != null && DateTime.now().difference(connectedAt!) < const Duration(seconds: 40);
+      if (_healthFailures >= (fresh ? 2 : 3)) await _switchAway(current);
     } finally {
       _watching = false;
     }
@@ -497,7 +508,7 @@ class VpnController extends ChangeNotifier {
     } else {
       pool = _roundRobin(countries, size);
     }
-    final last = (await SharedPreferences.getInstance()).getString(_lastServerKey);
+    final last = (await SharedPreferences.getInstance()).getString(await _networkServerKey());
     final lastServer = servers.where((s) => s.uri == last).firstOrNull;
     if (lastServer != null && (country == null || lastServer.countryCode == country)) {
       pool
@@ -577,7 +588,7 @@ class VpnController extends ChangeNotifier {
       if (pool.isEmpty) throw const _UserError('سروری برای این موقعیت پیدا نشد.');
 
       // Fast path like v2rayNG: reconnect straight to the last working server, no ping round.
-      final last = (await SharedPreferences.getInstance()).getString(_lastServerKey);
+      final last = (await SharedPreferences.getInstance()).getString(await _networkServerKey());
       if (only == null && !isGaming && pool.isNotEmpty && pool.first.uri == last) {
         final server = pool.first;
         phase = 'اتصال سریع به ${server.displayName}';
@@ -608,7 +619,7 @@ class VpnController extends ChangeNotifier {
           state = VpnState.connected;
           phase = null;
           notifyListeners();
-          await (await SharedPreferences.getInstance()).setString(_lastServerKey, only.uri);
+          await (await SharedPreferences.getInstance()).setString(await _networkServerKey(), only.uri);
           return;
         }
         throw const _UserError('این سرور وصل نشد. سرور دیگری را امتحان کنید.');
@@ -630,7 +641,7 @@ class VpnController extends ChangeNotifier {
             state = VpnState.connected;
             phase = null;
             notifyListeners();
-            await (await SharedPreferences.getInstance()).setString(_lastServerKey, server.uri);
+            await (await SharedPreferences.getInstance()).setString(await _networkServerKey(), server.uri);
             return;
           }
           AppLog.add('connect: direct ${server.displayName} failed');
@@ -701,7 +712,7 @@ class VpnController extends ChangeNotifier {
         state = VpnState.connected;
         phase = null;
         notifyListeners();
-        await (await SharedPreferences.getInstance()).setString(_lastServerKey, server.uri);
+        await (await SharedPreferences.getInstance()).setString(await _networkServerKey(), server.uri);
         return;
       }
       throw const _UserError(
