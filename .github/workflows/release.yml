@@ -153,6 +153,39 @@ jobs:
         run: |
           New-Item -ItemType Directory dist | Out-Null
           Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath dist/MobinVPN-windows-x64.zip
+      - name: Windows installer (Inno Setup)
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress | Out-Null
+          $iss = @"
+          [Setup]
+          AppId={{8F3C2A1E-6B4D-4F7A-9C1E-2D5B7A9E4C10}
+          AppName=MolidoVPN
+          AppVersion=$env:VERSION
+          AppPublisher=MolidoVPN
+          DefaultDirName={localappdata}\Programs\MolidoVPN
+          PrivilegesRequired=lowest
+          DisableProgramGroupPage=yes
+          OutputDir=dist
+          OutputBaseFilename=MolidoVPN-windows-setup
+          SetupIconFile=windowsunneresourcespp_icon.ico
+          Compression=lzma2
+          SolidCompression=yes
+          WizardStyle=modern
+          [Languages]
+          Name: "en"; MessagesFile: "compiler:Default.isl"
+          [Tasks]
+          Name: "desktopicon"; Description: "Desktop shortcut"; Flags: checkedonce
+          [Files]
+          Source: "build\windowsdunner\Release\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
+          [Icons]
+          Name: "{autoprograms}\MolidoVPN"; Filename: "{app}\mobin_vpn.exe"
+          Name: "{autodesktop}\MolidoVPN"; Filename: "{app}\mobin_vpn.exe"; Tasks: desktopicon
+          [Run]
+          Filename: "{app}\mobin_vpn.exe"; Description: "Start MolidoVPN"; Flags: nowait postinstall skipifsilent
+          "@
+          Set-Content -Path molido.iss -Value $iss -Encoding UTF8
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" molido.iss
       - uses: actions/upload-artifact@v4
         with:
           name: windows
@@ -180,7 +213,8 @@ jobs:
             | اندروید (بیشتر گوشی‌ها) | `MobinVPN-android-arm64.apk` |
             | اندروید قدیمی | `MobinVPN-android-armv7.apk` |
             | اگر مطمئن نیستید | `MobinVPN-android-universal.apk` |
-            | ویندوز ۱۰ و ۱۱ | `MobinVPN-windows-x64.zip` ← از حالت فشرده خارج کنید و `mobin_vpn.exe` (MolidoVPN) را اجرا کنید |
+            | ویندوز ۱۰ و ۱۱ (نصب‌کننده) | `MolidoVPN-windows-setup.exe` |
+            | ویندوز، نسخه‌ی بدون نصب | `MobinVPN-windows-x64.zip` ← از حالت فشرده خارج کنید و `mobin_vpn.exe` (MolidoVPN) را اجرا کنید |
 
             ## استفاده
             - دکمه‌ی بزرگ را بزنید. در حالت **هوشمند** برنامه سرورها را با اینترنت خودتان می‌سنجد و به سریع‌ترین وصل می‌شود.
