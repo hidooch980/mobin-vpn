@@ -53,3 +53,6 @@ app.*.map.json
 # Free-route binaries are downloaded in CI
 /android/app/libs/
 /android/app/src/main/assets/server_entries.txt
+
+# Wrangler local cache
+.wrangler/
