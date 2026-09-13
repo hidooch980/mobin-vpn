@@ -7,6 +7,7 @@ import 'app_log.dart';
 import 'engine.dart';
 import 'server.dart';
 import 'singbox_outbound.dart';
+import 'warp.dart';
 
 /// Android: Xray core through VpnService (flutter_v2ray).
 class AndroidEngine implements VpnEngine {
@@ -35,7 +36,72 @@ class AndroidEngine implements VpnEngine {
     if (status.state == 'DISCONNECTED') _states.add(VpnState.disconnected);
   }
 
-  String? _config(Server s, EngineOptions o) => _configs.putIfAbsent('${o.configKey}|${s.uri}', () {
+  /// Free WARP route as a full Xray config. For delay tests the WireGuard outbound comes first (the test
+  /// uses the first outbound); for the tunnel a direct outbound comes first because the plugin reads the
+  /// server address from outbounds[0], and a catch-all rule sends traffic to WARP.
+  static String? _warpConfig(Server s, EngineOptions o, {required bool forPing}) {
+    final a = WarpRegistry.account;
+    if (a == null) return null;
+    final u = Uri.parse(s.uri);
+    final wireguard = {
+      'tag': 'proxy',
+      'protocol': 'wireguard',
+      'settings': {
+        'secretKey': a.privateKey,
+        'address': ['${a.addressV4}/32', '${a.addressV6}/128'],
+        'peers': [
+          {'publicKey': a.peerPublicKey, 'endpoint': '${u.host}:${u.port}', 'keepAlive': 30},
+        ],
+        'reserved': a.reserved,
+        'mtu': 1280,
+      },
+    };
+    final direct = {
+      'tag': 'direct',
+      'protocol': 'freedom',
+      'settings': {
+        'servers': [
+          {'address': u.host, 'port': u.port},
+        ],
+      },
+    };
+    return jsonEncode({
+      'log': {'loglevel': 'warning'},
+      'inbounds': [
+        {
+          'tag': 'in_proxy',
+          'port': 10808,
+          'protocol': 'socks',
+          'listen': '127.0.0.1',
+          'settings': {'auth': 'noauth', 'udp': true, 'userLevel': 8},
+          'sniffing': {
+            'enabled': true,
+            'destOverride': ['http', 'tls'],
+            'routeOnly': true,
+          },
+        },
+      ],
+      'outbounds': forPing ? [wireguard, direct] : [direct, wireguard],
+      'dns': {
+        'servers': [o.dns],
+      },
+      'routing': {
+        'domainStrategy': 'AsIs',
+        'rules': [
+          {'type': 'field', 'ip': _privateRanges, 'outboundTag': 'direct'},
+          if (o.bypassIran) {'type': 'field', 'domain': ['domain:ir'], 'outboundTag': 'direct'},
+          if (!forPing) {'type': 'field', 'network': 'tcp,udp', 'outboundTag': 'proxy'},
+        ],
+      },
+    });
+  }
+
+  String? _config(Server s, EngineOptions o, {bool forPing = false}) {
+    if (s.uri.startsWith('warp://')) return _warpConfig(s, o, forPing: forPing);
+    return _v2rayConfig(s, o);
+  }
+
+  String? _v2rayConfig(Server s, EngineOptions o) => _configs.putIfAbsent('${o.configKey}|${s.uri}', () {
         try {
           final p = FlutterV2ray.parseFromURL(s.uri);
           p.dns = {
@@ -98,7 +164,8 @@ class AndroidEngine implements VpnEngine {
 
   @override
   bool supports(Server server) =>
-      _supported.contains(server.protocol) && _valid.putIfAbsent(server.uri, () => parseOutbound(server.uri) != null);
+      server.uri.startsWith('warp://') ||
+      (_supported.contains(server.protocol) && _valid.putIfAbsent(server.uri, () => parseOutbound(server.uri) != null));
 
   @override
   Future<void> init() => _v2.initializeV2Ray();
@@ -124,7 +191,7 @@ class AndroidEngine implements VpnEngine {
       {void Function(int done)? onProgress, bool Function()? isCancelled, void Function(int index, int delay)? onResult}) {
     final pingOptions = options.forPing;
     return runPool(servers.length, 1, (i) async {
-      final config = _config(servers[i], pingOptions);
+      final config = _config(servers[i], pingOptions, forPing: true);
       if (config == null || (isCancelled?.call() ?? false)) return -1;
       final raw = await _v2
           .getServerDelay(config: config, url: options.testUrl)

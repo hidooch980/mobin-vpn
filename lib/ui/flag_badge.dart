@@ -22,6 +22,12 @@ class FlagBadge extends StatelessWidget {
         Icon(Icons.auto_awesome_rounded, color: Colors.white, size: size * 0.5),
       );
     }
+    if (code == 'WARP') {
+      return _circle(
+        const [Color(0xFFF6821F), Color(0xFFFBAD41)],
+        Icon(Icons.cloud_rounded, color: Colors.white, size: size * 0.5),
+      );
+    }
     if (code == 'FAV') {
       return _circle(
         const [Color(0xFFFBBF24), Color(0xFFF97316)],

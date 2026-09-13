@@ -3,9 +3,21 @@ import 'dart:io';
 
 import 'package:cryptography/cryptography.dart';
 
-/// A free Cloudflare WARP identity, chained behind the VPN server so sites that block
-/// datacenter IPs see a Cloudflare IP instead.
+/// The registered WARP identity used by `warp://host:port` servers (set by the controller).
+class WarpRegistry {
+  static WarpAccount? account;
+}
+
+/// A free Cloudflare WARP identity: used on its own as the free "WARP" route (no server needed),
+/// or chained behind a VPN server so sites that block datacenter IPs see a Cloudflare IP instead.
 class WarpAccount {
+  /// Cloudflare WARP ingress addresses × ports; operators block some, so several are tried.
+  static const endpoints = [
+    '162.159.192.1:2408', '162.159.195.1:2408', '188.114.96.1:2408', '188.114.97.1:2408',
+    '162.159.192.1:500', '162.159.192.1:1701', '162.159.192.1:4500', '162.159.195.1:854',
+    '188.114.98.1:894', '188.114.99.1:7559', '162.159.192.10:8854', '162.159.193.1:2408',
+  ];
+
   const WarpAccount({
     required this.privateKey,
     required this.peerPublicKey,

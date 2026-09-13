@@ -2,6 +2,7 @@
 import 'dart:convert';
 
 import 'server.dart';
+import 'warp.dart';
 
 const _utls = {'chrome', 'firefox', 'edge', 'safari', '360', 'qq', 'ios', 'android', 'random', 'randomized'};
 
@@ -10,6 +11,7 @@ typedef Json = Map<String, dynamic>;
 /// Returns an outbound without a tag, or null when the link is invalid/unsupported.
 Json? parseOutbound(String uri) {
   try {
+    if (uri.startsWith('warp://')) return _warpEndpoint(uri);
     if (uri.startsWith('vmess://')) return _vmess(uri);
     if (uri.startsWith('vless://') || uri.startsWith('trojan://')) return _vlessTrojan(uri);
     if (uri.startsWith('ss://')) return _ss(uri);
@@ -23,6 +25,18 @@ Json? parseOutbound(String uri) {
     return null;
   }
   return null;
+}
+
+/// Free WARP route: WireGuard to one Cloudflare endpoint with the registered identity (null until registered).
+Json? _warpEndpoint(String uri) {
+  final a = WarpRegistry.account;
+  if (a == null) return null;
+  final u = Uri.parse(uri);
+  return {
+    'type': 'wireguard', 'server': u.host, 'server_port': u.port,
+    'local_address': ['${a.addressV4}/32', '${a.addressV6}/128'],
+    'private_key': a.privateKey, 'peer_public_key': a.peerPublicKey, 'reserved': a.reserved, 'mtu': 1280,
+  };
 }
 
 bool _validEndpoint(String? host, int? port) => host != null && host.isNotEmpty && port != null && port > 0 && port < 65536;

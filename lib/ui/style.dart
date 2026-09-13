@@ -28,57 +28,60 @@ class Palette {
   static void apply(Brightness brightness, {required bool reduceMotion}) {
     Palette.reduceMotion = reduceMotion;
     isDark = brightness == Brightness.dark;
-    // Logo colors: emerald greens on a warm near-black (dark) or soft mint-white (light).
+    // Calm system-tool palette: green-grey canvas, soft green primary, brighter green when connected.
     if (isDark) {
-      bg = const Color(0xFF0F1210);
-      surface = const Color(0xFF171C19);
-      raised = const Color(0xFF1C2320);
-      text = const Color(0xFFE9F2EC);
-      muted = const Color(0xFF8FA398);
-      accent = const Color(0xFF3ECF8E);
-      amber = const Color(0xFF6EE7B7);
-      mapDot = const Color(0x333ECF8E);
+      bg = const Color(0xFF101411);
+      surface = const Color(0xFF171C18);
+      raised = const Color(0xFF222A24);
+      text = const Color(0xFFE8F1EA);
+      muted = const Color(0xFFB9C6BB);
+      accent = const Color(0xFFA4D8BB);
+      amber = const Color(0xFF67D89C);
+      mapDot = const Color(0x33A4D8BB);
       fill = const Color(0x0FFFFFFF);
       fillStrong = const Color(0x1AFFFFFF);
-      border = const Color(0xFF26302B);
-      sheet = const Color(0xFF171C19);
-      cardTop = const Color(0xFF18201C);
-      cardBottom = const Color(0xFF151B18);
+      border = const Color(0xFF3B473E);
+      sheet = const Color(0xFF171C18);
+      cardTop = const Color(0xFF171C18);
+      cardBottom = const Color(0xFF171C18);
       shadow = const Color(0x00000000);
-      auroraStrength = 0.14;
+      auroraStrength = 0.0;
     } else {
-      bg = const Color(0xFFF3F7F4);
+      bg = const Color(0xFFF4F7F4);
       surface = const Color(0xFFFFFFFF);
-      raised = const Color(0xFFFFFFFF);
-      text = const Color(0xFF14231B);
-      muted = const Color(0xFF5E7066);
-      accent = const Color(0xFF1B9E66);
-      amber = const Color(0xFF15805A);
-      mapDot = const Color(0x2E1B9E66);
-      fill = const Color(0x0A0B3D26);
-      fillStrong = const Color(0x140B3D26);
-      border = const Color(0xFFDCE7E0);
+      raised = const Color(0xFFE7EEE9);
+      text = const Color(0xFF17201A);
+      muted = const Color(0xFF55635A);
+      accent = const Color(0xFF3E7F5C);
+      amber = const Color(0xFF238A55);
+      mapDot = const Color(0x2E3E7F5C);
+      fill = const Color(0x0A17201A);
+      fillStrong = const Color(0x1417201A);
+      border = const Color(0xFFCBD6CE);
       sheet = const Color(0xFFFFFFFF);
       cardTop = const Color(0xFFFFFFFF);
-      cardBottom = const Color(0xFFFAFCFB);
-      shadow = const Color(0x141B9E66);
-      auroraStrength = 0.08;
+      cardBottom = const Color(0xFFFFFFFF);
+      shadow = const Color(0x00000000);
+      auroraStrength = 0.0;
     }
   }
+
+  /// Shown only after a reported connection failure.
+  static Color get failure => isDark ? const Color(0xFFFFB4AB) : const Color(0xFFB3261E);
 
   /// Three colors per connection state: primary, secondary, highlight.
   static List<Color> forState(VpnState state) {
     if (isDark) {
       return switch (state) {
-        VpnState.connected => const [Color(0xFF3ECF8E), Color(0xFF6EE7B7), Color(0xFF1B9E66)],
-        VpnState.connecting || VpnState.disconnecting => const [Color(0xFFF5B83D), Color(0xFF3ECF8E), Color(0xFFFFD27A)],
-        VpnState.disconnected => const [Color(0xFF6B7F74), Color(0xFF3ECF8E), Color(0xFF2E3A33)],
+        VpnState.connected => const [Color(0xFF67D89C), Color(0xFFA4D8BB), Color(0xFF3B473E)],
+        VpnState.connecting || VpnState.disconnecting => const [Color(0xFFA4D8BB), Color(0xFF67D89C), Color(0xFF3B473E)],
+        VpnState.disconnected => const [Color(0xFFA4D8BB), Color(0xFF67D89C), Color(0xFF3B473E)],
       };
     }
     return switch (state) {
-      VpnState.connected => const [Color(0xFF1B9E66), Color(0xFF34C38A), Color(0xFF15805A)],
-      VpnState.connecting || VpnState.disconnecting => const [Color(0xFFC98300), Color(0xFF1B9E66), Color(0xFFE0A43A)],
-      VpnState.disconnected => const [Color(0xFF8A9A91), Color(0xFF1B9E66), Color(0xFFCFDCD4)],
+      VpnState.connected => const [Color(0xFF238A55), Color(0xFF3E7F5C), Color(0xFFCBD6CE)],
+      VpnState.connecting || VpnState.disconnecting => const [Color(0xFF3E7F5C), Color(0xFF238A55), Color(0xFFCBD6CE)],
+      VpnState.disconnected => const [Color(0xFF3E7F5C), Color(0xFF238A55), Color(0xFFCBD6CE)],
     };
   }
 

@@ -15,6 +15,7 @@ const Map<String, String> _faNames = {
   'SK': 'اسلواکی', 'TH': 'تایلند', 'TR': 'ترکیه', 'TW': 'تایوان', 'UA': 'اوکراین',
   'US': 'آمریکا', 'VN': 'ویتنام', 'ZA': 'آفریقای جنوبی',
   'ZZ': 'کانفیگ‌های من',
+  'WARP': 'Cloudflare WARP',
 };
 
 const unknownCountry = 'UN';

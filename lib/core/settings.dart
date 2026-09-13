@@ -20,6 +20,7 @@ class AppSettings extends ChangeNotifier {
   // Connection
   String androidCore = 'auto'; // auto | xray | singbox
   String connectMode = 'direct'; // direct (like v2rayNG, no ping) | test (ping first, pick fastest)
+  String transport = 'auto'; // auto (V2Ray servers, then WARP) | v2ray | warp
   bool autoReconnect = true;
   bool connectOnLaunch = false;
   bool proxyOnly = false; // Android: local proxy without VPN tunnel
@@ -54,6 +55,7 @@ class AppSettings extends ChangeNotifier {
     reduceMotion = p.getBool('s_reduceMotion') ?? reduceMotion;
     androidCore = p.getString('s_androidCore') ?? androidCore;
     connectMode = p.getString('s_connectMode') ?? connectMode;
+    transport = p.getString('s_transport') ?? transport;
     autoReconnect = p.getBool('s_autoReconnect') ?? autoReconnect;
     connectOnLaunch = p.getBool('s_connectOnLaunch') ?? connectOnLaunch;
     proxyOnly = p.getBool('s_proxyOnly') ?? proxyOnly;
@@ -89,6 +91,7 @@ class AppSettings extends ChangeNotifier {
       p.setBool('s_reduceMotion', reduceMotion),
       p.setString('s_androidCore', androidCore),
       p.setString('s_connectMode', connectMode),
+      p.setString('s_transport', transport),
       p.setBool('s_autoReconnect', autoReconnect),
       p.setBool('s_connectOnLaunch', connectOnLaunch),
       p.setBool('s_proxyOnly', proxyOnly),

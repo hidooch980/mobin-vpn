@@ -25,7 +25,9 @@ class SingboxCore {
 
   bool get binaryExists => File(binary).existsSync();
 
-  Json? outbound(Server s) => _outbounds.putIfAbsent(s.uri, () => parseOutbound(s.uri));
+  // WARP routes depend on the (later registered) identity, so they are not cached.
+  Json? outbound(Server s) =>
+      s.uri.startsWith('warp://') ? parseOutbound(s.uri) : _outbounds.putIfAbsent(s.uri, () => parseOutbound(s.uri));
 
   static Future<int> freePort() async {
     final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);

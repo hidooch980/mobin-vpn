@@ -213,8 +213,32 @@ class VpnController extends ChangeNotifier {
     }
   }
 
+  /// Pseudo country code of the free WARP route.
+  static const warpCode = 'WARP';
+
+  /// Free WARP route: one entry per Cloudflare endpoint (no server list needed).
+  static List<Server> get warpServers => [
+        for (final (i, endpoint) in WarpAccount.endpoints.indexed)
+          Server(
+            uri: 'warp://$endpoint',
+            remark: 'Cloudflare WARP ${(i + 1).toString().padLeft(2, '0')} · WG',
+            countryCode: warpCode,
+            protocol: Protocol.wireguard,
+          ),
+      ];
+
+  bool _isWarp(Server s) => s.countryCode == warpCode;
+
+  /// Applies the route setting to a candidate pool.
+  List<Server> _byTransport(List<Server> pool) => switch (settings.transport) {
+        'warp' => warpServers,
+        'v2ray' => pool.where((s) => !_isWarp(s)).toList(),
+        _ => [...pool.where((s) => !_isWarp(s)), ...warpServers.take(4)],
+      };
+
   void _apply(SubscriptionData data) {
     _data = data;
+    WarpRegistry.account = WarpAccount.fromJsonString(settings.warpAccount);
     final manual = [
       for (final link in settings.manualConfigs)
         if (Server.fromUri(link) case final s?)
@@ -223,6 +247,7 @@ class VpnController extends ChangeNotifier {
     servers = [
       ...manual,
       ...data.servers.where((s) => settings.protocols.contains(s.protocol) && engine.supports(s)),
+      ...warpServers,
     ];
     final groups = <String, CountryGroup>{};
     for (final s in servers) {
@@ -383,6 +408,7 @@ class VpnController extends ChangeNotifier {
     for (final proxy in {null, engine.httpProxy}) {
       try {
         final account = await WarpAccount.register(proxy: proxy);
+        WarpRegistry.account = account;
         await settings.update((x) => x.warpAccount = jsonEncode(account.toJson()));
         return true;
       } catch (_) {}
@@ -519,7 +545,18 @@ class VpnController extends ChangeNotifier {
           error = 'ثبت WARP ناموفق بود؛ این بار بدون WARP وصل می‌شویم.';
         }
       }
-      final List<Server> pool = only != null ? [only] : await _candidates();
+      final List<Server> pool = only != null ? [only] : _byTransport(await _candidates());
+      if (pool.any(_isWarp) && WarpRegistry.account == null) {
+        phase = 'ساخت هویت رایگان Cloudflare WARP…';
+        notifyListeners();
+        if (!await ensureWarp()) {
+          AppLog.add('warp: registration failed');
+          pool.removeWhere(_isWarp);
+          if (pool.isEmpty) {
+            throw const _UserError('ثبت WARP ناموفق بود؛ اینترنت را بررسی کنید یا مسیر دیگری انتخاب کنید.');
+          }
+        }
+      }
       if (pool.isEmpty) throw const _UserError('سروری برای این موقعیت پیدا نشد.');
 
       // Fast path like v2rayNG: reconnect straight to the last working server, no ping round.

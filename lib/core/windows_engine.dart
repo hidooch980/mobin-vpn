@@ -46,7 +46,7 @@ class WindowsEngine implements VpnEngine {
   String? get httpProxy => _proxyPort == null ? null : '127.0.0.1:$_proxyPort';
 
   @override
-  bool supports(Server server) => _core.outbound(server) != null;
+  bool supports(Server server) => server.uri.startsWith('warp://') || _core.outbound(server) != null;
 
   @override
   Future<bool> requestPermission() async => true;
