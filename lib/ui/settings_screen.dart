@@ -109,19 +109,6 @@ class SettingsScreen extends StatelessWidget {
                           onChanged: (v) => s.update((x) => x.proxyOnly = v),
                         ),
                       if (Platform.isAndroid)
-                        _ChoiceRow<String>(
-                          icon: Icons.memory_rounded,
-                          title: 'هسته‌ی اتصال',
-                          subtitle: 'خودکار (پیشنهادی): VLESS/VMess/Trojan/SS مستقیم با Xray با بیشترین سرعت؛ Hysteria2، TUIC و بقیه با sing-box',
-                          options: const {'auto': 'خودکار ✨', 'xray': 'Xray', 'singbox': 'sing-box'},
-                          value: s.androidCore,
-                          onChanged: (v) async {
-                            if (controller.state != VpnState.disconnected) await controller.disconnect();
-                            await s.update((x) => x.androidCore = v);
-                            await controller.refresh();
-                          },
-                        ),
-                      if (Platform.isAndroid)
                         _ActionRow(
                           icon: Icons.shield_rounded,
                           title: 'Kill Switch (قطع اینترنت بدون VPN)',
@@ -573,8 +560,7 @@ class _ProtocolRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final xrayOnly = Platform.isAndroid && settings.androidCore == 'xray';
-    // (auto and sing-box cores support every protocol)
+    final xrayOnly = Platform.isAndroid; // Android runs Xray only
     final available = xrayOnly ? Protocol.values.where(_android.contains) : Protocol.values;
     return _RowShell(
       icon: Icons.security_rounded,

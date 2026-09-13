@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
-import 'android_singbox_engine.dart';
+import 'android_engine.dart';
 import 'server.dart';
 import 'settings.dart';
 import 'warp.dart';
@@ -72,8 +72,7 @@ class EngineOptions {
 
 /// Platform VPN core. Delays are measured from the user's own connection.
 abstract class VpnEngine {
-  static VpnEngine create(AppSettings settings) =>
-      Platform.isWindows ? WindowsEngine() : AndroidHybridEngine(() => settings.androidCore);
+  static VpnEngine create(AppSettings settings) => Platform.isWindows ? WindowsEngine() : AndroidEngine();
 
   /// Emits when the tunnel stops on its own (killed, notification button...).
   Stream<VpnState> get states;

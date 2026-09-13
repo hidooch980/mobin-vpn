@@ -28,41 +28,41 @@ class Palette {
   static void apply(Brightness brightness, {required bool reduceMotion}) {
     Palette.reduceMotion = reduceMotion;
     isDark = brightness == Brightness.dark;
-    // Material look in the style of v2rayNG: blue primary, plain grey/white grounds, flat cards.
+    // Logo colors: emerald greens on a warm near-black (dark) or soft mint-white (light).
     if (isDark) {
-      bg = const Color(0xFF121212);
-      surface = const Color(0xFF1E1E1E);
-      raised = const Color(0xFF242424);
-      text = const Color(0xFFE6E6E6);
-      muted = const Color(0xFF9E9E9E);
-      accent = const Color(0xFF64B5F6);
-      amber = const Color(0xFF64B5F6);
-      mapDot = const Color(0x33E6E6E6);
+      bg = const Color(0xFF0F1210);
+      surface = const Color(0xFF171C19);
+      raised = const Color(0xFF1C2320);
+      text = const Color(0xFFE9F2EC);
+      muted = const Color(0xFF8FA398);
+      accent = const Color(0xFF3ECF8E);
+      amber = const Color(0xFF6EE7B7);
+      mapDot = const Color(0x333ECF8E);
       fill = const Color(0x0FFFFFFF);
       fillStrong = const Color(0x1AFFFFFF);
-      border = const Color(0xFF2C2C2C);
-      sheet = const Color(0xFF1E1E1E);
-      cardTop = const Color(0xFF1E1E1E);
-      cardBottom = const Color(0xFF1E1E1E);
+      border = const Color(0xFF26302B);
+      sheet = const Color(0xFF171C19);
+      cardTop = const Color(0xFF18201C);
+      cardBottom = const Color(0xFF151B18);
       shadow = const Color(0x00000000);
-      auroraStrength = 0.0;
+      auroraStrength = 0.14;
     } else {
-      bg = const Color(0xFFF2F2F2);
+      bg = const Color(0xFFF3F7F4);
       surface = const Color(0xFFFFFFFF);
       raised = const Color(0xFFFFFFFF);
-      text = const Color(0xFF212121);
-      muted = const Color(0xFF757575);
-      accent = const Color(0xFF1976D2);
-      amber = const Color(0xFF1976D2);
-      mapDot = const Color(0x2E212121);
-      fill = const Color(0x0A000000);
-      fillStrong = const Color(0x14000000);
-      border = const Color(0xFFE0E0E0);
+      text = const Color(0xFF14231B);
+      muted = const Color(0xFF5E7066);
+      accent = const Color(0xFF1B9E66);
+      amber = const Color(0xFF15805A);
+      mapDot = const Color(0x2E1B9E66);
+      fill = const Color(0x0A0B3D26);
+      fillStrong = const Color(0x140B3D26);
+      border = const Color(0xFFDCE7E0);
       sheet = const Color(0xFFFFFFFF);
       cardTop = const Color(0xFFFFFFFF);
-      cardBottom = const Color(0xFFFFFFFF);
-      shadow = const Color(0x14000000);
-      auroraStrength = 0.0;
+      cardBottom = const Color(0xFFFAFCFB);
+      shadow = const Color(0x141B9E66);
+      auroraStrength = 0.08;
     }
   }
 
@@ -70,15 +70,15 @@ class Palette {
   static List<Color> forState(VpnState state) {
     if (isDark) {
       return switch (state) {
-        VpnState.connected => const [Color(0xFF66BB6A), Color(0xFF43A047), Color(0xFF81C784)],
-        VpnState.connecting || VpnState.disconnecting => const [Color(0xFFFFB74D), Color(0xFFFFA726), Color(0xFF64B5F6)],
-        VpnState.disconnected => const [Color(0xFF64B5F6), Color(0xFF42A5F5), Color(0xFF90CAF9)],
+        VpnState.connected => const [Color(0xFF3ECF8E), Color(0xFF6EE7B7), Color(0xFF1B9E66)],
+        VpnState.connecting || VpnState.disconnecting => const [Color(0xFFF5B83D), Color(0xFF3ECF8E), Color(0xFFFFD27A)],
+        VpnState.disconnected => const [Color(0xFF6B7F74), Color(0xFF3ECF8E), Color(0xFF2E3A33)],
       };
     }
     return switch (state) {
-      VpnState.connected => const [Color(0xFF43A047), Color(0xFF2E7D32), Color(0xFF66BB6A)],
-      VpnState.connecting || VpnState.disconnecting => const [Color(0xFFF57C00), Color(0xFFEF6C00), Color(0xFF1976D2)],
-      VpnState.disconnected => const [Color(0xFF1976D2), Color(0xFF1565C0), Color(0xFF42A5F5)],
+      VpnState.connected => const [Color(0xFF1B9E66), Color(0xFF34C38A), Color(0xFF15805A)],
+      VpnState.connecting || VpnState.disconnecting => const [Color(0xFFC98300), Color(0xFF1B9E66), Color(0xFFE0A43A)],
+      VpnState.disconnected => const [Color(0xFF8A9A91), Color(0xFF1B9E66), Color(0xFFCFDCD4)],
     };
   }
 

@@ -53,21 +53,6 @@ jobs:
             echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
             echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
           fi
-      - name: Bundle sing-box core for Android (arm64, armv7)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          TAG=$(gh release list -R SagerNet/sing-box --exclude-pre-releases --limit 100 --json tagName \
-                --jq '[.[].tagName | select(startswith("v1.12."))][0]')
-          VER=${TAG#v}
-          for pair in arm64:arm64-v8a arm:armeabi-v7a; do
-            arch=${pair%%:*}; abi=${pair##*:}
-            gh release download "$TAG" -R SagerNet/sing-box -p "sing-box-${VER}-android-${arch}.tar.gz" -O "sb-${arch}.tgz"
-            mkdir -p "sb-${arch}" "android/app/src/main/jniLibs/${abi}"
-            tar xzf "sb-${arch}.tgz" -C "sb-${arch}"
-            cp "sb-${arch}/sing-box-${VER}-android-${arch}/sing-box" "android/app/src/main/jniLibs/${abi}/libsingbox.so"
-          done
-          ls -la android/app/src/main/jniLibs/*
       - name: Build APKs
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
