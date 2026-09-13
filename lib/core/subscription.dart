@@ -18,6 +18,7 @@ class SubscriptionRepository {
   static const shareLink = 'https://raw.githubusercontent.com/hidooch980/vpn-sub/sub/lite_base64.txt';
 
   static const _mirrors = [
+    'https://hidooch980.github.io/vpn-sub/sub.txt',
     'https://raw.githubusercontent.com/hidooch980/vpn-sub/sub/sub.txt',
     'https://cdn.jsdelivr.net/gh/hidooch980/vpn-sub@sub/sub.txt',
     'https://fastly.jsdelivr.net/gh/hidooch980/vpn-sub@sub/sub.txt',
