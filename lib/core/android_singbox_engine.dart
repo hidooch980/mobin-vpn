@@ -40,6 +40,9 @@ class AndroidSingboxEngine implements VpnEngine {
   bool supports(Server server) => available && _core!.outbound(server) != null;
 
   @override
+  Future<bool> requestPermission() => _tunnel.requestPermission();
+
+  @override
   Future<void> init() async {
     final libDir = await _channel.invokeMethod<String>('nativeLibDir');
     final base = await getApplicationSupportDirectory();
@@ -196,6 +199,9 @@ class AndroidHybridEngine implements VpnEngine {
       AppLog.add('android sing-box init failed: $e');
     }
   }
+
+  @override
+  Future<bool> requestPermission() => _xray.requestPermission();
 
   @override
   Future<List<int>> pingAll(List<Server> servers, EngineOptions options,

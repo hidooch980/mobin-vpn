@@ -85,6 +85,9 @@ abstract class VpnEngine {
   bool supports(Server server);
   Future<void> init();
 
+  /// Asks for the OS VPN permission up front (Android). Returns false when the user declines.
+  Future<bool> requestPermission() async => true;
+
   /// Real delay in ms for each server (same order), -1 when it failed.
   Future<List<int>> pingAll(List<Server> servers, EngineOptions options,
       {void Function(int done)? onProgress, bool Function()? isCancelled, void Function(int index, int delay)? onResult});

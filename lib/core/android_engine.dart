@@ -93,6 +93,9 @@ class AndroidEngine implements VpnEngine {
   @override
   Future<void> init() => _v2.initializeV2Ray();
 
+  @override
+  Future<bool> requestPermission() => _v2.requestPermission();
+
   /// The plugin measures delays on a single native thread, so requests must go one at a time:
   /// firing several at once made queued requests hit the Dart timeout and every server looked dead.
   @override

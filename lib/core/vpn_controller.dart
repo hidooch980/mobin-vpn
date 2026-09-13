@@ -396,6 +396,14 @@ class VpnController extends ChangeNotifier {
     notifyListeners();
     var options = _options;
     try {
+      // Ask for the VPN permission before anything else, so the system dialog shows immediately.
+      if (!options.proxyOnly) {
+        phase = 'دریافت اجازه‌ی VPN…';
+        notifyListeners();
+        final granted = await engine.requestPermission();
+        AppLog.add('vpn permission: ${granted ? 'granted' : 'denied'}');
+        if (!granted) throw const PermissionDeniedError();
+      }
       if (servers.isEmpty && only == null) await refresh();
       if (settings.warp && options.warp == null) {
         phase = 'ساخت هویت Cloudflare WARP…';
@@ -518,7 +526,8 @@ class VpnController extends ChangeNotifier {
       error = 'حالت VPN کامل (TUN) دسترسی Administrator می‌خواهد. از تنظیمات «اجرای دوباره به‌عنوان ادمین» را بزنید.';
       _markDisconnected();
     } on PermissionDeniedError {
-      error = 'برای اتصال، اجازه‌ی VPN لازم است.';
+      error = 'اجازه‌ی VPN داده نشد. دوباره دکمه را بزنید و در پنجره‌ی اندروید «تأیید» را انتخاب کنید. '
+          'اگر پنجره نیامد: تنظیمات گوشی ← شبکه ← VPN، و VPN دیگری را که «همیشه روشن» است خاموش کنید.';
       _markDisconnected();
     } on _UserError catch (e) {
       AppLog.add('connect: ${e.message}');

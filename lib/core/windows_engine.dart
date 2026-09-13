@@ -49,6 +49,9 @@ class WindowsEngine implements VpnEngine {
   bool supports(Server server) => _core.outbound(server) != null;
 
   @override
+  Future<bool> requestPermission() async => true;
+
+  @override
   Future<void> init() async {
     final base = await getApplicationSupportDirectory();
     _core = SingboxCore(
