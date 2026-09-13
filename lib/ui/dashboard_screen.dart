@@ -88,15 +88,8 @@ class _MapHeader extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: RadialGradient(
-              center: const Alignment(0.2, -0.3),
-              radius: 1.2,
-              colors: [colors[1].withValues(alpha: Palette.auroraStrength), Palette.bg],
-            ),
-          ),
-        ),
+        // Faint technical grid behind the map.
+        CustomPaint(painter: _GridPainter(Palette.border.withValues(alpha: 0.55))),
         Padding(
           padding: const EdgeInsets.fromLTRB(8, 70, 8, 26),
           child: WorldMap(
@@ -115,7 +108,7 @@ class _MapHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Mobin', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Palette.text, height: 1.1)),
+                  Text('Molido', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Palette.text, height: 1.1)),
                   const SizedBox(height: 6),
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 400),
@@ -150,6 +143,39 @@ class _MapHeader extends StatelessWidget {
       ],
     );
   }
+}
+
+class _GridPainter extends CustomPainter {
+  _GridPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 0.6;
+    const step = 32.0;
+    for (var x = 0.0; x < size.width; x += step) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+    for (var y = 0.0; y < size.height; y += step) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+    // Fade the grid into the background at the bottom.
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Palette.bg.withValues(alpha: 0.2), Palette.bg],
+        ).createShader(Offset.zero & size),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_GridPainter old) => old.color != color;
 }
 
 class _IconAction extends StatelessWidget {
@@ -206,8 +232,6 @@ class _Sheet extends StatelessWidget {
                   _RouteRow(controller: c, colors: colors),
                   const SizedBox(height: 12),
                   _LiveStats(controller: c, colors: colors),
-                  const SizedBox(height: 12),
-                  _ModeSwitch(controller: c, colors: colors),
                   const SizedBox(height: 14),
                   _LocationTabs(controller: c),
                   const SizedBox(height: 8),
@@ -308,7 +332,6 @@ class _RouteRow extends StatelessWidget {
       flag = selected;
       title = switch (selected) {
         null => 'هوشمند · بهترین سرور',
-        VpnController.gamingMode => 'گیمینگ',
         VpnController.favoritesMode => 'علاقه‌مندی‌ها',
         final code => countryName(code),
       };
@@ -490,49 +513,6 @@ class _SparkPainter extends CustomPainter {
   bool shouldRepaint(_SparkPainter old) => true;
 }
 
-class _ModeSwitch extends StatelessWidget {
-  const _ModeSwitch({required this.controller, required this.colors});
-
-  final VpnController controller;
-  final List<Color> colors;
-
-  @override
-  Widget build(BuildContext context) {
-    final settings = controller.settings;
-    final busy = controller.state == VpnState.connecting || controller.state == VpnState.disconnecting;
-    Widget option(String value, IconData icon, String label) {
-      final selected = settings.connectMode == value;
-      return Expanded(
-        child: GestureDetector(
-          onTap: busy ? null : () => settings.update((s) => s.connectMode = value),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 250),
-            padding: const EdgeInsets.symmetric(vertical: 9),
-            decoration: BoxDecoration(
-              color: selected ? Palette.accent : Colors.transparent,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(icon, size: 17, color: selected ? Colors.white : Palette.muted),
-              const SizedBox(width: 6),
-              Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: selected ? Colors.white : Palette.muted)),
-            ]),
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(color: Palette.fill, borderRadius: BorderRadius.circular(15)),
-      child: Row(children: [
-        option('direct', Icons.bolt_rounded, 'اتصال مستقیم'),
-        option('test', Icons.network_ping_rounded, 'با تست پینگ'),
-      ]),
-    );
-  }
-}
-
 class _LocationTabs extends StatelessWidget {
   const _LocationTabs({required this.controller});
 
@@ -544,7 +524,6 @@ class _LocationTabs extends StatelessWidget {
     final tabs = <(String?, String)>[
       (null, '✨ هوشمند'),
       if (c.settings.favorites.isNotEmpty) (VpnController.favoritesMode, '⭐ علاقه‌مندی'),
-      (VpnController.gamingMode, '🎮 گیمینگ'),
       for (final g in c.countries) (g.code, g.name),
     ];
     return SizedBox(
@@ -590,11 +569,21 @@ class _ServerPreview extends StatelessWidget {
 
   static const _rows = 6;
 
+  /// Every server in the selected tab (the ping button tests all of them).
+  List<Server> _tabServers() {
+    final c = controller;
+    return switch (c.selectedCountry) {
+      null => c.servers,
+      VpnController.favoritesMode => c.servers.where(c.isFavorite).toList(),
+      final code => c.servers.where((s) => s.countryCode == code).toList(),
+    };
+  }
+
   List<Server> _servers() {
     final c = controller;
     final code = c.selectedCountry;
     final list = switch (code) {
-      null || VpnController.gamingMode => c.servers,
+      null => c.servers,
       VpnController.favoritesMode => c.servers.where(c.isFavorite).toList(),
       _ => c.servers.where((s) => s.countryCode == code).toList(),
     };
@@ -619,18 +608,37 @@ class _ServerPreview extends StatelessWidget {
             padding: const EdgeInsets.all(18),
             child: Text(c.loading ? 'در حال دریافت سرورها…' : 'سروری در این بخش نیست', style: TextStyle(color: Palette.muted)),
           ),
-        InkWell(
-          borderRadius: const BorderRadius.vertical(bottom: Radius.circular(18)),
-          onTap: () => Navigator.of(context).push(_fadeRoute(ServersScreen(controller: c))),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Text('همه‌ی ${c.servers.length} سرور و تست پینگ',
-                  style: TextStyle(color: Palette.accent, fontWeight: FontWeight.w700, fontSize: 13)),
-              Icon(Icons.chevron_left_rounded, color: Palette.accent),
-            ]),
+        Row(children: [
+          Expanded(
+            child: InkWell(
+              onTap: c.pinging || c.state == VpnState.connecting ? null : () => c.pingServers(_tabServers()),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  c.pinging
+                      ? SizedBox.square(dimension: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Palette.accent))
+                      : Icon(Icons.network_ping_rounded, size: 17, color: Palette.accent),
+                  const SizedBox(width: 6),
+                  Text(c.pinging ? 'در حال تست…' : 'تست پینگ',
+                      style: TextStyle(color: Palette.accent, fontWeight: FontWeight.w700, fontSize: 13)),
+                ]),
+              ),
+            ),
           ),
-        ),
+          Container(width: 1, height: 22, color: Palette.border),
+          Expanded(
+            child: InkWell(
+              onTap: () => Navigator.of(context).push(_fadeRoute(ServersScreen(controller: c))),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Text('همه‌ی ${c.servers.length} سرور', style: TextStyle(color: Palette.text, fontWeight: FontWeight.w700, fontSize: 13)),
+                  Icon(Icons.chevron_left_rounded, color: Palette.muted),
+                ]),
+              ),
+            ),
+          ),
+        ]),
       ]),
     );
   }
@@ -709,9 +717,9 @@ class _ConnectButton extends StatelessWidget {
           height: 58,
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(19),
-            gradient: LinearGradient(colors: [colors[0], colors[1]]),
-            boxShadow: [BoxShadow(color: colors[0].withValues(alpha: 0.35), blurRadius: 22, offset: const Offset(0, 8))],
+            borderRadius: BorderRadius.circular(10),
+            color: c.state == VpnState.connected ? Palette.surface : colors[0].withValues(alpha: Palette.isDark ? 0.9 : 1),
+            border: Border.all(color: c.state == VpnState.connected ? colors[0] : colors[1]),
           ),
           child: Stack(fit: StackFit.expand, children: [
             if (c.state == VpnState.connecting)
@@ -720,14 +728,17 @@ class _ConnectButton extends StatelessWidget {
                 child: FractionallySizedBox(
                   widthFactor: progress ?? 0.12,
                   heightFactor: 1,
-                  child: ColoredBox(color: Colors.white.withValues(alpha: 0.18)),
+                  child: ColoredBox(color: Colors.white.withValues(alpha: 0.22)),
                 ),
               ),
-            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(icon, color: Colors.white),
-              const SizedBox(width: 8),
-              Text(label, style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900)),
-            ]),
+            Builder(builder: (context) {
+              final fg = c.state == VpnState.connected ? colors[0] : (Palette.isDark ? const Color(0xFF0B1F15) : Colors.white);
+              return Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(icon, color: fg),
+                const SizedBox(width: 8),
+                Text(label, style: TextStyle(color: fg, fontSize: 16, fontWeight: FontWeight.w800)),
+              ]);
+            }),
           ]),
         ),
       ),

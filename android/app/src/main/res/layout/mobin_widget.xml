@@ -13,7 +13,7 @@
         android:id="@+id/widget_icon"
         android:layout_width="42dp"
         android:layout_height="42dp"
-        android:contentDescription="Mobin VPN"
+        android:contentDescription="MolidoVPN"
         android:src="@drawable/ic_tile_shield" />
 
     <LinearLayout

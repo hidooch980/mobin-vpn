@@ -125,7 +125,7 @@ class SettingsScreen extends StatelessWidget {
                         _ActionRow(
                           icon: Icons.shield_rounded,
                           title: 'Kill Switch (قطع اینترنت بدون VPN)',
-                          subtitle: 'در تنظیمات VPN اندروید، Mobin VPN را «همیشه روشن» و «مسدود کردن اتصال بدون VPN» کنید',
+                          subtitle: 'در تنظیمات VPN اندروید، MolidoVPN را «همیشه روشن» و «مسدود کردن اتصال بدون VPN» کنید',
                           onTap: () => const AndroidIntent(action: 'android.settings.VPN_SETTINGS').launch(),
                         ),
                       if (Platform.isWindows) ...[
@@ -268,7 +268,7 @@ class SettingsScreen extends StatelessWidget {
                       _TextRow(
                         icon: Icons.add_link_rounded,
                         title: 'لینک اشتراک دلخواه',
-                        value: s.customSubscription.isEmpty ? 'پیش‌فرض (Mobin)' : s.customSubscription,
+                        value: s.customSubscription.isEmpty ? 'پیش‌فرض (Molido)' : s.customSubscription,
                         onTap: () async {
                           final v = await _prompt(context, 'لینک اشتراک (خالی = پیش‌فرض)', s.customSubscription,
                               keyboard: TextInputType.url);

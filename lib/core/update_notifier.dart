@@ -21,7 +21,7 @@ class UpdateNotifier {
       settings: const InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
         windows: WindowsInitializationSettings(
-          appName: 'Mobin VPN',
+          appName: 'MolidoVPN',
           appUserModelId: 'Mobin.MobinVPN',
           guid: '8f3c2a1e-6b4d-4f7a-9c1e-2d5b7a9e4c10',
         ),
@@ -42,7 +42,7 @@ class UpdateNotifier {
     await init();
     await _plugin.show(
       id: 7001,
-      title: 'نسخه‌ی جدید Mobin VPN',
+      title: 'نسخه‌ی جدید MolidoVPN',
       body: 'نسخه‌ی ${update.version} آماده است. برنامه را باز کنید و «به‌روزرسانی» را بزنید.',
       notificationDetails: const NotificationDetails(
         android: AndroidNotificationDetails(

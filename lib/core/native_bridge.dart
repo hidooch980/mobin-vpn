@@ -42,7 +42,6 @@ class NativeBridge {
     if (current != null) return current.displayName;
     return switch (c.selectedCountry) {
       null => 'هوشمند',
-      VpnController.gamingMode => 'گیمینگ',
       VpnController.favoritesMode => 'علاقه‌مندی‌ها',
       final code => c.countries.where((g) => g.code == code).firstOrNull?.name ?? code,
     };

@@ -7,7 +7,7 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <application
-        android:label="Mobin VPN"
+        android:label="MolidoVPN"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -37,7 +37,7 @@
             android:name=".MobinTileService"
             android:exported="true"
             android:icon="@drawable/ic_tile_shield"
-            android:label="Mobin VPN"
+            android:label="MolidoVPN"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
@@ -50,7 +50,7 @@
         <receiver
             android:name=".MobinWidgetProvider"
             android:exported="true"
-            android:label="Mobin VPN">
+            android:label="MolidoVPN">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>

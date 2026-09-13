@@ -21,7 +21,8 @@ class Glass extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final shape = BorderRadius.circular(radius);
+    // Flat cards with modest corners (hairline border, no heavy rounding).
+    final shape = BorderRadius.circular(radius > 14 ? 14 : radius);
     return Material(
       type: MaterialType.transparency,
       child: InkWell(

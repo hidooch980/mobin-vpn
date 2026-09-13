@@ -27,7 +27,7 @@ class _LogScreenState extends State<LogScreen> {
     final c = widget.controller;
     final s = c.settings;
     return [
-      'Mobin VPN ${info.version} (${info.buildNumber})',
+      'MolidoVPN ${info.version} (${info.buildNumber})',
       '${Platform.operatingSystem} ${Platform.operatingSystemVersion}',
       'state=${c.state.name} servers=${c.servers.length} locations=${c.countries.length} mode=${c.selectedCountry ?? 'auto'}',
       'fragment=${s.fragment} warp=${s.warp} bypassIran=${s.bypassIran} tun=${s.tunMode} proxyOnly=${s.proxyOnly} '

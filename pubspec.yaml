@@ -1,5 +1,5 @@
 name: mobin_vpn
-description: "Mobin VPN"
+description: "MolidoVPN"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -65,7 +65,7 @@ dev_dependencies:
 flutter_launcher_icons:
   android: true
   image_path: "assets/icon/icon.png"
-  adaptive_icon_background: "#120B2E"
+  adaptive_icon_background: "#121212"
   adaptive_icon_foreground: "assets/icon/foreground.png"
   windows:
     generate: true

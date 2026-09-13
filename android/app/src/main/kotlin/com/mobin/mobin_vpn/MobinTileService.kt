@@ -22,7 +22,7 @@ class MobinTileService : TileService() {
         val tile = qsTile ?: return
         val connected = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(KEY_CONNECTED, false)
         tile.state = if (connected) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
-        tile.label = "Mobin VPN"
+        tile.label = "MolidoVPN"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             tile.subtitle = if (connected) "متصل" else "قطع"
         }

@@ -28,40 +28,41 @@ class Palette {
   static void apply(Brightness brightness, {required bool reduceMotion}) {
     Palette.reduceMotion = reduceMotion;
     isDark = brightness == Brightness.dark;
+    // Graphite + emerald: near-black grounds, hairline borders, one green accent.
     if (isDark) {
-      bg = const Color(0xFF0A1024);
-      surface = const Color(0xFF121A36);
-      raised = const Color(0xFF18224A);
-      text = const Color(0xFFE8ECFF);
-      muted = const Color(0xFF8D9AC6);
-      accent = const Color(0xFF6A8CFF);
-      amber = const Color(0xFFF5B83D);
-      mapDot = const Color(0x597896FF);
-      fill = const Color(0x14FFFFFF);
-      fillStrong = const Color(0x24FFFFFF);
-      border = const Color(0xFF243060);
-      sheet = const Color(0xFF121A36);
-      cardTop = const Color(0xFF141D3D);
-      cardBottom = const Color(0xFF111934);
+      bg = const Color(0xFF121212);
+      surface = const Color(0xFF1C1C1C);
+      raised = const Color(0xFF181818);
+      text = const Color(0xFFEDEDED);
+      muted = const Color(0xFF8F8F8F);
+      accent = const Color(0xFF3ECF8E);
+      amber = const Color(0xFF3ECF8E);
+      mapDot = const Color(0x33EDEDED);
+      fill = const Color(0x0FFFFFFF);
+      fillStrong = const Color(0x1AFFFFFF);
+      border = const Color(0xFF2E2E2E);
+      sheet = const Color(0xFF171717);
+      cardTop = const Color(0xFF1A1A1A);
+      cardBottom = const Color(0xFF1A1A1A);
       shadow = const Color(0x00000000);
-      auroraStrength = 0.16;
+      auroraStrength = 0.06;
     } else {
-      bg = const Color(0xFFEEF2FB);
+      bg = const Color(0xFFF8F8F8);
       surface = const Color(0xFFFFFFFF);
-      raised = const Color(0xFFF3F6FD);
-      text = const Color(0xFF131A33);
-      muted = const Color(0xFF5E6A8C);
-      accent = const Color(0xFF2F5BFF);
-      amber = const Color(0xFFC98300);
-      mapDot = const Color(0x552F5BFF);
-      fill = const Color(0x0D1E2A5A);
-      fillStrong = const Color(0x1A1E2A5A);
-      border = const Color(0xFFDCE3F3);
+      raised = const Color(0xFFFCFCFC);
+      text = const Color(0xFF171717);
+      muted = const Color(0xFF6B6B6B);
+      accent = const Color(0xFF1B9E66);
+      amber = const Color(0xFF1B9E66);
+      mapDot = const Color(0x2E171717);
+      fill = const Color(0x0A000000);
+      fillStrong = const Color(0x14000000);
+      border = const Color(0xFFE4E4E4);
       sheet = const Color(0xFFFFFFFF);
       cardTop = const Color(0xFFFFFFFF);
-      cardBottom = const Color(0xFFFBFCFF);
-      shadow = const Color(0x1A2F5BFF);
-      auroraStrength = 0.10;
+      cardBottom = const Color(0xFFFFFFFF);
+      shadow = const Color(0x0F000000);
+      auroraStrength = 0.05;
     }
   }
 
@@ -69,15 +70,15 @@ class Palette {
   static List<Color> forState(VpnState state) {
     if (isDark) {
       return switch (state) {
-        VpnState.connected => const [Color(0xFF2FD39A), Color(0xFF3D6BFF), Color(0xFF22D3EE)],
-        VpnState.connecting || VpnState.disconnecting => const [Color(0xFFF5B83D), Color(0xFFFF8A3D), Color(0xFF6A8CFF)],
-        VpnState.disconnected => const [Color(0xFF3D6BFF), Color(0xFF6A8CFF), Color(0xFF22D3EE)],
+        VpnState.connected => const [Color(0xFF3ECF8E), Color(0xFF24B47E), Color(0xFF6EE7B7)],
+        VpnState.connecting || VpnState.disconnecting => const [Color(0xFFF5B83D), Color(0xFFD99A2B), Color(0xFF3ECF8E)],
+        VpnState.disconnected => const [Color(0xFF3ECF8E), Color(0xFF2A8F63), Color(0xFF6EE7B7)],
       };
     }
     return switch (state) {
-      VpnState.connected => const [Color(0xFF0E9F6E), Color(0xFF2F5BFF), Color(0xFF0891B2)],
-      VpnState.connecting || VpnState.disconnecting => const [Color(0xFFD97706), Color(0xFFEA580C), Color(0xFF2F5BFF)],
-      VpnState.disconnected => const [Color(0xFF2F5BFF), Color(0xFF4F74FF), Color(0xFF0891B2)],
+      VpnState.connected => const [Color(0xFF1B9E66), Color(0xFF15805A), Color(0xFF34C38A)],
+      VpnState.connecting || VpnState.disconnecting => const [Color(0xFFC98300), Color(0xFFA86D00), Color(0xFF1B9E66)],
+      VpnState.disconnected => const [Color(0xFF1B9E66), Color(0xFF15805A), Color(0xFF34C38A)],
     };
   }
 

@@ -1,4 +1,4 @@
-# Mobin VPN
+# MolidoVPN
 
 One-button VPN client for **Android** and **Windows**, fed by the tested server list from
 [hidooch980/vpn-sub](https://github.com/hidooch980/vpn-sub).

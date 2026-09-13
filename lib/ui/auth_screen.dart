@@ -117,7 +117,7 @@ class _AuthScreenState extends State<AuthScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    Text('Mobin VPN', textAlign: TextAlign.center, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Palette.text)),
+                    Text('MolidoVPN', textAlign: TextAlign.center, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Palette.text)),
                     Text(_signUp ? 'ساخت حساب جدید' : 'به حساب خود وارد شوید',
                         textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: Palette.muted)),
                     const SizedBox(height: 22),

@@ -1,4 +1,4 @@
--- Mobin VPN accounts. Run once in Supabase: Dashboard → SQL Editor → New query → paste → Run.
+-- MolidoVPN accounts. Run once in Supabase: Dashboard → SQL Editor → New query → paste → Run.
 -- Safe to run again (uses IF NOT EXISTS / OR REPLACE).
 
 -- One row per user. Users cannot change their own `enabled`, usage totals or device directly:

@@ -95,7 +95,7 @@ class _MobinAppState extends State<MobinApp> with WidgetsBindingObserver {
             // Palette values are read directly by widgets, so a theme switch rebuilds the whole tree.
             key: ValueKey('$brightness-${settings.reduceMotion}'),
             navigatorKey: appNavigatorKey,
-            title: 'Mobin VPN',
+            title: 'MolidoVPN',
             debugShowCheckedModeBanner: false,
             theme: ThemeData(
               brightness: brightness,

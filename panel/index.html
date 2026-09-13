@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>پنل Mobin VPN</title>
+<title>پنل MolidoVPN</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;900&display=swap">
 <style>
 :root{--bg:#EEF2FB;--surface:#FFFFFF;--line:#DCE3F3;--ink:#131A33;--soft:#5E6A8C;--accent:#2F5BFF;--amber:#C98300;--ok:#12A36B;--bad:#D93A3A;--chip:#E6ECFB}
@@ -77,7 +77,7 @@ if (!cfg.url || !cfg.anonKey) {
   }
 
   function renderLogin(error = '') {
-    app.innerHTML = `<form class="card login" id="f"><h1>ورود مدیر</h1><p class="sub">Mobin VPN</p>
+    app.innerHTML = `<form class="card login" id="f"><h1>ورود مدیر</h1><p class="sub">MolidoVPN</p>
       <input type="email" id="e" placeholder="email" autocomplete="username" required>
       <input type="password" id="p" placeholder="password" autocomplete="current-password" required>
       <div class="msg">${esc(error)}</div><button>ورود</button></form>`;
@@ -107,7 +107,7 @@ if (!cfg.url || !cfg.anonKey) {
     const active = users.filter(u => u.enabled).length;
     const online = users.filter(u => u.last_seen && Date.now()-new Date(u.last_seen) < 10*60000).length;
     app.innerHTML = `
-      <div class="top"><div><h1>پنل Mobin VPN</h1><p class="sub">کاربران، مصرف و دستگاه‌ها</p></div>
+      <div class="top"><div><h1>پنل MolidoVPN</h1><p class="sub">کاربران، مصرف و دستگاه‌ها</p></div>
         <div class="row-actions"><button class="ghost" id="reload">به‌روزرسانی</button><button class="ghost" id="out">خروج</button></div></div>
       <div class="kpis">
         <div class="card kpi"><small>کاربران ثبت‌نام‌شده</small><strong>${users.length}</strong></div>

@@ -229,8 +229,8 @@ class VpnController extends ChangeNotifier {
       groups.putIfAbsent(s.countryCode, () => CountryGroup(s.countryCode)).servers.add(s);
     }
     countries = groups.values.toList();
+    if (isGaming) selectedCountry = null; // gaming mode was removed from the app
     if (selectedCountry != null &&
-        !isGaming &&
         selectedCountry != favoritesMode &&
         !groups.containsKey(selectedCountry)) {
       selectedCountry = null;
@@ -309,9 +309,10 @@ class VpnController extends ChangeNotifier {
       case VpnState.connected:
         await disconnect();
       case VpnState.connecting:
+        // Cancel at once: stop the core now and let the running attempt unwind in the background.
         _cancel = true;
-        phase = 'در حال لغو…';
-        notifyListeners();
+        unawaited(engine.disconnect());
+        _markDisconnected();
       case VpnState.disconnected:
         await connect();
       case VpnState.disconnecting:
@@ -457,8 +458,22 @@ class VpnController extends ChangeNotifier {
     return healthy.isEmpty ? pool : healthy;
   }
 
+  Future<void>? _connectRun;
+
   Future<void> connect({Server? only}) async {
+    final previous = _connectRun;
+    if (previous != null) await previous; // a cancelled attempt may still be unwinding
     if (state != VpnState.disconnected) return;
+    final run = _connect(only);
+    _connectRun = run;
+    try {
+      await run;
+    } finally {
+      if (identical(_connectRun, run)) _connectRun = null;
+    }
+  }
+
+  Future<void> _connect(Server? only) async {
     error = null;
     _cancel = false;
     state = VpnState.connecting;
@@ -529,9 +544,10 @@ class VpnController extends ChangeNotifier {
         throw const _UserError('این سرور وصل نشد. سرور دیگری را امتحان کنید.');
       }
 
-      if (settings.connectMode == 'direct' && !isGaming) {
-        // Direct mode (like v2rayNG): no ping round, try servers in order until one really carries traffic.
-        for (final server in pool.take(_directAttempts)) {
+      if (!isGaming) {
+        // Direct first (like v2rayNG): no ping round, try servers in order until one really carries traffic.
+        final tried = pool.take(_directAttempts).toList();
+        for (final server in tried) {
           _checkCancel();
           phase = 'اتصال مستقیم به ${server.displayName}';
           notifyListeners();
@@ -549,7 +565,10 @@ class VpnController extends ChangeNotifier {
           }
           AppLog.add('connect: direct ${server.displayName} failed');
         }
-        throw const _UserError('اتصال مستقیم برقرار نشد. حالت «با تست» را امتحان کنید تا سرورهای سالم پیدا شوند.');
+        // None worked: test the remaining servers and connect to the fastest responsive one.
+        AppLog.add('connect: direct attempts failed, testing the other servers');
+        pool.removeWhere(tried.contains);
+        if (pool.isEmpty) throw const _UserError('اتصال برقرار نشد. لیست سرورها را به‌روزرسانی کنید یا کشور دیگری انتخاب کنید.');
       }
 
       phase = 'سنجش سرورها با اینترنت شما';
@@ -618,6 +637,7 @@ class VpnController extends ChangeNotifier {
       throw const _UserError(
           'اتصال برقرار نشد. «ضد فیلتر» را روشن کنید یا کشور دیگری را امتحان کنید. جزئیات در تنظیمات ← گزارش خطا.');
     } on _Cancelled {
+      await engine.disconnect();
       _markDisconnected();
     } on AdminRequiredError {
       error = 'حالت VPN کامل (TUN) دسترسی Administrator می‌خواهد. از تنظیمات «اجرای دوباره به‌عنوان ادمین» را بزنید.';
