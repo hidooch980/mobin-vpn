@@ -220,7 +220,10 @@ class VpnController extends ChangeNotifier {
       await updater.install(file);
       if (Platform.isWindows) exit(0);
     } catch (e) {
-      error = 'به‌روزرسانی ناموفق بود. اگر گیت‌هاب باز نمی‌شود، اول وصل شوید و دوباره امتحان کنید.';
+      AppLog.add('update: failed: $e');
+      error = 'به‌روزرسانی داخل برنامه ناموفق بود؛ صفحه‌ی دانلود در مرورگر باز شد. '
+          'اگر گیت‌هاب باز نمی‌شود، اول وصل شوید و دوباره امتحان کنید.';
+      unawaited(Updater.openReleasesPage());
     } finally {
       updateProgress = null;
       notifyListeners();
