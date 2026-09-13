@@ -202,8 +202,8 @@ jobs:
           [Files]
           Source: "build/windows/x64/runner/Release/*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
           [Icons]
-          Name: "{autoprograms}/MolidoVPN"; Filename: "{app}/mobin_vpn.exe"
-          Name: "{autodesktop}/MolidoVPN"; Filename: "{app}/mobin_vpn.exe"; Tasks: desktopicon
+          Name: "{autoprograms}\MolidoVPN"; Filename: "{app}/mobin_vpn.exe"
+          Name: "{autodesktop}\MolidoVPN"; Filename: "{app}/mobin_vpn.exe"; Tasks: desktopicon
           [Run]
           Filename: "{app}/mobin_vpn.exe"; Description: "Start MolidoVPN"; Flags: nowait postinstall skipifsilent
           "@
