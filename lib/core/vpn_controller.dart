@@ -64,6 +64,9 @@ class VpnController extends ChangeNotifier {
   ];
   static const _gamingRefine = 8, _gamingRounds = 2;
 
+  /// Direct mode tries at most this many servers before giving up.
+  static const _directAttempts = 6;
+
   /// Smart mode stops pinging after this many responsive servers (Android pings one by one, so stop at the first).
   static int get _enoughGood => Platform.isAndroid ? 1 : 3;
 
@@ -456,6 +459,29 @@ class VpnController extends ChangeNotifier {
           return;
         }
         throw const _UserError('این سرور وصل نشد. سرور دیگری را امتحان کنید.');
+      }
+
+      if (settings.connectMode == 'direct' && !isGaming) {
+        // Direct mode (like v2rayNG): no ping round, try servers in order until one really carries traffic.
+        for (final server in pool.take(_directAttempts)) {
+          _checkCancel();
+          phase = 'اتصال مستقیم به ${server.displayName}';
+          notifyListeners();
+          if (await engine.connect(server, options)) {
+            _checkCancel();
+            AppLog.add('connect: direct to ${server.displayName} (${server.protocolLabel})');
+            current = server;
+            currentDelay = null;
+            connectedAt = DateTime.now();
+            state = VpnState.connected;
+            phase = null;
+            notifyListeners();
+            await (await SharedPreferences.getInstance()).setString(_lastServerKey, server.uri);
+            return;
+          }
+          AppLog.add('connect: direct ${server.displayName} failed');
+        }
+        throw const _UserError('اتصال مستقیم برقرار نشد. حالت «با تست» را امتحان کنید تا سرورهای سالم پیدا شوند.');
       }
 
       phase = 'سنجش سرورها با اینترنت شما';

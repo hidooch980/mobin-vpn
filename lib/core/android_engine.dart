@@ -6,6 +6,7 @@ import 'package:flutter_v2ray/flutter_v2ray.dart';
 import 'app_log.dart';
 import 'engine.dart';
 import 'server.dart';
+import 'singbox_outbound.dart';
 
 /// Android: Xray core through VpnService (flutter_v2ray).
 class AndroidEngine implements VpnEngine {
@@ -87,8 +88,13 @@ class AndroidEngine implements VpnEngine {
     return jsonEncode(json);
   }
 
+  // Lightweight validity check: building a full Xray config for hundreds of servers on the UI thread froze the app.
+  // The real config is built lazily, only for servers that are pinged or connected.
+  final _valid = <String, bool>{};
+
   @override
-  bool supports(Server server) => _supported.contains(server.protocol) && _config(server, const EngineOptions()) != null;
+  bool supports(Server server) =>
+      _supported.contains(server.protocol) && _valid.putIfAbsent(server.uri, () => parseOutbound(server.uri) != null);
 
   @override
   Future<void> init() => _v2.initializeV2Ray();

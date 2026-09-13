@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -21,7 +22,8 @@ class ServersScreen extends StatefulWidget {
 }
 
 class _ServersScreenState extends State<ServersScreen> {
-  static const _maxPing = 150;
+  // Android (Xray) pings one server at a time, so keep a manual test short there.
+  static int get _maxPing => Platform.isAndroid ? 40 : 150;
   String _query = '';
   bool _byPing = false;
 

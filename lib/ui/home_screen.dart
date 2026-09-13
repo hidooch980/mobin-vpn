@@ -51,6 +51,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           const SizedBox(height: 8),
                           ConnectOrb(state: c.state, colors: colors, progress: c.progress, onTap: c.toggle),
                           const Spacer(),
+                          _ModeSwitch(controller: c, colors: colors),
+                          const SizedBox(height: 12),
                           _ErrorBanner(controller: c),
                           _Stats(controller: c),
                           const SizedBox(height: 12),
@@ -278,6 +280,64 @@ class _StatusText extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Connect mode: ⚡ direct (no ping, like v2rayNG) or 📶 test (ping first and pick the fastest).
+class _ModeSwitch extends StatelessWidget {
+  const _ModeSwitch({required this.controller, required this.colors});
+
+  final VpnController controller;
+  final List<Color> colors;
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = controller.settings;
+    final busy = controller.state == VpnState.connecting || controller.state == VpnState.disconnecting;
+    Widget option(String value, IconData icon, String label) {
+      final selected = settings.connectMode == value;
+      return Expanded(
+        child: GestureDetector(
+          onTap: busy ? null : () => settings.update((s) => s.connectMode = value),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              gradient: selected ? LinearGradient(colors: [colors[0], colors[1]]) : null,
+              boxShadow: selected ? [BoxShadow(color: colors[0].withValues(alpha: 0.35), blurRadius: 14)] : null,
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 18, color: selected ? Colors.white : Palette.muted),
+                const SizedBox(width: 6),
+                Text(label,
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                      color: selected ? Colors.white : Palette.muted,
+                    )),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return ListenableBuilder(
+      listenable: settings,
+      builder: (context, _) => Glass(
+        radius: 18,
+        padding: const EdgeInsets.all(4),
+        child: Row(children: [
+          option('direct', Icons.bolt_rounded, 'مستقیم'),
+          const SizedBox(width: 4),
+          option('test', Icons.network_ping_rounded, 'با تست پینگ'),
+        ]),
+      ),
     );
   }
 }
