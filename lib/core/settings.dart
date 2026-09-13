@@ -18,7 +18,7 @@ class AppSettings extends ChangeNotifier {
   bool reduceMotion = false;
 
   // Connection
-  String androidCore = 'xray'; // xray | singbox
+  String androidCore = 'auto'; // auto | xray | singbox
   bool autoReconnect = true;
   bool connectOnLaunch = false;
   bool proxyOnly = false; // Android: local proxy without VPN tunnel

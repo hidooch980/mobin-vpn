@@ -168,8 +168,12 @@ class AndroidHybridEngine implements VpnEngine {
   final _traffic = StreamController<TrafficStat>.broadcast();
   VpnEngine? _connected;
 
-  bool get _usingSingbox => _coreSetting() == 'singbox' && _singbox.available;
+  bool get _auto => _coreSetting() == 'auto';
+  bool get _usingSingbox => (_auto ? _preferred != _xray : _coreSetting() == 'singbox') && _singbox.available;
   VpnEngine get _active => _usingSingbox ? _singbox : _xray;
+
+  /// Auto mode: the core that last connected is tried first next time.
+  VpnEngine? _preferred;
 
   @override
   Stream<VpnState> get states => _states.stream;
@@ -181,7 +185,7 @@ class AndroidHybridEngine implements VpnEngine {
   String? get httpProxy => null;
 
   @override
-  bool supports(Server server) => _active.supports(server);
+  bool supports(Server server) => _auto ? _singbox.supports(server) || _xray.supports(server) : _active.supports(server);
 
   @override
   Future<void> init() async {
@@ -200,12 +204,24 @@ class AndroidHybridEngine implements VpnEngine {
 
   @override
   Future<bool> connect(Server server, EngineOptions options) async {
-    final active = _active;
-    final previous = _connected;
-    if (previous != null && !identical(previous, active)) await previous.disconnect();
-    final ok = await active.connect(server, options);
-    _connected = ok ? active : null;
-    return ok;
+    final order = <VpnEngine>[_active];
+    if (_auto) {
+      final other = identical(_active, _singbox) ? _xray : _singbox;
+      if (other.supports(server)) order.add(other);
+    }
+    for (final core in order) {
+      if (!core.supports(server)) continue;
+      final previous = _connected;
+      if (previous != null) await previous.disconnect();
+      _connected = null;
+      if (await core.connect(server, options)) {
+        _connected = core;
+        if (_auto) _preferred = core;
+        return true;
+      }
+      if (order.length > 1) AppLog.add('auto core: ${identical(core, _singbox) ? 'sing-box' : 'Xray'} failed, trying the other core');
+    }
+    return false;
   }
 
   @override

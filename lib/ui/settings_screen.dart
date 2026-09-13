@@ -112,8 +112,8 @@ class SettingsScreen extends StatelessWidget {
                         _ChoiceRow<String>(
                           icon: Icons.memory_rounded,
                           title: 'هسته‌ی اتصال',
-                          subtitle: 'اگر با یکی وصل نشد، دیگری را امتحان کنید. sing-box همه‌ی پروتکل‌ها (Hysteria2، TUIC، WireGuard…) و تست پینگ سریع‌تر دارد',
-                          options: const {'xray': 'Xray', 'singbox': 'sing-box'},
+                          subtitle: 'خودکار: sing-box (همه‌ی پروتکل‌ها، پینگ سریع) و اگر وصل نشد Xray — بهترین را خودش انتخاب می‌کند',
+                          options: const {'auto': 'خودکار ✨', 'xray': 'Xray', 'singbox': 'sing-box'},
                           value: s.androidCore,
                           onChanged: (v) async {
                             if (controller.state != VpnState.disconnected) await controller.disconnect();
@@ -574,6 +574,7 @@ class _ProtocolRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final xrayOnly = Platform.isAndroid && settings.androidCore == 'xray';
+    // (auto and sing-box cores support every protocol)
     final available = xrayOnly ? Protocol.values.where(_android.contains) : Protocol.values;
     return _RowShell(
       icon: Icons.security_rounded,
