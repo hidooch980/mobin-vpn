@@ -48,28 +48,41 @@ class AndroidEngine implements VpnEngine {
             if (o.bypassIran) {'type': 'field', 'domain': ['domain:ir'], 'outboundTag': 'direct'},
           ];
           final config = p.getFullConfiguration();
-          return o.fragment ? _withFragment(config) : config;
+          return o.fragment || o.warp != null ? _postProcess(config, o) : config;
         } catch (_) {
           return null;
         }
       });
 
-  /// Splits the TLS ClientHello into small pieces (Xray freedom "fragment") to slip past SNI filtering.
-  static String _withFragment(String config) {
+  /// Fragment: splits the TLS ClientHello (Xray freedom "fragment") to slip past SNI filtering.
+  /// WARP: a WireGuard outbound dialed through the server becomes the default route.
+  static String _postProcess(String config, EngineOptions o) {
     final json = jsonDecode(config) as Map<String, dynamic>;
     final outbounds = json['outbounds'] as List;
     final proxy = outbounds.first as Map<String, dynamic>;
+    final proxyTag = proxy['tag'] as String? ?? 'proxy';
+    proxy['tag'] = proxyTag;
     final stream = (proxy['streamSettings'] as Map<String, dynamic>?) ?? {};
-    if (stream['security'] != 'tls') return config;
-    stream['sockopt'] = {...?(stream['sockopt'] as Map<String, dynamic>?), 'dialerProxy': 'fragment'};
-    proxy['streamSettings'] = stream;
-    outbounds.add({
-      'tag': 'fragment',
-      'protocol': 'freedom',
-      'settings': {
-        'fragment': {'packets': 'tlshello', 'length': '10-20', 'interval': '10-20'},
-      },
-    });
+    if (o.fragment && stream['security'] == 'tls') {
+      stream['sockopt'] = {...?(stream['sockopt'] as Map<String, dynamic>?), 'dialerProxy': 'fragment'};
+      proxy['streamSettings'] = stream;
+      outbounds.add({
+        'tag': 'fragment',
+        'protocol': 'freedom',
+        'settings': {
+          'fragment': {'packets': 'tlshello', 'length': '10-20', 'interval': '10-20'},
+        },
+      });
+    }
+    final warp = o.warp;
+    if (warp != null) {
+      outbounds.add(warp.xrayOutbound('warp', proxyTag));
+      final routing = json['routing'] as Map<String, dynamic>;
+      routing['rules'] = [
+        ...(routing['rules'] as List? ?? const []),
+        {'type': 'field', 'network': 'tcp,udp', 'outboundTag': 'warp'},
+      ];
+    }
     return jsonEncode(json);
   }
 
@@ -82,8 +95,9 @@ class AndroidEngine implements VpnEngine {
   @override
   Future<List<int>> pingAll(List<Server> servers, EngineOptions options,
       {void Function(int done)? onProgress, bool Function()? isCancelled}) {
+    final pingOptions = options.forPing;
     return runPool(servers.length, 8, (i) async {
-      final config = _config(servers[i], options);
+      final config = _config(servers[i], pingOptions);
       if (config == null || (isCancelled?.call() ?? false)) return -1;
       final delay = await _v2
           .getServerDelay(config: config, url: options.testUrl)

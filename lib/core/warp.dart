@@ -1,0 +1,121 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:cryptography/cryptography.dart';
+
+/// A free Cloudflare WARP identity, chained behind the VPN server so sites that block
+/// datacenter IPs see a Cloudflare IP instead.
+class WarpAccount {
+  const WarpAccount({
+    required this.privateKey,
+    required this.peerPublicKey,
+    required this.addressV4,
+    required this.addressV6,
+    required this.reserved,
+  });
+
+  static const endpointHost = 'engage.cloudflareclient.com';
+  static const endpointPort = 2408;
+
+  final String privateKey, peerPublicKey, addressV4, addressV6;
+  final List<int> reserved;
+
+  Map<String, dynamic> toJson() => {
+        'privateKey': privateKey,
+        'peerPublicKey': peerPublicKey,
+        'v4': addressV4,
+        'v6': addressV6,
+        'reserved': reserved,
+      };
+
+  static WarpAccount? fromJsonString(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final m = jsonDecode(raw) as Map<String, dynamic>;
+      return WarpAccount(
+        privateKey: m['privateKey'] as String,
+        peerPublicKey: m['peerPublicKey'] as String,
+        addressV4: m['v4'] as String,
+        addressV6: m['v6'] as String,
+        reserved: (m['reserved'] as List).cast<int>(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// sing-box (Windows) WireGuard outbound that dials through [detour].
+  Map<String, dynamic> singBoxOutbound(String tag, String detour) => {
+        'type': 'wireguard',
+        'tag': tag,
+        'detour': detour,
+        'server': endpointHost,
+        'server_port': endpointPort,
+        'local_address': ['$addressV4/32', '$addressV6/128'],
+        'private_key': privateKey,
+        'peer_public_key': peerPublicKey,
+        'reserved': reserved,
+        'mtu': 1280,
+      };
+
+  /// Xray (Android) WireGuard outbound that dials through the outbound tagged [dialerProxy].
+  Map<String, dynamic> xrayOutbound(String tag, String dialerProxy) => {
+        'tag': tag,
+        'protocol': 'wireguard',
+        'settings': {
+          'secretKey': privateKey,
+          'address': ['$addressV4/32', '$addressV6/128'],
+          'peers': [
+            {'publicKey': peerPublicKey, 'endpoint': '$endpointHost:$endpointPort', 'keepAlive': 30},
+          ],
+          'reserved': reserved,
+          'mtu': 1280,
+        },
+        'streamSettings': {
+          'sockopt': {'dialerProxy': dialerProxy},
+        },
+      };
+
+  /// Registers a new device with Cloudflare. [proxy] ("host:port") is used when the API is blocked locally.
+  static Future<WarpAccount> register({String? proxy}) async {
+    final keyPair = await X25519().newKeyPair();
+    final privateKey = base64.encode(await keyPair.extractPrivateKeyBytes());
+    final publicKey = base64.encode((await keyPair.extractPublicKey()).bytes);
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
+    if (proxy != null) client.findProxy = (_) => 'PROXY $proxy';
+    try {
+      final req = await client.postUrl(Uri.parse('https://api.cloudflareclient.com/v0a2158/reg'));
+      req.headers
+        ..contentType = ContentType.json
+        ..set(HttpHeaders.userAgentHeader, 'okhttp/3.12.1')
+        ..set('CF-Client-Version', 'a-6.10-2158');
+      req.write(jsonEncode({
+        'key': publicKey,
+        'install_id': '',
+        'fcm_token': '',
+        'tos': DateTime.now().toUtc().toIso8601String(),
+        'model': 'PC',
+        'serial_number': '',
+        'locale': 'en_US',
+      }));
+      final res = await req.close().timeout(const Duration(seconds: 20));
+      final body = await res.transform(utf8.decoder).join();
+      if (res.statusCode != 200) throw HttpException('WARP HTTP ${res.statusCode}');
+      final result = (jsonDecode(body) as Map<String, dynamic>)['result'] as Map<String, dynamic>;
+      final config = result['config'] as Map<String, dynamic>;
+      final peer = (config['peers'] as List).first as Map<String, dynamic>;
+      final addresses = (config['interface'] as Map<String, dynamic>)['addresses'] as Map<String, dynamic>;
+      final clientId = config['client_id'] as String? ?? '';
+      return WarpAccount(
+        privateKey: privateKey,
+        peerPublicKey: peer['public_key'] as String,
+        addressV4: addresses['v4'] as String,
+        addressV6: addresses['v6'] as String,
+        reserved: clientId.isEmpty ? const [0, 0, 0] : base64.decode(clientId).take(3).toList(),
+      );
+    } finally {
+      client.close(force: true);
+    }
+  }
+}

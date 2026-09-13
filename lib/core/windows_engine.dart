@@ -236,6 +236,7 @@ class WindowsEngine implements VpnEngine {
       'outbounds': [
         _tagged(outbound, 'proxy', o),
         {'type': 'direct', 'tag': 'direct'},
+        if (o.warp case final warp?) warp.singBoxOutbound('warp', 'proxy'),
       ],
       'route': {
         'rules': [
@@ -244,7 +245,7 @@ class WindowsEngine implements VpnEngine {
           {'ip_is_private': true, 'outbound': 'direct'},
           if (o.bypassIran) {'domain_suffix': ['ir'], 'outbound': 'direct'},
         ],
-        'final': 'proxy',
+        'final': o.warp != null ? 'warp' : 'proxy',
         'auto_detect_interface': true,
         'default_domain_resolver': 'local',
       },

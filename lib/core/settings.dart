@@ -28,6 +28,13 @@ class AppSettings extends ChangeNotifier {
   bool fragment = false;
   Set<String> excludedApps = {}; // Android package names that skip the VPN
 
+  // Extras
+  bool warp = false; // chain Cloudflare WARP behind the server
+  String warpAccount = ''; // JSON of WarpAccount, created on first use
+  bool launchAtStartup = false; // Windows
+  Set<String> favorites = {}; // server uris
+  List<String> manualConfigs = []; // user-imported share links
+
   // Server selection
   int poolSize = 40;
   int timeoutSeconds = 8;
@@ -48,6 +55,11 @@ class AppSettings extends ChangeNotifier {
     dns = p.getString('s_dns') ?? dns;
     fragment = p.getBool('s_fragment') ?? fragment;
     excludedApps = (p.getStringList('s_excludedApps') ?? const []).toSet();
+    warp = p.getBool('s_warp') ?? warp;
+    warpAccount = p.getString('s_warpAccount') ?? warpAccount;
+    launchAtStartup = p.getBool('s_launchAtStartup') ?? launchAtStartup;
+    favorites = (p.getStringList('s_favorites') ?? const []).toSet();
+    manualConfigs = p.getStringList('s_manualConfigs') ?? [];
     poolSize = p.getInt('s_poolSize') ?? poolSize;
     timeoutSeconds = p.getInt('s_timeout') ?? timeoutSeconds;
     testUrl = p.getString('s_testUrl') ?? testUrl;
@@ -74,6 +86,11 @@ class AppSettings extends ChangeNotifier {
       p.setString('s_dns', dns),
       p.setBool('s_fragment', fragment),
       p.setStringList('s_excludedApps', excludedApps.toList()),
+      p.setBool('s_warp', warp),
+      p.setString('s_warpAccount', warpAccount),
+      p.setBool('s_launchAtStartup', launchAtStartup),
+      p.setStringList('s_favorites', favorites.toList()),
+      p.setStringList('s_manualConfigs', manualConfigs),
       p.setInt('s_poolSize', poolSize),
       p.setInt('s_timeout', timeoutSeconds),
       p.setString('s_testUrl', testUrl),
@@ -88,8 +105,10 @@ class AppSettings extends ChangeNotifier {
     await _save();
   }
 
+  /// Resets tuning options; keeps personal data (favorites, imported configs, WARP identity).
   Future<void> reset() => update((s) {
         s
+          ..warp = false
           ..autoReconnect = true
           ..connectOnLaunch = false
           ..proxyOnly = false

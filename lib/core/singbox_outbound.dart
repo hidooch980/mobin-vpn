@@ -15,6 +15,10 @@ Json? parseOutbound(String uri) {
     if (uri.startsWith('ss://')) return _ss(uri);
     if (uri.startsWith('hysteria2://') || uri.startsWith('hy2://')) return _hysteria2(uri);
     if (uri.startsWith('tuic://')) return _tuic(uri);
+    if (uri.startsWith('anytls://')) return _anytls(uri);
+    if (uri.startsWith('wireguard://') || uri.startsWith('wg://')) return _wireguard(uri);
+    if (uri.startsWith('socks://') || uri.startsWith('socks5://')) return _socks(uri);
+    if (uri.startsWith('http://') || uri.startsWith('https://')) return _httpProxy(uri);
   } catch (_) {
     return null;
   }
@@ -160,6 +164,68 @@ Json _hysteria2(String uri) {
     'type': 'hysteria2', 'server': u.host, 'server_port': port, 'password': user,
     'tls': {'enabled': true, 'server_name': q['sni'] ?? u.host, 'insecure': _truthy(q['insecure'])},
     if (q['obfs'] == 'salamander') 'obfs': {'type': 'salamander', 'password': q['obfs-password'] ?? ''},
+  };
+}
+
+({Uri u, int port, String user}) _endpoint(String uri, {bool needUser = true}) {
+  final u = Uri.parse(uri);
+  final port = u.hasPort ? u.port : null;
+  final user = Uri.decodeComponent(u.userInfo);
+  if (!_validEndpoint(u.host, port) || (needUser && user.isEmpty)) throw const FormatException('bad endpoint');
+  return (u: u, port: port!, user: user);
+}
+
+Json _anytls(String uri) {
+  final e = _endpoint(uri);
+  final q = e.u.queryParameters;
+  return {
+    'type': 'anytls', 'server': e.u.host, 'server_port': e.port, 'password': e.user,
+    'tls': {
+      'enabled': true, 'server_name': q['sni'] ?? e.u.host,
+      'insecure': _truthy(q['insecure']) || _truthy(q['allowInsecure']),
+    },
+  };
+}
+
+Json _wireguard(String uri) {
+  final e = _endpoint(uri.replaceFirst('wg://', 'wireguard://'));
+  final q = e.u.queryParameters;
+  final peer = q['publickey'] ?? q['public_key'] ?? q['peer_public_key'] ?? '';
+  final addresses = (q['address'] ?? q['ip'] ?? '')
+      .split(',')
+      .map((a) => a.trim())
+      .where((a) => a.isNotEmpty)
+      .map((a) => a.contains('/') ? a : (a.contains(':') ? '$a/128' : '$a/32'))
+      .toList();
+  if (peer.isEmpty || addresses.isEmpty) throw const FormatException('bad wireguard');
+  return {
+    'type': 'wireguard', 'server': e.u.host, 'server_port': e.port, 'private_key': e.user,
+    'peer_public_key': peer, 'local_address': addresses, 'mtu': int.tryParse(q['mtu'] ?? '') ?? 1280,
+    if (q['presharedkey'] case final psk? when psk.isNotEmpty) 'pre_shared_key': psk,
+    if (q['reserved'] case final r? when r.isNotEmpty) 'reserved': r.split(',').map(int.parse).toList(),
+  };
+}
+
+Json _socks(String uri) {
+  final e = _endpoint(uri.replaceFirst('socks5://', 'socks://'), needUser: false);
+  var user = e.user;
+  if (user.isNotEmpty && !user.contains(':')) user = decodeBase64Loose(user);
+  final colon = user.indexOf(':');
+  return {
+    'type': 'socks', 'server': e.u.host, 'server_port': e.port, 'version': '5',
+    if (colon > 0) 'username': user.substring(0, colon),
+    if (colon > 0) 'password': user.substring(colon + 1),
+  };
+}
+
+Json _httpProxy(String uri) {
+  final e = _endpoint(uri, needUser: false);
+  final colon = e.user.indexOf(':');
+  return {
+    'type': 'http', 'server': e.u.host, 'server_port': e.port,
+    if (colon > 0) 'username': e.user.substring(0, colon),
+    if (colon > 0) 'password': e.user.substring(colon + 1),
+    if (e.u.scheme == 'https') 'tls': {'enabled': true, 'server_name': e.u.host},
   };
 }
 

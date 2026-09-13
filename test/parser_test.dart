@@ -56,6 +56,20 @@ void main() {
     expect(parseOutbound('trojan://p@h.com:443?type=kcp'), isNull);
   });
 
+  test('anytls, wireguard, socks, http', () {
+    final a = parseOutbound('anytls://pw@a.com:443?sni=s.com#a')!;
+    expect([a['type'], a['password'], a['tls']['server_name']], ['anytls', 'pw', 's.com']);
+    final w = parseOutbound('wireguard://cHJpdg%3D%3D@8.8.4.4:51820?publickey=cGVlcg%3D%3D&address=10.0.0.2,fd00::2&reserved=1,2,3')!;
+    expect([w['private_key'], w['peer_public_key'], w['local_address'], w['reserved']],
+        ['cHJpdg==', 'cGVlcg==', ['10.0.0.2/32', 'fd00::2/128'], [1, 2, 3]]);
+    final s = parseOutbound('socks://${base64.encode(utf8.encode('u:p'))}@1.1.1.1:1080')!;
+    expect([s['username'], s['password']], ['u', 'p']);
+    final h = parseOutbound('https://u:p@proxy.com:8443')!;
+    expect([h['type'], h['username'], h['tls']['enabled']], ['http', 'u', true]);
+    expect(Server.fromUri('wg://k@h.com:1')!.protocol, Protocol.wireguard);
+    expect(parseOutbound('wireguard://k@h.com:51820?address=10.0.0.2'), isNull);
+  });
+
   test('real published subscription parses', () {
     final path = Platform.environment['SUB_FILE'];
     if (path == null || !File(path).existsSync()) return;

@@ -9,8 +9,10 @@ import '../core/engine.dart';
 import '../core/server.dart';
 import '../core/settings.dart';
 import '../core/vpn_controller.dart';
+import '../core/win_startup.dart';
 import '../core/windows_engine.dart';
 import 'apps_screen.dart';
+import 'import_screen.dart';
 import 'aurora_background.dart';
 import 'glass.dart';
 import 'style.dart';
@@ -57,6 +59,17 @@ class SettingsScreen extends StatelessWidget {
                         value: s.connectOnLaunch,
                         onChanged: (v) => s.update((x) => x.connectOnLaunch = v),
                       ),
+                      if (Platform.isWindows)
+                        _SwitchRow(
+                          icon: Icons.power_settings_new_rounded,
+                          title: 'اجرا با روشن شدن ویندوز',
+                          subtitle: 'همراه با «اتصال هنگام باز شدن»، ویندوز از اول وصل می‌شود',
+                          value: s.launchAtStartup,
+                          onChanged: (v) {
+                            WinStartup.setEnabled(v);
+                            s.update((x) => x.launchAtStartup = v);
+                          },
+                        ),
                       if (Platform.isAndroid)
                         _SwitchRow(
                           icon: Icons.lan_rounded,
@@ -150,6 +163,18 @@ class SettingsScreen extends StatelessWidget {
                           onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AppsScreen(settings: s))),
                         ),
                       _SwitchRow(
+                        icon: Icons.cloud_rounded,
+                        title: 'Cloudflare WARP روی سرور',
+                        subtitle: 'سایت‌هایی که IP سرورهای رایگان را بسته‌اند باز می‌شوند (مثلاً بعضی سرویس‌های هوش مصنوعی)؛ پینگ کمی بیشتر',
+                        value: s.warp,
+                        onChanged: (v) async {
+                          await s.update((x) => x.warp = v);
+                          if (v && !await controller.ensureWarp() && context.mounted) {
+                            _toast(context, 'ثبت WARP الان ممکن نشد؛ هنگام اتصال دوباره تلاش می‌شود');
+                          }
+                        },
+                      ),
+                      _SwitchRow(
                         icon: Icons.content_cut_rounded,
                         title: 'ضد فیلتر (TLS Fragment)',
                         subtitle: 'تکه‌تکه کردن شروع اتصال TLS برای عبور از فیلترینگ شدید؛ کمی کندتر',
@@ -191,6 +216,12 @@ class SettingsScreen extends StatelessWidget {
                       _ProtocolRow(settings: s),
                     ]),
                     _Section(title: 'لیست سرورها', icon: Icons.cloud_sync_rounded, children: [
+                      _ActionRow(
+                        icon: Icons.bookmark_added_rounded,
+                        title: 'کانفیگ‌های من (وارد کردن دستی / QR)',
+                        subtitle: '${s.manualConfigs.length} کانفیگ',
+                        onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ImportScreen(controller: controller))),
+                      ),
                       _TextRow(
                         icon: Icons.add_link_rounded,
                         title: 'لینک اشتراک دلخواه',

@@ -4,6 +4,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import 'core/native_bridge.dart';
 import 'core/vpn_controller.dart';
 import 'ui/home_screen.dart';
 import 'ui/style.dart';
@@ -12,6 +13,7 @@ void main() {
   WidgetsFlutterBinding.ensureInitialized();
   final controller = VpnController();
   runApp(MobinApp(controller: controller));
+  NativeBridge.attach(controller);
   unawaited(controller.init());
 }
 

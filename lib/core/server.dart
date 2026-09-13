@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'countries.dart';
 
-enum Protocol { vless, vmess, trojan, shadowsocks, hysteria2, tuic }
+enum Protocol { vless, vmess, trojan, shadowsocks, hysteria2, tuic, anytls, wireguard, socks, http }
 
 class Server {
   Server({required this.uri, required this.remark, required this.countryCode, required this.protocol});
@@ -25,6 +25,8 @@ class Server {
   String get protocolLabel => switch (protocol) {
         Protocol.shadowsocks => 'SS',
         Protocol.hysteria2 => 'HY2',
+        Protocol.anytls => 'AnyTLS',
+        Protocol.wireguard => 'WireGuard',
         _ => protocol.name.toUpperCase(),
       };
 
@@ -37,6 +39,10 @@ class Server {
       'ss' => Protocol.shadowsocks,
       'hysteria2' || 'hy2' => Protocol.hysteria2,
       'tuic' => Protocol.tuic,
+      'anytls' => Protocol.anytls,
+      'wireguard' || 'wg' => Protocol.wireguard,
+      'socks' || 'socks5' => Protocol.socks,
+      'http' || 'https' => Protocol.http,
       _ => null,
     };
     if (protocol == null) return null;

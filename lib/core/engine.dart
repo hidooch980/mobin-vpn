@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'android_engine.dart';
 import 'server.dart';
+import 'warp.dart';
 import 'windows_engine.dart';
 
 enum VpnState { disconnected, connecting, connected, disconnecting }
@@ -36,6 +37,7 @@ class EngineOptions {
     this.dns = '1.1.1.1',
     this.fragment = false,
     this.excludedApps = const [],
+    this.warp,
   });
 
   final String testUrl;
@@ -45,8 +47,26 @@ class EngineOptions {
   final String dns;
   final List<String> excludedApps;
 
+  /// When set, traffic leaves through Cloudflare WARP chained behind the server.
+  final WarpAccount? warp;
+
+  /// Pings measure the server itself, without the WARP hop.
+  EngineOptions get forPing => EngineOptions(
+        testUrl: testUrl,
+        timeout: timeout,
+        proxyOnly: proxyOnly,
+        systemProxy: systemProxy,
+        tunMode: tunMode,
+        killSwitch: killSwitch,
+        localPort: localPort,
+        bypassIran: bypassIran,
+        dns: dns,
+        fragment: fragment,
+        excludedApps: excludedApps,
+      );
+
   /// Settings that change the generated core config.
-  String get configKey => '$dns|$bypassIran|$fragment';
+  String get configKey => '$dns|$bypassIran|$fragment|${warp?.privateKey}';
 }
 
 /// Platform VPN core. Delays are measured from the user's own connection.

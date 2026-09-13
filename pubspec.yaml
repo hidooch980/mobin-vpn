@@ -43,6 +43,9 @@ dependencies:
   open_filex: ^4.7.0
   installed_apps: ^2.1.1
   android_intent_plus: ^6.1.0
+  home_widget: ^0.9.4
+  mobile_scanner: ^7.4.1
+  cryptography: ^2.9.0
 
 dev_dependencies:
   flutter_test:

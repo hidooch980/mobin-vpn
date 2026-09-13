@@ -146,6 +146,8 @@ class _ServersScreenState extends State<ServersScreen> {
                               server: list[i],
                               delay: c.delays[list[i].uri],
                               active: c.current?.uri == list[i].uri,
+                              favorite: c.isFavorite(list[i]),
+                              onStar: () => c.toggleFavorite(list[i]),
                               onTap: () {
                                 Navigator.of(context).pop();
                                 c.connectTo(list[i]);
@@ -183,12 +185,19 @@ class _Entrance extends StatelessWidget {
 }
 
 class _ServerTile extends StatelessWidget {
-  const _ServerTile({required this.server, required this.delay, required this.active, required this.onTap});
+  const _ServerTile({
+    required this.server,
+    required this.delay,
+    required this.active,
+    required this.favorite,
+    required this.onStar,
+    required this.onTap,
+  });
 
   final Server server;
   final int? delay;
-  final bool active;
-  final VoidCallback onTap;
+  final bool active, favorite;
+  final VoidCallback onTap, onStar;
 
   @override
   Widget build(BuildContext context) {
@@ -218,6 +227,20 @@ class _ServerTile extends StatelessWidget {
                     child: Text(server.protocolLabel, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Palette.muted)),
                   ),
                 ],
+              ),
+            ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              tooltip: favorite ? 'حذف از علاقه‌مندی‌ها' : 'افزودن به علاقه‌مندی‌ها',
+              onPressed: onStar,
+              icon: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 250),
+                transitionBuilder: (child, a) => ScaleTransition(scale: a, child: child),
+                child: Icon(
+                  favorite ? Icons.star_rounded : Icons.star_border_rounded,
+                  key: ValueKey(favorite),
+                  color: favorite ? const Color(0xFFFBBF24) : Palette.muted,
+                ),
               ),
             ),
             if (active) const Padding(padding: EdgeInsetsDirectional.only(end: 8), child: Icon(Icons.check_circle_rounded, color: Color(0xFF34D399), size: 20)),

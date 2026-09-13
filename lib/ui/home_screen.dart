@@ -420,6 +420,10 @@ class _LocationCard extends StatelessWidget {
         VpnController.gamingMode => 'گیمینگ · ${current.protocolLabel}',
         _ => current.protocolLabel,
       };
+    } else if (selected == VpnController.favoritesMode) {
+      flag = selected;
+      title = 'علاقه‌مندی‌ها';
+      subtitle = '${c.settings.favorites.length} سرور ستاره‌دار';
     } else if (selected == VpnController.gamingMode) {
       flag = selected;
       title = 'گیمینگ · کمترین پینگ';

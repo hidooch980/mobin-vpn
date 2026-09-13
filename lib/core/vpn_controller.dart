@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -11,6 +12,7 @@ import 'settings.dart';
 import 'subscription.dart';
 import 'updater.dart';
 import 'usage_stats.dart';
+import 'warp.dart';
 
 class CountryGroup {
   CountryGroup(this.code);
@@ -41,6 +43,15 @@ class VpnController extends ChangeNotifier {
 
   static const _countryKey = 'country', _lastServerKey = 'last_server';
   static const _countryPoolSize = 30, _connectAttempts = 4;
+
+  /// Completes once settings, cache and the first server refresh are done.
+  final ready = Completer<void>();
+
+  /// Pseudo location: starred servers only.
+  static const favoritesMode = 'FAV';
+
+  /// Country code given to user-imported configs (shown as "کانفیگ‌های من").
+  static const manualCode = 'ZZ';
 
   /// Pseudo location: low, stable ping from servers geographically close to Iran.
   static const gamingMode = 'GAME';
@@ -92,6 +103,7 @@ class VpnController extends ChangeNotifier {
         dns: settings.dns,
         fragment: settings.fragment,
         excludedApps: settings.excludedApps.toList(),
+        warp: settings.warp ? WarpAccount.fromJsonString(settings.warpAccount) : null,
       );
 
   Future<void> init() async {
@@ -124,19 +136,33 @@ class VpnController extends ChangeNotifier {
     final cached = await repository.loadCached();
     if (cached != null) _apply(cached);
     await refresh();
+    if (!ready.isCompleted) ready.complete();
     if (settings.connectOnLaunch && servers.isNotEmpty) unawaited(connect());
     await checkUpdate();
   }
 
   void _apply(SubscriptionData data) {
     _data = data;
-    servers = data.servers.where((s) => settings.protocols.contains(s.protocol) && engine.supports(s)).toList();
+    final manual = [
+      for (final link in settings.manualConfigs)
+        if (Server.fromUri(link) case final s?)
+          Server(uri: s.uri, remark: s.remark, countryCode: manualCode, protocol: s.protocol),
+    ].where(engine.supports);
+    servers = [
+      ...manual,
+      ...data.servers.where((s) => settings.protocols.contains(s.protocol) && engine.supports(s)),
+    ];
     final groups = <String, CountryGroup>{};
     for (final s in servers) {
       groups.putIfAbsent(s.countryCode, () => CountryGroup(s.countryCode)).servers.add(s);
     }
     countries = groups.values.toList();
-    if (selectedCountry != null && !isGaming && !groups.containsKey(selectedCountry)) selectedCountry = null;
+    if (selectedCountry != null &&
+        !isGaming &&
+        selectedCountry != favoritesMode &&
+        !groups.containsKey(selectedCountry)) {
+      selectedCountry = null;
+    }
     updatedAt = data.updatedAt;
     notifyListeners();
   }
@@ -235,6 +261,39 @@ class VpnController extends ChangeNotifier {
     }
   }
 
+  bool isFavorite(Server s) => settings.favorites.contains(s.uri);
+
+  Future<void> toggleFavorite(Server s) => settings.update((x) {
+        final next = {...x.favorites};
+        next.contains(s.uri) ? next.remove(s.uri) : next.add(s.uri);
+        x.favorites = next;
+      });
+
+  /// Adds share links (one per line, or a base64 subscription body). Returns how many were new and valid.
+  Future<int> addManualConfigs(String text) async {
+    final found = parseSubscription(text).where(engine.supports).map((s) => s.uri);
+    final existing = settings.manualConfigs.toSet();
+    final fresh = found.where(existing.add).toList();
+    if (fresh.isNotEmpty) await settings.update((x) => x.manualConfigs = [...fresh, ...x.manualConfigs]);
+    return fresh.length;
+  }
+
+  Future<void> removeManualConfig(String uri) =>
+      settings.update((x) => x.manualConfigs = x.manualConfigs.where((u) => u != uri).toList());
+
+  /// Creates the WARP identity once; tries direct first, then through the active local proxy.
+  Future<bool> ensureWarp() async {
+    if (WarpAccount.fromJsonString(settings.warpAccount) != null) return true;
+    for (final proxy in {null, engine.httpProxy}) {
+      try {
+        final account = await WarpAccount.register(proxy: proxy);
+        await settings.update((x) => x.warpAccount = jsonEncode(account.toJson()));
+        return true;
+      } catch (_) {}
+    }
+    return false;
+  }
+
   /// Connects to one specific server chosen by the user.
   Future<void> connectTo(Server server) async {
     if (state == VpnState.connected) await disconnect();
@@ -289,6 +348,9 @@ class VpnController extends ChangeNotifier {
     final List<Server> pool;
     final country = selectedCountry;
     final size = settings.poolSize;
+    if (country == favoritesMode) {
+      return servers.where((s) => settings.favorites.contains(s.uri)).toList();
+    }
     if (country == gamingMode) {
       final near = [
         for (final code in _nearIran) ...countries.where((g) => g.code == code),
@@ -316,9 +378,18 @@ class VpnController extends ChangeNotifier {
     phase = 'در حال آماده‌سازی…';
     progressDone = progressTotal = 0;
     notifyListeners();
-    final options = _options;
+    var options = _options;
     try {
       if (servers.isEmpty && only == null) await refresh();
+      if (settings.warp && options.warp == null) {
+        phase = 'ساخت هویت Cloudflare WARP…';
+        notifyListeners();
+        if (await ensureWarp()) {
+          options = _options;
+        } else {
+          error = 'ثبت WARP ناموفق بود؛ این بار بدون WARP وصل می‌شویم.';
+        }
+      }
       final List<Server> pool = only != null ? [only] : await _candidates();
       if (pool.isEmpty) throw const _UserError('سروری برای این موقعیت پیدا نشد.');
 

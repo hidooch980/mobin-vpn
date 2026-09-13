@@ -96,6 +96,17 @@ class _LocationSheetState extends State<_LocationSheet> {
                             onTap: () => _pick(null),
                           ),
                         ),
+                      if (q.isEmpty && c.settings.favorites.isNotEmpty)
+                        _Entrance(
+                          index: 1,
+                          child: _Tile(
+                            code: VpnController.favoritesMode,
+                            title: 'علاقه‌مندی‌ها',
+                            subtitle: '${c.settings.favorites.length} سرور ستاره‌دار · سریع‌ترین انتخاب می‌شود',
+                            selected: c.selectedCountry == VpnController.favoritesMode,
+                            onTap: () => _pick(VpnController.favoritesMode),
+                          ),
+                        ),
                       if (q.isEmpty)
                         _Entrance(
                           index: 1,
