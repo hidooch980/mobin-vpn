@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ffi' show Abi;
 import 'dart:io';
 
 import 'package:open_filex/open_filex.dart';
@@ -16,7 +17,15 @@ class UpdateInfo {
 class Updater {
   static const _latestRelease = 'https://api.github.com/repos/hidooch980/mobin-vpn/releases/latest';
 
-  static String get _assetName => Platform.isWindows ? 'MobinVPN-windows-x64.zip' : 'MobinVPN-android-universal.apk';
+  /// Per-ABI APK (~50 MB) matching the running build; universal (~140 MB) only for other CPUs.
+  static String get _assetName {
+    if (Platform.isWindows) return 'MobinVPN-windows-x64.zip';
+    return switch (Abi.current()) {
+      Abi.androidArm64 => 'MobinVPN-android-arm64.apk',
+      Abi.androidArm => 'MobinVPN-android-armv7.apk',
+      _ => 'MobinVPN-android-universal.apk',
+    };
+  }
 
   HttpClient _client(String? proxy) {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
