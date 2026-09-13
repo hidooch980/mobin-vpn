@@ -150,8 +150,9 @@ class VpnController extends ChangeNotifier {
     if (!ready.isCompleted) ready.complete();
     if (settings.connectOnLaunch && servers.isNotEmpty) unawaited(connect());
     await checkUpdate();
-    // Long-running sessions (e.g. Windows left open) still hear about new releases.
+    // Long-running sessions (e.g. Windows left open) still hear about new releases and get fresh servers.
     Timer.periodic(const Duration(hours: 6), (_) => checkUpdate());
+    Timer.periodic(const Duration(minutes: 30), (_) => refresh());
   }
 
   void _apply(SubscriptionData data) {
