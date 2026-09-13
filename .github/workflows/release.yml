@@ -70,12 +70,14 @@ jobs:
           ls -la android/app/src/main/jniLibs/*
       - name: Build APKs
         env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          flutter build apk --release --build-name "$VERSION" --build-number "${{ github.run_number }}"
-          flutter build apk --release --split-per-abi --build-name "$VERSION" --build-number "${{ github.run_number }}"
+          flutter build apk --release --build-name "$VERSION" --build-number "${{ github.run_number }}" --dart-define=SUPABASE_URL="$SUPABASE_URL" --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY"
+          flutter build apk --release --split-per-abi --build-name "$VERSION" --build-number "${{ github.run_number }}" --dart-define=SUPABASE_URL="$SUPABASE_URL" --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY"
           mkdir dist
           cd build/app/outputs/flutter-apk
           cp app-release.apk             ../../../../dist/MobinVPN-android-universal.apk
@@ -95,7 +97,11 @@ jobs:
         with:
           channel: stable
           cache: true
-      - run: flutter build windows --release --build-name $env:VERSION --build-number ${{ github.run_number }}
+      - name: Build Windows
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: flutter build windows --release --build-name $env:VERSION --build-number ${{ github.run_number }} --dart-define=SUPABASE_URL="$env:SUPABASE_URL" --dart-define=SUPABASE_ANON_KEY="$env:SUPABASE_ANON_KEY"
       - name: Bundle sing-box (latest 1.12.x)
         shell: bash
         env:

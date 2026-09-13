@@ -2,73 +2,90 @@ import 'package:flutter/material.dart';
 
 import '../core/engine.dart';
 
-/// App colors for the active theme. [apply] is called whenever the theme changes and the app rebuilds.
+/// App colors for the active theme ("night map" design: deep navy / clean blue-white, blue accent,
+/// amber for the selected server). [apply] is called whenever the theme changes and the app rebuilds.
 class Palette {
   static bool isDark = true;
   static bool reduceMotion = false;
 
-  static Color bg = const Color(0xFF05050D);
-  static Color text = const Color(0xFFF4F4FF);
-  static Color muted = const Color(0xFF9A9AB8);
-  static Color accent = const Color(0xFFA78BFA);
-  static Color fill = const Color(0x0FFFFFFF);
-  static Color fillStrong = const Color(0x1CFFFFFF);
-  static Color border = const Color(0x1FFFFFFF);
-  static Color sheet = const Color(0xF20B0B1A);
-  static Color cardTop = const Color(0x1CFFFFFF);
-  static Color cardBottom = const Color(0x08FFFFFF);
+  static Color bg = const Color(0xFF0A1024);
+  static Color surface = const Color(0xFF121A36);
+  static Color raised = const Color(0xFF18224A);
+  static Color text = const Color(0xFFE8ECFF);
+  static Color muted = const Color(0xFF8D9AC6);
+  static Color accent = const Color(0xFF6A8CFF);
+  static Color amber = const Color(0xFFF5B83D);
+  static Color mapDot = const Color(0x597896FF);
+  static Color fill = const Color(0x14FFFFFF);
+  static Color fillStrong = const Color(0x24FFFFFF);
+  static Color border = const Color(0xFF243060);
+  static Color sheet = const Color(0xFF121A36);
+  static Color cardTop = const Color(0xFF141D3D);
+  static Color cardBottom = const Color(0xFF111934);
   static Color shadow = const Color(0x00000000);
+  static double auroraStrength = 0.16;
 
   static void apply(Brightness brightness, {required bool reduceMotion}) {
     Palette.reduceMotion = reduceMotion;
     isDark = brightness == Brightness.dark;
     if (isDark) {
-      bg = const Color(0xFF05050D);
-      text = const Color(0xFFF4F4FF);
-      muted = const Color(0xFF9A9AB8);
-      accent = const Color(0xFFA78BFA);
-      fill = const Color(0x0FFFFFFF);
-      fillStrong = const Color(0x1CFFFFFF);
-      border = const Color(0x1FFFFFFF);
-      sheet = const Color(0xF20B0B1A);
-      cardTop = const Color(0x1CFFFFFF);
-      cardBottom = const Color(0x08FFFFFF);
+      bg = const Color(0xFF0A1024);
+      surface = const Color(0xFF121A36);
+      raised = const Color(0xFF18224A);
+      text = const Color(0xFFE8ECFF);
+      muted = const Color(0xFF8D9AC6);
+      accent = const Color(0xFF6A8CFF);
+      amber = const Color(0xFFF5B83D);
+      mapDot = const Color(0x597896FF);
+      fill = const Color(0x14FFFFFF);
+      fillStrong = const Color(0x24FFFFFF);
+      border = const Color(0xFF243060);
+      sheet = const Color(0xFF121A36);
+      cardTop = const Color(0xFF141D3D);
+      cardBottom = const Color(0xFF111934);
       shadow = const Color(0x00000000);
+      auroraStrength = 0.16;
     } else {
-      bg = const Color(0xFFF2F1FA);
-      text = const Color(0xFF16142E);
-      muted = const Color(0xFF6D6B8A);
-      accent = const Color(0xFF6D28D9);
-      fill = const Color(0x0D1E1B4B);
-      fillStrong = const Color(0x1A1E1B4B);
-      border = const Color(0x1A1E1B4B);
-      sheet = const Color(0xF7FBFAFF);
-      cardTop = const Color(0xF2FFFFFF);
-      cardBottom = const Color(0xC7FFFFFF);
-      shadow = const Color(0x1F3B2A7A);
+      bg = const Color(0xFFEEF2FB);
+      surface = const Color(0xFFFFFFFF);
+      raised = const Color(0xFFF3F6FD);
+      text = const Color(0xFF131A33);
+      muted = const Color(0xFF5E6A8C);
+      accent = const Color(0xFF2F5BFF);
+      amber = const Color(0xFFC98300);
+      mapDot = const Color(0x552F5BFF);
+      fill = const Color(0x0D1E2A5A);
+      fillStrong = const Color(0x1A1E2A5A);
+      border = const Color(0xFFDCE3F3);
+      sheet = const Color(0xFFFFFFFF);
+      cardTop = const Color(0xFFFFFFFF);
+      cardBottom = const Color(0xFFFBFCFF);
+      shadow = const Color(0x1A2F5BFF);
+      auroraStrength = 0.10;
     }
   }
 
+  /// Three colors per connection state: primary, secondary, highlight.
   static List<Color> forState(VpnState state) {
     if (isDark) {
       return switch (state) {
-        VpnState.connected => const [Color(0xFF10E0A0), Color(0xFF06B6D4), Color(0xFF3B82F6)],
-        VpnState.connecting || VpnState.disconnecting => const [Color(0xFFFFB020), Color(0xFFF0487F), Color(0xFF8B5CF6)],
-        VpnState.disconnected => const [Color(0xFF7C3AED), Color(0xFF2563EB), Color(0xFFDB2777)],
+        VpnState.connected => const [Color(0xFF2FD39A), Color(0xFF3D6BFF), Color(0xFF22D3EE)],
+        VpnState.connecting || VpnState.disconnecting => const [Color(0xFFF5B83D), Color(0xFFFF8A3D), Color(0xFF6A8CFF)],
+        VpnState.disconnected => const [Color(0xFF3D6BFF), Color(0xFF6A8CFF), Color(0xFF22D3EE)],
       };
     }
     return switch (state) {
-      VpnState.connected => const [Color(0xFF059669), Color(0xFF0891B2), Color(0xFF2563EB)],
-      VpnState.connecting || VpnState.disconnecting => const [Color(0xFFEA580C), Color(0xFFDB2777), Color(0xFF7C3AED)],
-      VpnState.disconnected => const [Color(0xFF7C3AED), Color(0xFF2563EB), Color(0xFFDB2777)],
+      VpnState.connected => const [Color(0xFF0E9F6E), Color(0xFF2F5BFF), Color(0xFF0891B2)],
+      VpnState.connecting || VpnState.disconnecting => const [Color(0xFFD97706), Color(0xFFEA580C), Color(0xFF2F5BFF)],
+      VpnState.disconnected => const [Color(0xFF2F5BFF), Color(0xFF4F74FF), Color(0xFF0891B2)],
     };
   }
 
   static Color forDelay(int? ms) {
     if (ms == null || ms <= 0) return muted;
-    if (ms < 350) return isDark ? const Color(0xFF34D399) : const Color(0xFF059669);
-    if (ms < 800) return isDark ? const Color(0xFFFBBF24) : const Color(0xFFD97706);
-    return isDark ? const Color(0xFFF87171) : const Color(0xFFDC2626);
+    if (ms < 350) return isDark ? const Color(0xFF4ADE95) : const Color(0xFF0E9F6E);
+    if (ms < 800) return isDark ? const Color(0xFFF5B83D) : const Color(0xFFC98300);
+    return isDark ? const Color(0xFFFF6B6B) : const Color(0xFFD93A3A);
   }
 }
 

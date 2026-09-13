@@ -52,6 +52,12 @@ class WindowsEngine implements VpnEngine {
   Future<bool> requestPermission() async => true;
 
   @override
+  Future<bool> healthCheck(EngineOptions options) async {
+    final port = _proxyPort;
+    return port != null && _core.process != null && await _core.verifyThroughProxy(port, options.testUrl);
+  }
+
+  @override
   Future<void> init() async {
     final base = await getApplicationSupportDirectory();
     _core = SingboxCore(

@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>پنل Mobin VPN</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;900&display=swap">
+<style>
+:root{--bg:#EEF2FB;--surface:#FFFFFF;--line:#DCE3F3;--ink:#131A33;--soft:#5E6A8C;--accent:#2F5BFF;--amber:#C98300;--ok:#12A36B;--bad:#D93A3A;--chip:#E6ECFB}
+@media (prefers-color-scheme: dark){:root{--bg:#0A1024;--surface:#121A36;--line:#243060;--ink:#E8ECFF;--soft:#8D9AC6;--accent:#6A8CFF;--amber:#F5B83D;--ok:#4ADE95;--bad:#FF6B6B;--chip:#1A2448}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Vazirmatn,Tahoma,sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:28px 18px 60px}
+h1{margin:0;font-size:24px;font-weight:900}
+.sub{color:var(--soft);margin:4px 0 0;font-size:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:20px}
+.login{max-width:380px;margin:12vh auto 0;display:flex;flex-direction:column;gap:12px}
+input{font:inherit;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);direction:ltr}
+button{font:inherit;font-weight:700;border:0;border-radius:12px;padding:11px 16px;cursor:pointer;background:var(--accent);color:#fff}
+button.ghost{background:var(--chip);color:var(--ink)}
+button.danger{background:var(--bad)}
+button:focus-visible,input:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}
+.kpi small{color:var(--soft);display:block;font-size:12px}
+.kpi strong{font-size:24px;font-variant-numeric:tabular-nums}
+.tools{display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.tools input{direction:rtl;flex:1;min-width:200px}
+.table{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:right;color:var(--soft);font-weight:500;font-size:12px;padding:10px;border-bottom:1px solid var(--line)}
+td{padding:12px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+td.num{font-variant-numeric:tabular-nums;direction:ltr;text-align:right}
+.name b{display:block}.name span{color:var(--soft);font-size:12px;direction:ltr;display:inline-block}
+.pill{display:inline-block;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:700}
+.pill.on{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.pill.off{background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad)}
+.device{font-size:12.5px;color:var(--soft)}
+.row-actions{display:flex;gap:6px;flex-wrap:wrap}
+.row-actions button{padding:7px 10px;font-size:12.5px}
+.msg{color:var(--bad);font-size:13px;min-height:1.2em}
+.setup{max-width:640px;margin:10vh auto 0;line-height:2}
+code{background:var(--chip);padding:2px 6px;border-radius:6px;direction:ltr;display:inline-block}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script>
+const cfg = window.MOBIN_PANEL_CONFIG || {};
+const app = document.getElementById('app');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtBytes = b => { b = Number(b||0); if (b < 1024**2) return (b/1024).toFixed(0)+' KB'; if (b < 1024**3) return (b/1024**2).toFixed(1)+' MB'; return (b/1024**3).toFixed(2)+' GB'; };
+const ago = t => { if (!t) return 'هرگز'; const m = Math.round((Date.now()-new Date(t))/60000); if (m<1) return 'همین الان'; if (m<60) return m+' دقیقه پیش'; if (m<1440) return Math.round(m/60)+' ساعت پیش'; return Math.round(m/1440)+' روز پیش'; };
+
+if (!cfg.url || !cfg.anonKey) {
+  app.innerHTML = `<div class="card setup"><h1>پنل هنوز تنظیم نشده</h1>
+  <p>در فایل <code>panel/config.js</code> آدرس پروژه‌ی سوپابیس و کلید anon را بگذارید.</p></div>`;
+} else {
+  const sb = supabase.createClient(cfg.url, cfg.anonKey);
+  let users = [], query = '';
+
+  async function render() {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) return renderLogin();
+    const { data: admin } = await sb.from('admins').select('user_id').eq('user_id', session.user.id).maybeSingle();
+    if (!admin) {
+      app.innerHTML = `<div class="card setup"><h1>دسترسی مدیر ندارید</h1>
+      <p>با <code>${esc(session.user.email)}</code> وارد شده‌اید ولی این حساب مدیر نیست. در سوپابیس دستور آخر فایل <code>supabase/schema.sql</code> را با همین ایمیل اجرا کنید.</p>
+      <button class="ghost" id="out">خروج</button></div>`;
+      document.getElementById('out').onclick = async () => { await sb.auth.signOut(); render(); };
+      return;
+    }
+    await loadUsers();
+  }
+
+  function renderLogin(error = '') {
+    app.innerHTML = `<form class="card login" id="f"><h1>ورود مدیر</h1><p class="sub">Mobin VPN</p>
+      <input type="email" id="e" placeholder="email" autocomplete="username" required>
+      <input type="password" id="p" placeholder="password" autocomplete="current-password" required>
+      <div class="msg">${esc(error)}</div><button>ورود</button></form>`;
+    document.getElementById('f').onsubmit = async ev => {
+      ev.preventDefault();
+      const { error } = await sb.auth.signInWithPassword({ email: e.value.trim(), password: p.value });
+      error ? renderLogin('ایمیل یا رمز اشتباه است.') : render();
+    };
+  }
+
+  async function loadUsers() {
+    const { data, error } = await sb.from('profiles').select('*').order('created_at', { ascending: false });
+    if (error) { app.innerHTML = `<div class="card">خطا در خواندن کاربران: ${esc(error.message)}</div>`; return; }
+    users = data; draw();
+  }
+
+  async function update(id, patch) {
+    const { error } = await sb.from('profiles').update(patch).eq('id', id);
+    if (error) alert('ذخیره نشد: ' + error.message);
+    await loadUsers();
+  }
+
+  function draw() {
+    const q = query.trim().toLowerCase();
+    const list = users.filter(u => !q || (u.full_name||'').toLowerCase().includes(q) || (u.email||'').toLowerCase().includes(q));
+    const total = users.reduce((s,u) => s + Number(u.usage_up) + Number(u.usage_down), 0);
+    const active = users.filter(u => u.enabled).length;
+    const online = users.filter(u => u.last_seen && Date.now()-new Date(u.last_seen) < 10*60000).length;
+    app.innerHTML = `
+      <div class="top"><div><h1>پنل Mobin VPN</h1><p class="sub">کاربران، مصرف و دستگاه‌ها</p></div>
+        <div class="row-actions"><button class="ghost" id="reload">به‌روزرسانی</button><button class="ghost" id="out">خروج</button></div></div>
+      <div class="kpis">
+        <div class="card kpi"><small>کاربران ثبت‌نام‌شده</small><strong>${users.length}</strong></div>
+        <div class="card kpi"><small>فعال (وصل)</small><strong>${active}</strong></div>
+        <div class="card kpi"><small>آنلاین در ۱۰ دقیقه‌ی اخیر</small><strong>${online}</strong></div>
+        <div class="card kpi"><small>مصرف کل</small><strong>${fmtBytes(total)}</strong></div>
+      </div>
+      <div class="card">
+        <div class="tools"><input id="q" placeholder="جستجوی نام یا ایمیل…" value="${esc(query)}"></div>
+        <div class="table"><table>
+          <thead><tr><th>کاربر</th><th>وضعیت</th><th>مصرف کل</th><th>دانلود / آپلود</th><th>دستگاه</th><th>آخرین فعالیت</th><th>عملیات</th></tr></thead>
+          <tbody>${list.map(u => `
+            <tr>
+              <td class="name"><b>${esc(u.full_name || 'بدون نام')}</b><span>${esc(u.email)}</span></td>
+              <td><span class="pill ${u.enabled ? 'on' : 'off'}">${u.enabled ? 'وصل' : 'قطع'}</span></td>
+              <td class="num">${fmtBytes(Number(u.usage_up)+Number(u.usage_down))}</td>
+              <td class="num">${fmtBytes(u.usage_down)} / ${fmtBytes(u.usage_up)}</td>
+              <td class="device">${u.device_id ? esc(u.device_name || 'دستگاه') : 'هنوز وصل نشده'}</td>
+              <td class="device">${ago(u.last_seen)}</td>
+              <td><div class="row-actions">
+                <button class="${u.enabled ? 'danger' : ''}" data-toggle="${u.id}" data-enabled="${u.enabled}">${u.enabled ? 'قطع کاربر' : 'وصل کاربر'}</button>
+                ${u.device_id ? `<button class="ghost" data-device="${u.id}">آزاد کردن دستگاه</button>` : ''}
+              </div></td>
+            </tr>`).join('') || '<tr><td colspan="7" class="device">کاربری پیدا نشد</td></tr>'}
+          </tbody></table></div>
+      </div>`;
+    document.getElementById('q').oninput = ev => { query = ev.target.value; const pos = ev.target.selectionStart; draw(); const i = document.getElementById('q'); i.focus(); i.setSelectionRange(pos,pos); };
+    document.getElementById('reload').onclick = loadUsers;
+    document.getElementById('out').onclick = async () => { await sb.auth.signOut(); render(); };
+    app.querySelectorAll('[data-toggle]').forEach(b => b.onclick = () => update(b.dataset.toggle, { enabled: b.dataset.enabled !== 'true' }));
+    app.querySelectorAll('[data-device]').forEach(b => b.onclick = () => { if (confirm('دستگاه این کاربر آزاد شود؟ بعد می‌تواند روی گوشی یا کامپیوتر دیگری وارد شود.')) update(b.dataset.device, { device_id: null, device_name: null }); });
+  }
+
+  render();
+  setInterval(() => { if (users.length) loadUsers(); }, 60000);
+}
+</script>
+</body>
+</html>

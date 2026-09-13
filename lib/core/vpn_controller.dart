@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'account.dart';
 import 'app_log.dart';
 import 'countries.dart';
 import 'engine.dart';
@@ -43,6 +44,10 @@ class VpnController extends ChangeNotifier {
   final settings = AppSettings();
   final updater = Updater();
   final usage = UsageStats();
+  final account = Account();
+
+  // Traffic not yet reported to the account server (bytes).
+  int _unreportedUp = 0, _unreportedDown = 0;
 
   static const _countryKey = 'country', _lastServerKey = 'last_server';
   static const _countryPoolSize = 30, _connectAttempts = 4;
@@ -123,15 +128,17 @@ class VpnController extends ChangeNotifier {
     });
     engine.states.listen((s) {
       if (s != VpnState.disconnected || state != VpnState.connected || _userStopping) return;
+      final dropped = current;
       _markDisconnected();
-      if (settings.autoReconnect) {
-        error = 'اتصال قطع شد؛ در حال اتصال دوباره…';
-        unawaited(connect());
-      }
+      if (settings.autoReconnect) unawaited(_switchAway(dropped, alreadyDisconnected: true));
     });
+    // Watchdog: a tunnel can stay "up" while the server stops passing traffic.
+    Timer.periodic(const Duration(seconds: 15), (_) => _watchdog());
     engine.traffic.listen((t) {
       if (state != VpnState.connected) return;
       usage.add(t);
+      _unreportedUp += t.up;
+      _unreportedDown += t.down;
       traffic = t;
       notifyListeners();
     });
@@ -153,6 +160,57 @@ class VpnController extends ChangeNotifier {
     // Long-running sessions (e.g. Windows left open) still hear about new releases and get fresh servers.
     Timer.periodic(const Duration(hours: 6), (_) => checkUpdate());
     Timer.periodic(const Duration(minutes: 30), (_) => refresh());
+    if (Account.configured) Timer.periodic(const Duration(minutes: 1), (_) => _reportUsage());
+  }
+
+  int _healthFailures = 0;
+  bool _watching = false;
+
+  /// Servers that recently dropped, skipped until the time stored here.
+  final Map<String, DateTime> _badUntil = {};
+
+  bool _isBad(Server s) => _badUntil[s.uri]?.isAfter(DateTime.now()) ?? false;
+
+  Future<void> _watchdog() async {
+    if (_watching || state != VpnState.connected || !settings.autoReconnect) {
+      if (state != VpnState.connected) _healthFailures = 0;
+      return;
+    }
+    _watching = true;
+    try {
+      final ok = await engine.healthCheck(_options);
+      if (state != VpnState.connected) return;
+      _healthFailures = ok ? 0 : _healthFailures + 1;
+      if (!ok) AppLog.add('watchdog: no traffic through ${current?.displayName} ($_healthFailures)');
+      if (_healthFailures >= 2) await _switchAway(current);
+    } finally {
+      _watching = false;
+    }
+  }
+
+  /// Auto mode: the connected server stopped working — put it aside for 10 minutes and connect to another one.
+  Future<void> _switchAway(Server? dropped, {bool alreadyDisconnected = false}) async {
+    _healthFailures = 0;
+    if (dropped != null) {
+      _badUntil[dropped.uri] = DateTime.now().add(const Duration(minutes: 10));
+      AppLog.add('auto switch: leaving ${dropped.displayName}');
+    }
+    if (!alreadyDisconnected) await disconnect();
+    error = 'سرور ${dropped?.displayName ?? ''} قطع شد؛ جابه‌جایی خودکار به سرور دیگر…';
+    notifyListeners();
+    await connect();
+  }
+
+  /// Sends traffic used since the last report; disconnects when the panel has turned the account off.
+  Future<void> _reportUsage() async {
+    if (_unreportedUp == 0 && _unreportedDown == 0 && state != VpnState.connected) return;
+    final up = _unreportedUp, down = _unreportedDown;
+    _unreportedUp = _unreportedDown = 0;
+    final status = await account.reportUsage(up, down);
+    if (status != AccountStatus.ok && state == VpnState.connected) {
+      AppLog.add('account: $status reported by server, disconnecting');
+      await disconnect();
+    }
   }
 
   void _apply(SubscriptionData data) {
@@ -370,13 +428,17 @@ class VpnController extends ChangeNotifier {
     final country = selectedCountry;
     final size = settings.poolSize;
     if (country == favoritesMode) {
-      return servers.where((s) => settings.favorites.contains(s.uri)).toList();
+      final favorites = servers.where((s) => settings.favorites.contains(s.uri)).toList();
+      final healthy = favorites.where((s) => !_isBad(s)).toList();
+      return healthy.isEmpty ? favorites : healthy;
     }
     if (country == gamingMode) {
       final near = [
         for (final code in _nearIran) ...countries.where((g) => g.code == code),
       ];
-      return _roundRobin(near.isEmpty ? countries : near, size);
+      final pool = _roundRobin(near.isEmpty ? countries : near, size);
+      final healthy = pool.where((s) => !_isBad(s)).toList();
+      return healthy.isEmpty ? pool : healthy;
     }
     if (country != null) {
       pool = servers.where((s) => s.countryCode == country).take(_countryPoolSize).toList();
@@ -390,7 +452,9 @@ class VpnController extends ChangeNotifier {
         ..remove(lastServer)
         ..insert(0, lastServer);
     }
-    return pool;
+    // Skip servers that just dropped, unless nothing else is left.
+    final healthy = pool.where((s) => !_isBad(s)).toList();
+    return healthy.isEmpty ? pool : healthy;
   }
 
   Future<void> connect({Server? only}) async {
@@ -403,6 +467,9 @@ class VpnController extends ChangeNotifier {
     notifyListeners();
     var options = _options;
     try {
+      if (Account.configured && await account.refreshStatus() != AccountStatus.ok) {
+        throw const _UserError('حساب شما اجازه‌ی اتصال ندارد (غیرفعال یا روی دستگاه دیگر).');
+      }
       // Ask for the VPN permission before anything else, so the system dialog shows immediately.
       if (!options.proxyOnly) {
         phase = 'دریافت اجازه‌ی VPN…';

@@ -102,6 +102,15 @@ class AndroidEngine implements VpnEngine {
   @override
   Future<bool> requestPermission() => _v2.requestPermission();
 
+  @override
+  Future<bool> healthCheck(EngineOptions options) async {
+    if (_coreState != 'CONNECTED') return false;
+    final delay = await _v2
+        .getConnectedServerDelay(url: options.testUrl)
+        .timeout(const Duration(seconds: 10), onTimeout: () => -1);
+    return delay > 0;
+  }
+
   /// The plugin measures delays on a single native thread, so requests must go one at a time:
   /// firing several at once made queued requests hit the Dart timeout and every server looked dead.
   @override

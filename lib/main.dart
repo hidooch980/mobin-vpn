@@ -5,10 +5,12 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'core/account.dart';
 import 'core/native_bridge.dart';
 import 'core/update_notifier.dart';
 import 'core/vpn_controller.dart';
-import 'ui/home_screen.dart';
+import 'ui/auth_screen.dart';
+import 'ui/dashboard_screen.dart';
 import 'ui/style.dart';
 
 /// Survives app rebuilds on theme changes, so screens can be reopened after the switch.
@@ -19,6 +21,7 @@ void main() {
   final controller = VpnController();
   runApp(MobinApp(controller: controller));
   NativeBridge.attach(controller);
+  unawaited(controller.account.init());
   unawaited(controller.init());
   unawaited(_setupUpdateNotifications());
 }
@@ -102,7 +105,18 @@ class _MobinAppState extends State<MobinApp> with WidgetsBindingObserver {
               fontFamily: Platform.isWindows ? 'Segoe UI' : null,
             ),
             builder: (context, child) => Directionality(textDirection: TextDirection.rtl, child: child!),
-            home: HomeScreen(controller: widget.controller),
+            home: ListenableBuilder(
+              listenable: widget.controller.account,
+              builder: (context, _) {
+                final account = widget.controller.account;
+                return switch (account.status) {
+                  AccountStatus.loading => Scaffold(body: Center(child: CircularProgressIndicator(color: Palette.accent))),
+                  AccountStatus.signedOut => AuthScreen(account: account),
+                  AccountStatus.disabled || AccountStatus.otherDevice => AccountBlockedScreen(account: account),
+                  AccountStatus.ok => DashboardScreen(controller: widget.controller),
+                };
+              },
+            ),
           ),
         );
       },

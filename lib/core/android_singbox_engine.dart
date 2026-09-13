@@ -42,6 +42,11 @@ class AndroidSingboxEngine implements VpnEngine {
   @override
   Future<bool> requestPermission() => _tunnel.requestPermission();
 
+  // The tunnel's own delay test goes device → Xray → sing-box → server, so it covers the whole chain.
+  @override
+  Future<bool> healthCheck(EngineOptions options) async =>
+      (_core?.process != null) && await _tunnel.healthCheck(options);
+
   @override
   Future<void> init() async {
     final libDir = await _channel.invokeMethod<String>('nativeLibDir');
@@ -202,6 +207,9 @@ class AndroidHybridEngine implements VpnEngine {
 
   @override
   Future<bool> requestPermission() => _xray.requestPermission();
+
+  @override
+  Future<bool> healthCheck(EngineOptions options) async => await _connected?.healthCheck(options) ?? false;
 
   @override
   Future<List<int>> pingAll(List<Server> servers, EngineOptions options,

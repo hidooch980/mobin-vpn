@@ -68,7 +68,7 @@ class _AuroraPainter extends CustomPainter {
     canvas.drawRect(Offset.zero & size, Paint()..color = bg);
     final a = t * 2 * math.pi;
     final s = size.longestSide;
-    final strength = dark ? 0.40 : 0.20;
+    final strength = Palette.auroraStrength;
     final blobs = [
       (Offset(size.width * (0.15 + 0.18 * math.sin(a)), size.height * (0.18 + 0.10 * math.cos(a * 2))), s * 0.60, colors[0]),
       (Offset(size.width * (0.90 + 0.14 * math.cos(a)), size.height * (0.46 + 0.14 * math.sin(a))), s * 0.52, colors[1]),
