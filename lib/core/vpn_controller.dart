@@ -11,6 +11,7 @@ import 'engine.dart';
 import 'server.dart';
 import 'settings.dart';
 import 'subscription.dart';
+import 'update_notifier.dart';
 import 'updater.dart';
 import 'usage_stats.dart';
 import 'warp.dart';
@@ -146,6 +147,8 @@ class VpnController extends ChangeNotifier {
     if (!ready.isCompleted) ready.complete();
     if (settings.connectOnLaunch && servers.isNotEmpty) unawaited(connect());
     await checkUpdate();
+    // Long-running sessions (e.g. Windows left open) still hear about new releases.
+    Timer.periodic(const Duration(hours: 6), (_) => checkUpdate());
   }
 
   void _apply(SubscriptionData data) {
@@ -194,6 +197,8 @@ class VpnController extends ChangeNotifier {
   Future<UpdateInfo?> checkUpdate() async {
     try {
       update = await updater.check(proxy: engine.httpProxy);
+      final found = update;
+      if (found != null) unawaited(UpdateNotifier.notifyIfNew(found));
       notifyListeners();
     } catch (_) {
       // Offline or GitHub blocked: try again later.

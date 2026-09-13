@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'core/native_bridge.dart';
+import 'core/update_notifier.dart';
 import 'core/vpn_controller.dart';
 import 'ui/home_screen.dart';
 import 'ui/style.dart';
@@ -19,6 +20,17 @@ void main() {
   runApp(MobinApp(controller: controller));
   NativeBridge.attach(controller);
   unawaited(controller.init());
+  unawaited(_setupUpdateNotifications());
+}
+
+Future<void> _setupUpdateNotifications() async {
+  try {
+    await UpdateNotifier.init();
+    await UpdateNotifier.requestPermission();
+    await UpdateNotifier.scheduleBackgroundChecks();
+  } catch (e) {
+    debugPrint('update notifications unavailable: $e');
+  }
 }
 
 class MobinApp extends StatefulWidget {
