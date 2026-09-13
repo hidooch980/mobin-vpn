@@ -9,7 +9,8 @@ import 'connect_orb.dart';
 import 'flag_badge.dart';
 import 'glass.dart';
 import 'location_sheet.dart';
-import 'share_sheet.dart';
+import 'servers_screen.dart';
+import 'settings_screen.dart';
 import 'style.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -119,14 +120,33 @@ class _Header extends StatelessWidget {
         ),
         const Spacer(),
         _RoundButton(
-          tooltip: 'اشتراک برای آیفون',
-          icon: Icons.qr_code_2_rounded,
-          onTap: () => showShareSheet(context),
+          tooltip: 'همه‌ی سرورها',
+          icon: Icons.dns_rounded,
+          onTap: () => Navigator.of(context).push(_fadeRoute(ServersScreen(controller: controller))),
+        ),
+        const SizedBox(width: 8),
+        _RoundButton(
+          tooltip: 'تنظیمات پیشرفته',
+          icon: Icons.tune_rounded,
+          onTap: () => Navigator.of(context).push(_fadeRoute(SettingsScreen(controller: controller))),
         ),
       ],
     );
   }
 }
+
+Route<void> _fadeRoute(Widget page) => PageRouteBuilder<void>(
+      transitionDuration: const Duration(milliseconds: 420),
+      reverseTransitionDuration: const Duration(milliseconds: 320),
+      pageBuilder: (context, a, b) => page,
+      transitionsBuilder: (context, a, b, child) {
+        final curved = CurvedAnimation(parent: a, curve: Curves.easeOutCubic);
+        return FadeTransition(
+          opacity: curved,
+          child: ScaleTransition(scale: Tween(begin: 0.96, end: 1.0).animate(curved), child: child),
+        );
+      },
+    );
 
 class _RoundButton extends StatelessWidget {
   const _RoundButton({required this.icon, required this.onTap, required this.tooltip});
@@ -388,7 +408,15 @@ class _LocationCard extends StatelessWidget {
     if (current != null) {
       flag = current.countryCode;
       title = current.displayName;
-      subtitle = selected == null ? 'هوشمند · ${current.protocolLabel}' : current.protocolLabel;
+      subtitle = switch (selected) {
+        null => 'هوشمند · ${current.protocolLabel}',
+        VpnController.gamingMode => 'گیمینگ · ${current.protocolLabel}',
+        _ => current.protocolLabel,
+      };
+    } else if (selected == VpnController.gamingMode) {
+      flag = selected;
+      title = 'گیمینگ · کمترین پینگ';
+      subtitle = 'سرورهای نزدیک با پینگ پایدار';
     } else if (selected == null) {
       flag = null;
       title = 'هوشمند · بهترین سرور';

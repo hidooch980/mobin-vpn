@@ -19,6 +19,27 @@ class PermissionDeniedError implements Exception {
   const PermissionDeniedError();
 }
 
+class EngineOptions {
+  const EngineOptions({
+    this.testUrl = 'https://www.gstatic.com/generate_204',
+    this.timeout = const Duration(seconds: 8),
+    this.proxyOnly = false,
+    this.systemProxy = true,
+    this.localPort = 0,
+    this.bypassIran = true,
+    this.dns = '1.1.1.1',
+  });
+
+  final String testUrl;
+  final Duration timeout;
+  final bool proxyOnly, systemProxy, bypassIran;
+  final int localPort;
+  final String dns;
+
+  /// Settings that change the generated core config.
+  String get configKey => '$dns|$bypassIran';
+}
+
 /// Platform VPN core. Delays are measured from the user's own connection.
 abstract class VpnEngine {
   static VpnEngine create() => Platform.isWindows ? WindowsEngine() : AndroidEngine();
@@ -34,10 +55,11 @@ abstract class VpnEngine {
   Future<void> init();
 
   /// Real delay in ms for each server (same order), -1 when it failed.
-  Future<List<int>> pingAll(List<Server> servers, {void Function(int done)? onProgress, bool Function()? isCancelled});
+  Future<List<int>> pingAll(List<Server> servers, EngineOptions options,
+      {void Function(int done)? onProgress, bool Function()? isCancelled});
 
   /// Starts the tunnel and returns true only once traffic really passes through it.
-  Future<bool> connect(Server server);
+  Future<bool> connect(Server server, EngineOptions options);
   Future<void> disconnect();
 }
 

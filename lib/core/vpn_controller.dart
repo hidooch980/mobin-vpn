@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'countries.dart';
 import 'engine.dart';
 import 'server.dart';
+import 'settings.dart';
 import 'subscription.dart';
 import 'updater.dart';
 
@@ -33,12 +34,28 @@ class VpnController extends ChangeNotifier {
 
   final VpnEngine engine;
   final SubscriptionRepository repository;
+  final settings = AppSettings();
+  final updater = Updater();
 
   static const _countryKey = 'country', _lastServerKey = 'last_server';
-  static const _autoPoolSize = 40, _countryPoolSize = 30, _connectAttempts = 4;
+  static const _countryPoolSize = 30, _connectAttempts = 4;
 
+  /// Pseudo location: low, stable ping from servers geographically close to Iran.
+  static const gamingMode = 'GAME';
+  static const _nearIran = [
+    'TR', 'AE', 'AM', 'GE', 'AZ', 'QA', 'OM', 'BH', 'SA', 'KZ', 'CY', 'RU', 'BG', 'RO', 'GR', 'UA',
+    'DE', 'AT', 'NL', 'FR', 'IT', 'PL', 'FI', 'SE', 'CH', 'GB', 'ES',
+  ];
+  static const _gamingRefine = 8, _gamingRounds = 2;
+
+  bool get isGaming => selectedCountry == gamingMode;
+
+  SubscriptionData? _data;
   List<Server> servers = const [];
   List<CountryGroup> countries = const [];
+
+  /// Last measured delay per server uri (-1 = failed).
+  final Map<String, int> delays = {};
 
   /// null = automatic (best server from any country).
   String? selectedCountry;
@@ -50,11 +67,10 @@ class VpnController extends ChangeNotifier {
   DateTime? connectedAt;
   TrafficStat traffic = const TrafficStat();
   DateTime? updatedAt;
-  bool loading = false;
+  bool loading = false, pinging = false;
   String? error;
-  bool _cancel = false;
+  bool _cancel = false, _userStopping = false;
 
-  final updater = Updater();
   UpdateInfo? update;
 
   /// null = not downloading.
@@ -62,9 +78,29 @@ class VpnController extends ChangeNotifier {
 
   double? get progress => progressTotal == 0 ? null : progressDone / progressTotal;
 
+  EngineOptions get _options => EngineOptions(
+        testUrl: settings.testUrl,
+        timeout: Duration(seconds: settings.timeoutSeconds),
+        proxyOnly: settings.proxyOnly,
+        systemProxy: settings.systemProxy,
+        localPort: settings.localPort,
+        bypassIran: settings.bypassIran,
+        dns: settings.dns,
+      );
+
   Future<void> init() async {
+    await settings.load();
+    settings.addListener(() {
+      final data = _data;
+      if (data != null) _apply(data);
+    });
     engine.states.listen((s) {
-      if (s == VpnState.disconnected && state == VpnState.connected) _markDisconnected();
+      if (s != VpnState.disconnected || state != VpnState.connected || _userStopping) return;
+      _markDisconnected();
+      if (settings.autoReconnect) {
+        error = 'اتصال قطع شد؛ در حال اتصال دوباره…';
+        unawaited(connect());
+      }
     });
     engine.traffic.listen((t) {
       if (state != VpnState.connected) return;
@@ -81,16 +117,46 @@ class VpnController extends ChangeNotifier {
     final cached = await repository.loadCached();
     if (cached != null) _apply(cached);
     await refresh();
+    if (settings.connectOnLaunch && servers.isNotEmpty) unawaited(connect());
     await checkUpdate();
   }
 
-  Future<void> checkUpdate() async {
+  void _apply(SubscriptionData data) {
+    _data = data;
+    servers = data.servers.where((s) => settings.protocols.contains(s.protocol) && engine.supports(s)).toList();
+    final groups = <String, CountryGroup>{};
+    for (final s in servers) {
+      groups.putIfAbsent(s.countryCode, () => CountryGroup(s.countryCode)).servers.add(s);
+    }
+    countries = groups.values.toList();
+    if (selectedCountry != null && !isGaming && !groups.containsKey(selectedCountry)) selectedCountry = null;
+    updatedAt = data.updatedAt;
+    notifyListeners();
+  }
+
+  Future<void> refresh() async {
+    if (loading) return;
+    loading = true;
+    notifyListeners();
+    try {
+      _apply(await repository.fetch(customUrl: settings.customSubscription));
+    } catch (_) {
+      if (servers.isEmpty) error = 'دریافت لیست سرورها ناموفق بود. اینترنت را بررسی کنید.';
+    } finally {
+      loading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Returns the available update (also stored in [update]), null when up to date or offline.
+  Future<UpdateInfo?> checkUpdate() async {
     try {
       update = await updater.check(proxy: engine.httpProxy);
       notifyListeners();
     } catch (_) {
-      // Offline or GitHub blocked: try again next launch.
+      // Offline or GitHub blocked: try again later.
     }
+    return update;
   }
 
   Future<void> installUpdate() async {
@@ -110,32 +176,6 @@ class VpnController extends ChangeNotifier {
       error = 'به‌روزرسانی ناموفق بود. اگر گیت‌هاب باز نمی‌شود، اول وصل شوید و دوباره امتحان کنید.';
     } finally {
       updateProgress = null;
-      notifyListeners();
-    }
-  }
-
-  void _apply(SubscriptionData data) {
-    servers = data.servers.where(engine.supports).toList();
-    final groups = <String, CountryGroup>{};
-    for (final s in servers) {
-      groups.putIfAbsent(s.countryCode, () => CountryGroup(s.countryCode)).servers.add(s);
-    }
-    countries = groups.values.toList();
-    if (selectedCountry != null && !groups.containsKey(selectedCountry)) selectedCountry = null;
-    updatedAt = data.updatedAt;
-    notifyListeners();
-  }
-
-  Future<void> refresh() async {
-    if (loading) return;
-    loading = true;
-    notifyListeners();
-    try {
-      _apply(await repository.fetch());
-    } catch (_) {
-      if (servers.isEmpty) error = 'دریافت لیست سرورها ناموفق بود. اینترنت را بررسی کنید.';
-    } finally {
-      loading = false;
       notifyListeners();
     }
   }
@@ -172,28 +212,86 @@ class VpnController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Measures delay for [list] (servers screen) without connecting.
+  Future<void> pingServers(List<Server> list) async {
+    if (pinging || list.isEmpty) return;
+    pinging = true;
+    notifyListeners();
+    try {
+      final result = await engine.pingAll(list, _options);
+      for (var i = 0; i < list.length; i++) {
+        delays[list[i].uri] = result[i];
+      }
+    } finally {
+      pinging = false;
+      notifyListeners();
+    }
+  }
+
+  /// Connects to one specific server chosen by the user.
+  Future<void> connectTo(Server server) async {
+    if (state == VpnState.connected) await disconnect();
+    await connect(only: server);
+  }
+
   void _checkCancel() {
     if (_cancel) throw _Cancelled();
+  }
+
+  /// Round-robin across countries so a pool compares many locations, not only the first one.
+  static List<Server> _roundRobin(List<CountryGroup> groups, int size) {
+    final pool = <Server>[];
+    for (var round = 0; pool.length < size; round++) {
+      var added = false;
+      for (final g in groups) {
+        if (round < g.servers.length && pool.length < size) {
+          pool.add(g.servers[round]);
+          added = true;
+        }
+      }
+      if (!added) break;
+    }
+    return pool;
+  }
+
+  /// Gaming: re-test the fastest few and rank by average + jitter, not a single lucky ping.
+  Future<List<int>> _gamingScores(List<Server> pool, List<int> measured, List<int> ranked, EngineOptions options) async {
+    final top = ranked.take(_gamingRefine).toList();
+    final samples = {for (final i in top) i: [measured[i]]};
+    for (var round = 0; round < _gamingRounds; round++) {
+      _checkCancel();
+      phase = 'سنجش پایداری پینگ برای بازی (${round + 1}/$_gamingRounds)';
+      notifyListeners();
+      final again = await engine.pingAll([for (final i in top) pool[i]], options, isCancelled: () => _cancel);
+      for (var k = 0; k < top.length; k++) {
+        samples[top[k]]!.add(again[k]);
+      }
+    }
+    final scores = List<int>.filled(pool.length, -1);
+    for (final e in samples.entries) {
+      final ok = e.value.where((d) => d > 0).toList();
+      if (ok.length < e.value.length) continue; // any lost probe = unstable for games
+      final avg = ok.reduce((a, b) => a + b) ~/ ok.length;
+      final jitter = ok.reduce((a, b) => a > b ? a : b) - ok.reduce((a, b) => a < b ? a : b);
+      scores[e.key] = avg + jitter * 2;
+    }
+    return scores;
   }
 
   Future<List<Server>> _candidates() async {
     final List<Server> pool;
     final country = selectedCountry;
+    final size = settings.poolSize;
+    if (country == gamingMode) {
+      final near = [
+        for (final code in _nearIran) ...countries.where((g) => g.code == code),
+      ];
+      return _roundRobin(near.isEmpty ? countries : near, size);
+    }
     if (country != null) {
       pool = servers.where((s) => s.countryCode == country).take(_countryPoolSize).toList();
     } else {
-      // Round-robin across countries so auto mode compares many locations, not only the first one.
-      pool = [];
-      for (var round = 0; pool.length < _autoPoolSize; round++) {
-        var added = false;
-        for (final g in countries) {
-          if (round < g.servers.length && pool.length < _autoPoolSize) {
-            pool.add(g.servers[round]);
-            added = true;
-          }
-        }
-        if (!added) break;
-      }
+      pool = _roundRobin(countries, size);
     }
     final last = (await SharedPreferences.getInstance()).getString(_lastServerKey);
     final lastServer = servers.where((s) => s.uri == last).firstOrNull;
@@ -203,7 +301,7 @@ class VpnController extends ChangeNotifier {
     return pool;
   }
 
-  Future<void> connect() async {
+  Future<void> connect({Server? only}) async {
     if (state != VpnState.disconnected) return;
     error = null;
     _cancel = false;
@@ -211,23 +309,36 @@ class VpnController extends ChangeNotifier {
     phase = 'در حال آماده‌سازی…';
     progressDone = progressTotal = 0;
     notifyListeners();
+    final options = _options;
     try {
-      if (servers.isEmpty) await refresh();
-      final pool = await _candidates();
+      if (servers.isEmpty && only == null) await refresh();
+      final List<Server> pool = only != null ? [only] : await _candidates();
       if (pool.isEmpty) throw const _UserError('سروری برای این موقعیت پیدا نشد.');
 
       phase = 'سنجش سرورها با اینترنت شما';
       progressTotal = pool.length;
       notifyListeners();
-      final delays = await engine.pingAll(pool, isCancelled: () => _cancel, onProgress: (done) {
+      final measured = await engine.pingAll(pool, options, isCancelled: () => _cancel, onProgress: (done) {
         progressDone = done;
         notifyListeners();
       });
       _checkCancel();
+      for (var i = 0; i < pool.length; i++) {
+        delays[pool[i].uri] = measured[i];
+      }
 
-      final ranked = [for (var i = 0; i < pool.length; i++) if (delays[i] > 0) i]
-        ..sort((a, b) => delays[a].compareTo(delays[b]));
-      if (ranked.isEmpty) throw const _UserError('هیچ سروری با اینترنت شما پاسخ نداد. کمی بعد دوباره امتحان کنید.');
+      var ranked = [for (var i = 0; i < pool.length; i++) if (measured[i] > 0) i]
+        ..sort((a, b) => measured[a].compareTo(measured[b]));
+      if (only == null && isGaming && ranked.length > 1) {
+        final scores = await _gamingScores(pool, measured, ranked, options);
+        final stable = [for (final i in ranked) if (scores[i] > 0) i]..sort((a, b) => scores[a].compareTo(scores[b]));
+        if (stable.isNotEmpty) ranked = stable;
+      }
+      if (ranked.isEmpty) {
+        throw _UserError(only != null
+            ? 'این سرور با اینترنت شما پاسخ نداد.'
+            : 'هیچ سروری با اینترنت شما پاسخ نداد. کمی بعد دوباره امتحان کنید.');
+      }
 
       progressTotal = 0;
       for (final i in ranked.take(_connectAttempts)) {
@@ -235,13 +346,13 @@ class VpnController extends ChangeNotifier {
         final server = pool[i];
         phase = 'اتصال به ${server.displayName}';
         notifyListeners();
-        if (!await engine.connect(server)) continue;
+        if (!await engine.connect(server, options)) continue;
         if (_cancel) {
           await engine.disconnect();
           throw _Cancelled();
         }
         current = server;
-        currentDelay = delays[i];
+        currentDelay = measured[i];
         connectedAt = DateTime.now();
         state = VpnState.connected;
         phase = null;
@@ -268,10 +379,12 @@ class VpnController extends ChangeNotifier {
   Future<void> disconnect() async {
     if (state == VpnState.disconnected) return;
     state = VpnState.disconnecting;
+    _userStopping = true;
     notifyListeners();
     try {
       await engine.disconnect();
     } finally {
+      _userStopping = false;
       _markDisconnected();
     }
   }

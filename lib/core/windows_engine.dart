@@ -10,7 +10,6 @@ import 'server.dart';
 import 'singbox_outbound.dart';
 import 'win_system_proxy.dart';
 
-const _testUrl = 'https://www.gstatic.com/generate_204';
 const _proxyOwnedKey = 'win_proxy_owned';
 
 /// Windows: bundled sing-box.exe as a local proxy + Windows system proxy.
@@ -21,6 +20,7 @@ class WindowsEngine implements VpnEngine {
   late Directory _work;
   Process? _proc;
   HttpClient? _trafficClient;
+  int? _proxyPort;
 
   String get _bin => '${File(Platform.resolvedExecutable).parent.path}\\sing-box.exe';
 
@@ -29,8 +29,6 @@ class WindowsEngine implements VpnEngine {
 
   @override
   Stream<TrafficStat> get traffic => _traffic.stream;
-
-  int? _proxyPort;
 
   @override
   String? get httpProxy => _proxyPort == null ? null : '127.0.0.1:$_proxyPort';
@@ -98,11 +96,11 @@ class WindowsEngine implements VpnEngine {
     }
   }
 
-  Future<int> _delay(HttpClient client, int api, String tag) async {
+  Future<int> _delay(HttpClient client, int api, String tag, EngineOptions o) async {
     try {
       final uri = Uri.parse('http://127.0.0.1:$api/proxies/$tag/delay')
-          .replace(queryParameters: {'timeout': '6000', 'url': _testUrl});
-      final res = await (await client.getUrl(uri)).close().timeout(const Duration(seconds: 9));
+          .replace(queryParameters: {'timeout': '${o.timeout.inMilliseconds}', 'url': o.testUrl});
+      final res = await (await client.getUrl(uri)).close().timeout(o.timeout + const Duration(seconds: 3));
       final body = await res.transform(utf8.decoder).join();
       if (res.statusCode != 200) return -1;
       final delay = (jsonDecode(body) as Map)['delay'];
@@ -113,7 +111,8 @@ class WindowsEngine implements VpnEngine {
   }
 
   @override
-  Future<List<int>> pingAll(List<Server> servers, {void Function(int done)? onProgress, bool Function()? isCancelled}) async {
+  Future<List<int>> pingAll(List<Server> servers, EngineOptions options,
+      {void Function(int done)? onProgress, bool Function()? isCancelled}) async {
     final results = List<int>.filled(servers.length, -1);
     final outbounds = [
       for (var i = 0; i < servers.length; i++) <String, dynamic>{...?_outbound(servers[i]), 'tag': 'p$i'},
@@ -138,7 +137,7 @@ class WindowsEngine implements VpnEngine {
       if (!await _waitApi(api)) return results;
       final delays = await runPool(valid.length, 16, (k) async {
         if (isCancelled?.call() ?? false) return -1;
-        return _delay(client, api, 'p${valid[k]}');
+        return _delay(client, api, 'p${valid[k]}', options);
       }, onProgress: (n) => onProgress?.call(skipped + n));
       for (var k = 0; k < valid.length; k++) {
         results[valid[k]] = delays[k];
@@ -150,16 +149,16 @@ class WindowsEngine implements VpnEngine {
     }
   }
 
-  Future<bool> _verifyThroughProxy(int port) async {
+  Future<bool> _verifyThroughProxy(int port, String testUrl) async {
     final client = HttpClient()
       ..findProxy = ((_) => 'PROXY 127.0.0.1:$port')
       ..connectionTimeout = const Duration(seconds: 8);
     try {
       for (var attempt = 0; attempt < 2; attempt++) {
         try {
-          final res = await (await client.getUrl(Uri.parse(_testUrl))).close().timeout(const Duration(seconds: 10));
+          final res = await (await client.getUrl(Uri.parse(testUrl))).close().timeout(const Duration(seconds: 10));
           await res.drain<void>();
-          if (res.statusCode == 204 || res.statusCode == 200) return true;
+          if (res.statusCode >= 200 && res.statusCode < 400) return true;
         } catch (_) {}
       }
       return false;
@@ -169,11 +168,12 @@ class WindowsEngine implements VpnEngine {
   }
 
   @override
-  Future<bool> connect(Server server) async {
+  Future<bool> connect(Server server, EngineOptions options) async {
     await disconnect();
     final outbound = _outbound(server);
     if (outbound == null) return false;
-    final port = await _freePort(), api = await _freePort();
+    final port = options.localPort > 0 ? options.localPort : await _freePort();
+    final api = await _freePort();
     final file = await _writeConfig('active', {
       'log': {'level': 'warn'},
       'inbounds': [
@@ -186,6 +186,7 @@ class WindowsEngine implements VpnEngine {
       'route': {
         'rules': [
           {'ip_is_private': true, 'outbound': 'direct'},
+          if (options.bypassIran) {'domain_suffix': ['ir'], 'outbound': 'direct'},
         ],
         'final': 'proxy',
         'auto_detect_interface': true,
@@ -199,18 +200,21 @@ class WindowsEngine implements VpnEngine {
     unawaited(proc.stdout.drain<void>().whenComplete(() async {
       if (identical(_proc, proc)) {
         _proc = null;
+        _proxyPort = null;
         await _releaseProxy();
         _states.add(VpnState.disconnected);
       }
     }));
 
-    if (!await _waitApi(api) || !await _verifyThroughProxy(port)) {
+    if (!await _waitApi(api) || !await _verifyThroughProxy(port, options.testUrl)) {
       await disconnect();
       return false;
     }
-    WinSystemProxy.enable('127.0.0.1:$port');
     _proxyPort = port;
-    await (await SharedPreferences.getInstance()).setBool(_proxyOwnedKey, true);
+    if (options.systemProxy) {
+      WinSystemProxy.enable('127.0.0.1:$port');
+      await (await SharedPreferences.getInstance()).setBool(_proxyOwnedKey, true);
+    }
     unawaited(_streamTraffic(api));
     return true;
   }

@@ -96,9 +96,20 @@ class _LocationSheetState extends State<_LocationSheet> {
                             onTap: () => _pick(null),
                           ),
                         ),
+                      if (q.isEmpty)
+                        _Entrance(
+                          index: 1,
+                          child: _Tile(
+                            code: VpnController.gamingMode,
+                            title: 'گیمینگ',
+                            subtitle: 'کمترین و پایدارترین پینگ از سرورهای نزدیک به ایران',
+                            selected: c.isGaming,
+                            onTap: () => _pick(VpnController.gamingMode),
+                          ),
+                        ),
                       for (final (i, g) in groups.indexed)
                         _Entrance(
-                          index: i + 1,
+                          index: i + 2,
                           child: _Tile(
                             code: g.code,
                             title: g.name,

@@ -1,0 +1,94 @@
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'server.dart';
+
+/// User-adjustable advanced settings, persisted in shared_preferences.
+class AppSettings extends ChangeNotifier {
+  static const defaultTestUrl = 'https://www.gstatic.com/generate_204';
+  static const testUrls = {
+    defaultTestUrl: 'Google',
+    'https://cp.cloudflare.com/generate_204': 'Cloudflare',
+    'https://www.apple.com/library/test/success.html': 'Apple',
+  };
+  static const dnsServers = {'1.1.1.1': 'Cloudflare', '8.8.8.8': 'Google', '9.9.9.9': 'Quad9'};
+
+  // Connection
+  bool autoReconnect = true;
+  bool connectOnLaunch = false;
+  bool proxyOnly = false; // Android: local proxy without VPN tunnel
+  bool systemProxy = true; // Windows: set the Windows system proxy
+  int localPort = 0; // Windows: 0 = random free port
+
+  // Routing / DNS
+  bool bypassIran = true;
+  String dns = '1.1.1.1';
+
+  // Server selection
+  int poolSize = 40;
+  int timeoutSeconds = 8;
+  String testUrl = defaultTestUrl;
+  Set<Protocol> protocols = Protocol.values.toSet();
+  String customSubscription = '';
+
+  Future<void> load() async {
+    final p = await SharedPreferences.getInstance();
+    autoReconnect = p.getBool('s_autoReconnect') ?? autoReconnect;
+    connectOnLaunch = p.getBool('s_connectOnLaunch') ?? connectOnLaunch;
+    proxyOnly = p.getBool('s_proxyOnly') ?? proxyOnly;
+    systemProxy = p.getBool('s_systemProxy') ?? systemProxy;
+    localPort = p.getInt('s_localPort') ?? localPort;
+    bypassIran = p.getBool('s_bypassIran') ?? bypassIran;
+    dns = p.getString('s_dns') ?? dns;
+    poolSize = p.getInt('s_poolSize') ?? poolSize;
+    timeoutSeconds = p.getInt('s_timeout') ?? timeoutSeconds;
+    testUrl = p.getString('s_testUrl') ?? testUrl;
+    customSubscription = p.getString('s_customSub') ?? customSubscription;
+    final names = p.getStringList('s_protocols');
+    if (names != null) {
+      final parsed = Protocol.values.where((x) => names.contains(x.name)).toSet();
+      if (parsed.isNotEmpty) protocols = parsed;
+    }
+    notifyListeners();
+  }
+
+  Future<void> _save() async {
+    final p = await SharedPreferences.getInstance();
+    await Future.wait([
+      p.setBool('s_autoReconnect', autoReconnect),
+      p.setBool('s_connectOnLaunch', connectOnLaunch),
+      p.setBool('s_proxyOnly', proxyOnly),
+      p.setBool('s_systemProxy', systemProxy),
+      p.setInt('s_localPort', localPort),
+      p.setBool('s_bypassIran', bypassIran),
+      p.setString('s_dns', dns),
+      p.setInt('s_poolSize', poolSize),
+      p.setInt('s_timeout', timeoutSeconds),
+      p.setString('s_testUrl', testUrl),
+      p.setString('s_customSub', customSubscription),
+      p.setStringList('s_protocols', protocols.map((x) => x.name).toList()),
+    ]);
+  }
+
+  Future<void> update(void Function(AppSettings s) change) async {
+    change(this);
+    notifyListeners();
+    await _save();
+  }
+
+  Future<void> reset() => update((s) {
+        s
+          ..autoReconnect = true
+          ..connectOnLaunch = false
+          ..proxyOnly = false
+          ..systemProxy = true
+          ..localPort = 0
+          ..bypassIran = true
+          ..dns = '1.1.1.1'
+          ..poolSize = 40
+          ..timeoutSeconds = 8
+          ..testUrl = defaultTestUrl
+          ..protocols = Protocol.values.toSet()
+          ..customSubscription = '';
+      });
+}

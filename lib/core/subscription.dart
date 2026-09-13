@@ -33,8 +33,8 @@ class SubscriptionRepository {
     return servers.isEmpty ? null : SubscriptionData(servers, DateTime.fromMillisecondsSinceEpoch(time));
   }
 
-  Future<SubscriptionData> fetch() async {
-    for (final url in _mirrors) {
+  Future<SubscriptionData> fetch({String customUrl = ''}) async {
+    for (final url in [if (customUrl.trim().isNotEmpty) customUrl.trim(), ..._mirrors]) {
       try {
         final text = await _get(url);
         final servers = parseSubscription(text);
