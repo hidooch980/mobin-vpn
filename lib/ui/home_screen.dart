@@ -24,22 +24,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  late final Timer _clock;
-
-  @override
-  void initState() {
-    super.initState();
-    _clock = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (widget.controller.state == VpnState.connected && mounted) setState(() {});
-    });
-  }
-
-  @override
-  void dispose() {
-    _clock.cancel();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -113,10 +97,10 @@ class _Header extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ShaderMask(
-              shaderCallback: (r) => LinearGradient(colors: [Colors.white, colors[1]]).createShader(r),
+              shaderCallback: (r) => LinearGradient(colors: [Palette.text, colors[1]]).createShader(r),
               child: const Text('Mobin', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Colors.white, height: 1.1)),
             ),
-            const Text('VPN آزاد برای خانواده', style: TextStyle(fontSize: 11.5, color: Palette.muted)),
+            Text('VPN آزاد برای خانواده', style: TextStyle(fontSize: 11.5, color: Palette.muted)),
           ],
         ),
         const Spacer(),
@@ -209,7 +193,7 @@ class _UpdateBanner extends StatelessWidget {
                             progress == null
                                 ? 'نسخه‌ی جدید ${update.version} آماده است'
                                 : 'در حال دانلود… ${(progress * 100).toStringAsFixed(0)}٪',
-                            style: const TextStyle(color: Palette.text, fontWeight: FontWeight.w700, fontSize: 13.5),
+                            style: TextStyle(color: Palette.text, fontWeight: FontWeight.w700, fontSize: 13.5),
                           ),
                         ),
                         if (progress == null)
@@ -233,7 +217,7 @@ class _UpdateBanner extends StatelessWidget {
                           builder: (context, v, _) => LinearProgressIndicator(
                             value: v,
                             minHeight: 5,
-                            backgroundColor: Colors.white12,
+                            backgroundColor: Palette.border,
                             valueColor: AlwaysStoppedAnimation(colors[1]),
                           ),
                         ),
@@ -262,7 +246,7 @@ class _StatusText extends StatelessWidget {
           'در حال اتصال…',
           c.progressTotal > 0 ? '${c.phase ?? ''}  ${c.progressDone}/${c.progressTotal}' : (c.phase ?? ''),
         ),
-      VpnState.connected => ('متصل هستید', formatDuration(DateTime.now().difference(c.connectedAt ?? DateTime.now()))),
+      VpnState.connected => ('متصل هستید', ''),
       VpnState.disconnecting => ('در حال قطع اتصال…', ''),
     };
     return Column(
@@ -275,7 +259,7 @@ class _StatusText extends StatelessWidget {
           ),
           child: ShaderMask(
             key: ValueKey(title),
-            shaderCallback: (r) => LinearGradient(colors: [Colors.white, Color.lerp(Colors.white, colors[0], 0.55)!]).createShader(r),
+            shaderCallback: (r) => LinearGradient(colors: [Colors.white, Color.lerp(Palette.text, colors[0], 0.55)!]).createShader(r),
             child: Text(title, style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: Colors.white)),
           ),
         ),
@@ -284,16 +268,51 @@ class _StatusText extends StatelessWidget {
           height: 22,
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 300),
-            child: Text(
-              subtitle,
-              key: ValueKey(c.state == VpnState.connected ? 'timer' : subtitle),
-              style: const TextStyle(fontSize: 14.5, color: Palette.muted, fontFeatures: [FontFeature.tabularFigures()]),
-            ),
+            child: c.state == VpnState.connected
+                ? _ConnectedTimer(key: const ValueKey('timer'), since: c.connectedAt ?? DateTime.now())
+                : Text(
+                    subtitle,
+                    key: ValueKey(subtitle),
+                    style: TextStyle(fontSize: 14.5, color: Palette.muted, fontFeatures: const [FontFeature.tabularFigures()]),
+                  ),
           ),
         ),
       ],
     );
   }
+}
+
+/// Only this text rebuilds every second, not the whole home screen.
+class _ConnectedTimer extends StatefulWidget {
+  const _ConnectedTimer({super.key, required this.since});
+
+  final DateTime since;
+
+  @override
+  State<_ConnectedTimer> createState() => _ConnectedTimerState();
+}
+
+class _ConnectedTimerState extends State<_ConnectedTimer> {
+  late final Timer _timer = Timer.periodic(const Duration(seconds: 1), (_) => setState(() {}));
+
+  @override
+  void initState() {
+    super.initState();
+    _timer;
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Text(
+        formatDuration(DateTime.now().difference(widget.since)),
+        textDirection: TextDirection.ltr,
+        style: TextStyle(fontSize: 14.5, color: Palette.muted, fontFeatures: const [FontFeature.tabularFigures()]),
+      );
 }
 
 class _ErrorBanner extends StatelessWidget {
@@ -320,8 +339,8 @@ class _ErrorBanner extends StatelessWidget {
                   children: [
                     const Icon(Icons.error_outline_rounded, color: Color(0xFFF87171)),
                     const SizedBox(width: 10),
-                    Expanded(child: Text(error, style: const TextStyle(color: Palette.text, fontSize: 13.5))),
-                    const Icon(Icons.close_rounded, color: Palette.muted, size: 18),
+                    Expanded(child: Text(error, style: TextStyle(color: Palette.text, fontSize: 13.5))),
+                    Icon(Icons.close_rounded, color: Palette.muted, size: 18),
                   ],
                 ),
               ),
@@ -388,10 +407,10 @@ class _Stat extends StatelessWidget {
             child: Text(
               value,
               textDirection: TextDirection.ltr,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Palette.text, fontFeatures: [FontFeature.tabularFigures()]),
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Palette.text, fontFeatures: [FontFeature.tabularFigures()]),
             ),
           ),
-          Text(label, style: const TextStyle(fontSize: 11.5, color: Palette.muted)),
+          Text(label, style: TextStyle(fontSize: 11.5, color: Palette.muted)),
         ],
       ),
     );
@@ -454,10 +473,10 @@ class _LocationCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('موقعیت', style: TextStyle(fontSize: 11.5, color: Palette.muted)),
+                Text('موقعیت', style: TextStyle(fontSize: 11.5, color: Palette.muted)),
                 const SizedBox(height: 2),
-                Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Palette.text)),
-                Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, color: Palette.muted)),
+                Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Palette.text)),
+                Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: Palette.muted)),
               ],
             ),
           ),
@@ -471,7 +490,7 @@ class _LocationCard extends StatelessWidget {
               ),
               child: Text('${c.currentDelay}ms', textDirection: TextDirection.ltr, style: TextStyle(color: Palette.forDelay(c.currentDelay), fontWeight: FontWeight.w700, fontSize: 12.5)),
             ),
-          const Icon(Icons.unfold_more_rounded, color: Palette.muted),
+          Icon(Icons.unfold_more_rounded, color: Palette.muted),
         ],
       ),
     );
@@ -492,7 +511,7 @@ class _Footer extends StatelessWidget {
       children: [
         Text(
           updated == null ? 'در حال دریافت لیست سرورها…' : '${c.servers.length} سرور · به‌روزرسانی ${timeAgo(updated)}',
-          style: const TextStyle(fontSize: 12, color: Palette.muted),
+          style: TextStyle(fontSize: 12, color: Palette.muted),
         ),
         const SizedBox(width: 4),
         IconButton(
@@ -502,7 +521,7 @@ class _Footer extends StatelessWidget {
           icon: AnimatedRotation(
             turns: c.loading ? 3 : 0,
             duration: Duration(milliseconds: c.loading ? 2400 : 0),
-            child: const Icon(Icons.refresh_rounded, size: 18, color: Palette.muted),
+            child: Icon(Icons.refresh_rounded, size: 18, color: Palette.muted),
           ),
         ),
       ],

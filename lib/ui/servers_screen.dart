@@ -71,15 +71,15 @@ class _ServersScreenState extends State<ServersScreen> {
                               radius: 16,
                               padding: const EdgeInsets.all(10),
                               onTap: () => Navigator.of(context).pop(),
-                              child: const Icon(Icons.arrow_forward_rounded, color: Palette.text),
+                              child: Icon(Icons.arrow_forward_rounded, color: Palette.text),
                             ),
                             const SizedBox(width: 14),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text('همه‌ی سرورها', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Palette.text)),
-                                  Text('${list.length} سرور · $tested پاسخ داده', style: const TextStyle(fontSize: 12, color: Palette.muted)),
+                                  Text('همه‌ی سرورها', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Palette.text)),
+                                  Text('${list.length} سرور · $tested پاسخ داده', style: TextStyle(fontSize: 12, color: Palette.muted)),
                                 ],
                               ),
                             ),
@@ -88,9 +88,9 @@ class _ServersScreenState extends State<ServersScreen> {
                               child: Glass(
                                 radius: 16,
                                 padding: const EdgeInsets.all(10),
-                                borderColor: _byPing ? const Color(0xFFA78BFA) : null,
+                                borderColor: _byPing ? Palette.accent : null,
                                 onTap: () => setState(() => _byPing = !_byPing),
-                                child: Icon(Icons.sort_rounded, color: _byPing ? const Color(0xFFA78BFA) : Palette.text),
+                                child: Icon(Icons.sort_rounded, color: _byPing ? Palette.accent : Palette.text),
                               ),
                             ),
                           ],
@@ -103,13 +103,13 @@ class _ServersScreenState extends State<ServersScreen> {
                             Expanded(
                               child: TextField(
                                 onChanged: (v) => setState(() => _query = v),
-                                style: const TextStyle(color: Palette.text),
+                                style: TextStyle(color: Palette.text),
                                 decoration: InputDecoration(
                                   hintText: 'جستجو: کشور، پروتکل…',
-                                  hintStyle: const TextStyle(color: Palette.muted),
-                                  prefixIcon: const Icon(Icons.search_rounded, color: Palette.muted),
+                                  hintStyle: TextStyle(color: Palette.muted),
+                                  prefixIcon: Icon(Icons.search_rounded, color: Palette.muted),
                                   filled: true,
-                                  fillColor: Colors.white.withValues(alpha: 0.06),
+                                  fillColor: Palette.fill,
                                   contentPadding: const EdgeInsets.symmetric(vertical: 12),
                                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                                 ),
@@ -219,12 +219,12 @@ class _ServerTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(server.displayName, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Palette.text)),
+                  Text(server.displayName, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Palette.text)),
                   const SizedBox(height: 3),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(6)),
-                    child: Text(server.protocolLabel, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Palette.muted)),
+                    decoration: BoxDecoration(color: Palette.fill, borderRadius: BorderRadius.circular(6)),
+                    child: Text(server.protocolLabel, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Palette.muted)),
                   ),
                 ],
               ),

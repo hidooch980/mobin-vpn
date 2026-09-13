@@ -3,11 +3,15 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'core/native_bridge.dart';
 import 'core/vpn_controller.dart';
 import 'ui/home_screen.dart';
 import 'ui/style.dart';
+
+/// Survives app rebuilds on theme changes, so screens can be reopened after the switch.
+final appNavigatorKey = GlobalKey<NavigatorState>();
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,7 +30,7 @@ class MobinApp extends StatefulWidget {
   State<MobinApp> createState() => _MobinAppState();
 }
 
-class _MobinAppState extends State<MobinApp> {
+class _MobinAppState extends State<MobinApp> with WidgetsBindingObserver {
   // Closing the window must turn the Windows system proxy off again.
   late final AppLifecycleListener _lifecycle = AppLifecycleListener(
     onExitRequested: () async {
@@ -39,28 +43,57 @@ class _MobinAppState extends State<MobinApp> {
   void initState() {
     super.initState();
     _lifecycle;
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangePlatformBrightness() {
+    if (widget.controller.settings.themeMode == 'system') setState(() {});
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _lifecycle.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Mobin VPN',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        useMaterial3: true,
-        colorSchemeSeed: const Color(0xFF7C3AED),
-        scaffoldBackgroundColor: Palette.bg,
-        fontFamily: Platform.isWindows ? 'Segoe UI' : null,
-      ),
-      builder: (context, child) => Directionality(textDirection: TextDirection.rtl, child: child!),
-      home: HomeScreen(controller: widget.controller),
+    final settings = widget.controller.settings;
+    return ListenableBuilder(
+      listenable: settings,
+      builder: (context, _) {
+        final brightness = switch (settings.themeMode) {
+          'light' => Brightness.light,
+          'dark' => Brightness.dark,
+          _ => PlatformDispatcher.instance.platformBrightness,
+        };
+        Palette.apply(brightness, reduceMotion: settings.reduceMotion);
+        final dark = brightness == Brightness.dark;
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: (dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark).copyWith(
+            statusBarColor: Colors.transparent,
+            systemNavigationBarColor: Palette.bg,
+          ),
+          child: MaterialApp(
+            // Palette values are read directly by widgets, so a theme switch rebuilds the whole tree.
+            key: ValueKey('$brightness-${settings.reduceMotion}'),
+            navigatorKey: appNavigatorKey,
+            title: 'Mobin VPN',
+            debugShowCheckedModeBanner: false,
+            theme: ThemeData(
+              brightness: brightness,
+              useMaterial3: true,
+              colorSchemeSeed: const Color(0xFF7C3AED),
+              scaffoldBackgroundColor: Palette.bg,
+              fontFamily: Platform.isWindows ? 'Segoe UI' : null,
+            ),
+            builder: (context, child) => Directionality(textDirection: TextDirection.rtl, child: child!),
+            home: HomeScreen(controller: widget.controller),
+          ),
+        );
+      },
     );
   }
 }

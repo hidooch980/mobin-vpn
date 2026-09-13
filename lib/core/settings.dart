@@ -13,6 +13,10 @@ class AppSettings extends ChangeNotifier {
   };
   static const dnsServers = {'1.1.1.1': 'Cloudflare', '8.8.8.8': 'Google', '9.9.9.9': 'Quad9'};
 
+  // Appearance
+  String themeMode = 'system'; // system | light | dark
+  bool reduceMotion = false;
+
   // Connection
   bool autoReconnect = true;
   bool connectOnLaunch = false;
@@ -44,6 +48,8 @@ class AppSettings extends ChangeNotifier {
 
   Future<void> load() async {
     final p = await SharedPreferences.getInstance();
+    themeMode = p.getString('s_themeMode') ?? themeMode;
+    reduceMotion = p.getBool('s_reduceMotion') ?? reduceMotion;
     autoReconnect = p.getBool('s_autoReconnect') ?? autoReconnect;
     connectOnLaunch = p.getBool('s_connectOnLaunch') ?? connectOnLaunch;
     proxyOnly = p.getBool('s_proxyOnly') ?? proxyOnly;
@@ -75,6 +81,8 @@ class AppSettings extends ChangeNotifier {
   Future<void> _save() async {
     final p = await SharedPreferences.getInstance();
     await Future.wait([
+      p.setString('s_themeMode', themeMode),
+      p.setBool('s_reduceMotion', reduceMotion),
       p.setBool('s_autoReconnect', autoReconnect),
       p.setBool('s_connectOnLaunch', connectOnLaunch),
       p.setBool('s_proxyOnly', proxyOnly),

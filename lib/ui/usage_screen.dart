@@ -48,10 +48,10 @@ class UsageScreen extends StatelessWidget {
                           radius: 16,
                           padding: const EdgeInsets.all(10),
                           onTap: () => Navigator.of(context).pop(),
-                          child: const Icon(Icons.arrow_forward_rounded, color: Palette.text),
+                          child: Icon(Icons.arrow_forward_rounded, color: Palette.text),
                         ),
                         const SizedBox(width: 14),
-                        const Text('آمار مصرف', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Palette.text)),
+                        Text('آمار مصرف', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Palette.text)),
                       ]),
                       const SizedBox(height: 18),
                       Row(children: [
@@ -66,7 +66,7 @@ class UsageScreen extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('۷ روز اخیر', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Palette.text)),
+                            Text('۷ روز اخیر', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Palette.text)),
                             const SizedBox(height: 16),
                             SizedBox(
                               height: 180,
@@ -118,7 +118,7 @@ class _TotalCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontSize: 13, color: Palette.muted)),
+          Text(title, style: TextStyle(fontSize: 13, color: Palette.muted)),
           const SizedBox(height: 6),
           TweenAnimationBuilder<double>(
             tween: Tween(begin: 0, end: usage.total.toDouble()),
@@ -130,11 +130,11 @@ class _TotalCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Row(children: [
-            const Icon(Icons.south_rounded, size: 14, color: Palette.muted),
-            Text(formatBytes(usage.down), textDirection: TextDirection.ltr, style: const TextStyle(fontSize: 12, color: Palette.muted)),
+            Icon(Icons.south_rounded, size: 14, color: Palette.muted),
+            Text(formatBytes(usage.down), textDirection: TextDirection.ltr, style: TextStyle(fontSize: 12, color: Palette.muted)),
             const SizedBox(width: 10),
-            const Icon(Icons.north_rounded, size: 14, color: Palette.muted),
-            Text(formatBytes(usage.up), textDirection: TextDirection.ltr, style: const TextStyle(fontSize: 12, color: Palette.muted)),
+            Icon(Icons.north_rounded, size: 14, color: Palette.muted),
+            Text(formatBytes(usage.up), textDirection: TextDirection.ltr, style: TextStyle(fontSize: 12, color: Palette.muted)),
           ]),
         ],
       ),

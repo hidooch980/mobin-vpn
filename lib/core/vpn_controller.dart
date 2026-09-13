@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'app_log.dart';
 import 'countries.dart';
 import 'engine.dart';
 import 'server.dart';
@@ -60,6 +61,9 @@ class VpnController extends ChangeNotifier {
     'DE', 'AT', 'NL', 'FR', 'IT', 'PL', 'FI', 'SE', 'CH', 'GB', 'ES',
   ];
   static const _gamingRefine = 8, _gamingRounds = 2;
+
+  /// Smart mode stops pinging after this many responsive servers.
+  static const _enoughGood = 4;
 
   bool get isGaming => selectedCountry == gamingMode;
 
@@ -130,7 +134,9 @@ class VpnController extends ChangeNotifier {
     selectedCountry = prefs.getString(_countryKey);
     try {
       await engine.init();
+      AppLog.add('engine ready (${Platform.operatingSystem} ${Platform.operatingSystemVersion})');
     } catch (e) {
+      AppLog.add('engine init failed: $e');
       error = 'راه‌اندازی هسته ناموفق بود: $e';
     }
     final cached = await repository.loadCached();
@@ -173,7 +179,9 @@ class VpnController extends ChangeNotifier {
     notifyListeners();
     try {
       _apply(await repository.fetch(customUrl: settings.customSubscription));
-    } catch (_) {
+      AppLog.add('servers: ${servers.length} usable in ${countries.length} locations');
+    } catch (e) {
+      AppLog.add('servers: refresh failed: $e');
       if (servers.isEmpty) error = 'دریافت لیست سرورها ناموفق بود. اینترنت را بررسی کنید.';
     } finally {
       loading = false;
@@ -396,11 +404,25 @@ class VpnController extends ChangeNotifier {
       phase = 'سنجش سرورها با اینترنت شما';
       progressTotal = pool.length;
       notifyListeners();
-      final measured = await engine.pingAll(pool, options, isCancelled: () => _cancel, onProgress: (done) {
-        progressDone = done;
-        notifyListeners();
-      });
+      AppLog.add('connect: mode=${selectedCountry ?? 'auto'} pool=${pool.length} platform=${Platform.operatingSystem}');
+      // Smart/country modes stop testing once a few good servers are found — much faster, especially on Android.
+      final canStopEarly = only == null && !isGaming;
+      var good = 0;
+      final measured = await engine.pingAll(
+        pool,
+        options,
+        isCancelled: () => _cancel || (canStopEarly && good >= _enoughGood),
+        onResult: (_, delay) {
+          if (delay > 0 && delay < 2500) good++;
+        },
+        onProgress: (done) {
+          progressDone = done;
+          notifyListeners();
+        },
+      );
       _checkCancel();
+      AppLog.add('ping: ${measured.where((d) => d > 0).length}/${pool.length} responded '
+          '(best ${measured.where((d) => d > 0).fold<int?>(null, (a, d) => a == null || d < a ? d : a)} ms)');
       for (var i = 0; i < pool.length; i++) {
         delays[pool[i].uri] = measured[i];
       }
@@ -413,9 +435,9 @@ class VpnController extends ChangeNotifier {
         if (stable.isNotEmpty) ranked = stable;
       }
       if (ranked.isEmpty) {
-        throw _UserError(only != null
-            ? 'این سرور با اینترنت شما پاسخ نداد.'
-            : 'هیچ سروری با اینترنت شما پاسخ نداد. کمی بعد دوباره امتحان کنید.');
+        // A failed ping test is not proof the server is dead (the test URL may be blocked): try connecting anyway.
+        AppLog.add('ping: nothing responded, trying direct connection to the first servers');
+        ranked = List.generate(pool.length < _connectAttempts ? pool.length : _connectAttempts, (i) => i);
       }
 
       progressTotal = 0;
@@ -424,7 +446,11 @@ class VpnController extends ChangeNotifier {
         final server = pool[i];
         phase = 'اتصال به ${server.displayName}';
         notifyListeners();
-        if (!await engine.connect(server, options)) continue;
+        if (!await engine.connect(server, options)) {
+          AppLog.add('connect: ${server.displayName} (${server.protocolLabel}) failed');
+          continue;
+        }
+        AppLog.add('connect: connected to ${server.displayName} (${server.protocolLabel}, ${measured[i]} ms)');
         if (_cancel) {
           await engine.disconnect();
           throw _Cancelled();
@@ -438,7 +464,8 @@ class VpnController extends ChangeNotifier {
         await (await SharedPreferences.getInstance()).setString(_lastServerKey, server.uri);
         return;
       }
-      throw const _UserError('اتصال برقرار نشد. دوباره تلاش کنید.');
+      throw const _UserError(
+          'اتصال برقرار نشد. «ضد فیلتر» را روشن کنید یا کشور دیگری را امتحان کنید. جزئیات در تنظیمات ← گزارش خطا.');
     } on _Cancelled {
       _markDisconnected();
     } on AdminRequiredError {
@@ -448,9 +475,11 @@ class VpnController extends ChangeNotifier {
       error = 'برای اتصال، اجازه‌ی VPN لازم است.';
       _markDisconnected();
     } on _UserError catch (e) {
+      AppLog.add('connect: ${e.message}');
       error = e.message;
       _markDisconnected();
-    } catch (e) {
+    } catch (e, st) {
+      AppLog.add('connect: unexpected $e\n$st');
       error = 'خطای غیرمنتظره: $e';
       await engine.disconnect();
       _markDisconnected();

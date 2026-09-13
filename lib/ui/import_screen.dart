@@ -49,10 +49,10 @@ class ImportScreen extends StatelessWidget {
                           radius: 16,
                           padding: const EdgeInsets.all(10),
                           onTap: () => Navigator.of(context).pop(),
-                          child: const Icon(Icons.arrow_forward_rounded, color: Palette.text),
+                          child: Icon(Icons.arrow_forward_rounded, color: Palette.text),
                         ),
                         const SizedBox(width: 14),
-                        const Expanded(
+                        Expanded(
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Text('کانفیگ‌های من', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Palette.text)),
                             Text('VLESS، VMess، Trojan، SS، Hysteria2، TUIC، AnyTLS، WireGuard، SOCKS، HTTP',
@@ -90,13 +90,13 @@ class ImportScreen extends StatelessWidget {
                         ],
                       ]),
                       const SizedBox(height: 10),
-                      const Text(
+                      Text(
                         'لینک اشتراک (subscription) هم پشتیبانی می‌شود: متن base64 یا چند لینک در چند خط را بچسبانید.',
                         style: TextStyle(fontSize: 12, color: Palette.muted, height: 1.6),
                       ),
                       const SizedBox(height: 18),
                       if (mine.isEmpty)
-                        const Padding(
+                        Padding(
                           padding: EdgeInsets.symmetric(vertical: 40),
                           child: Center(child: Text('هنوز کانفیگی اضافه نکرده‌اید', style: TextStyle(color: Palette.muted))),
                         ),
@@ -167,16 +167,16 @@ class _ConfigTile extends StatelessWidget {
         child: Row(children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)),
-            child: Text(server.protocolLabel, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFFA78BFA))),
+            decoration: BoxDecoration(color: Palette.fill, borderRadius: BorderRadius.circular(8)),
+            child: Text(server.protocolLabel, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Palette.accent)),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(server.remark.isEmpty ? 'بدون نام' : server.remark,
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Palette.text, fontWeight: FontWeight.w700)),
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Palette.text, fontWeight: FontWeight.w700)),
               if (host.isNotEmpty)
-                Text(host, maxLines: 1, textDirection: TextDirection.ltr, style: const TextStyle(fontSize: 11, color: Palette.muted)),
+                Text(host, maxLines: 1, textDirection: TextDirection.ltr, style: TextStyle(fontSize: 11, color: Palette.muted)),
             ]),
           ),
           IconButton(

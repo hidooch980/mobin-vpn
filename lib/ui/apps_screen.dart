@@ -39,10 +39,10 @@ class _AppsScreenState extends State<AppsScreen> {
                     radius: 16,
                     padding: const EdgeInsets.all(10),
                     onTap: () => Navigator.of(context).pop(),
-                    child: const Icon(Icons.arrow_forward_rounded, color: Palette.text),
+                    child: Icon(Icons.arrow_forward_rounded, color: Palette.text),
                   ),
                   const SizedBox(width: 14),
-                  const Expanded(
+                  Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text('برنامه‌های خارج از VPN', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Palette.text)),
                       Text('برنامه‌های انتخاب‌شده مستقیم به اینترنت وصل می‌شوند', style: TextStyle(fontSize: 12, color: Palette.muted)),
@@ -54,13 +54,13 @@ class _AppsScreenState extends State<AppsScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
                 child: TextField(
                   onChanged: (v) => setState(() => _query = v),
-                  style: const TextStyle(color: Palette.text),
+                  style: TextStyle(color: Palette.text),
                   decoration: InputDecoration(
                     hintText: 'جستجوی برنامه…',
-                    hintStyle: const TextStyle(color: Palette.muted),
-                    prefixIcon: const Icon(Icons.search_rounded, color: Palette.muted),
+                    hintStyle: TextStyle(color: Palette.muted),
+                    prefixIcon: Icon(Icons.search_rounded, color: Palette.muted),
                     filled: true,
-                    fillColor: Colors.white.withValues(alpha: 0.06),
+                    fillColor: Palette.fill,
                     contentPadding: const EdgeInsets.symmetric(vertical: 12),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                   ),
@@ -71,7 +71,7 @@ class _AppsScreenState extends State<AppsScreen> {
                   future: _apps,
                   builder: (context, snap) {
                     if (snap.hasError) {
-                      return const Center(child: Text('فهرست برنامه‌ها در دسترس نیست', style: TextStyle(color: Palette.muted)));
+                      return Center(child: Text('فهرست برنامه‌ها در دسترس نیست', style: TextStyle(color: Palette.muted)));
                     }
                     if (!snap.hasData) return const Center(child: CircularProgressIndicator());
                     final q = _query.trim().toLowerCase();
@@ -96,7 +96,7 @@ class _AppsScreenState extends State<AppsScreen> {
                             child: Glass(
                               radius: 18,
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              borderColor: excluded ? const Color(0xFFA78BFA) : null,
+                              borderColor: excluded ? Palette.accent : null,
                               onTap: () => s.update((x) {
                                 final next = {...x.excludedApps};
                                 excluded ? next.remove(app.packageName) : next.add(app.packageName);
@@ -106,16 +106,16 @@ class _AppsScreenState extends State<AppsScreen> {
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(10),
                                   child: app.icon == null
-                                      ? const SizedBox.square(dimension: 38, child: Icon(Icons.android_rounded, color: Palette.muted))
+                                      ? SizedBox.square(dimension: 38, child: Icon(Icons.android_rounded, color: Palette.muted))
                                       : Image.memory(app.icon!, width: 38, height: 38, gaplessPlayback: true),
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                     Text(app.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: Palette.text)),
+                                        style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: Palette.text)),
                                     Text(app.packageName, maxLines: 1, overflow: TextOverflow.ellipsis, textDirection: TextDirection.ltr,
-                                        style: const TextStyle(fontSize: 11, color: Palette.muted)),
+                                        style: TextStyle(fontSize: 11, color: Palette.muted)),
                                   ]),
                                 ),
                                 Checkbox(

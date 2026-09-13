@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'app_log.dart';
 import 'engine.dart';
 import 'server.dart';
 import 'singbox_outbound.dart';
@@ -152,7 +153,7 @@ class WindowsEngine implements VpnEngine {
 
   @override
   Future<List<int>> pingAll(List<Server> servers, EngineOptions options,
-      {void Function(int done)? onProgress, bool Function()? isCancelled}) async {
+      {void Function(int done)? onProgress, bool Function()? isCancelled, void Function(int index, int delay)? onResult}) async {
     final results = List<int>.filled(servers.length, -1);
     final outbounds = [
       for (var i = 0; i < servers.length; i++) _tagged(_outbound(servers[i]) ?? const {}, 'p$i', options),
@@ -160,6 +161,7 @@ class WindowsEngine implements VpnEngine {
     final usable = [for (var i = 0; i < servers.length; i++) if (_outbound(servers[i]) != null) i];
     final valid = await _validSubset(usable, outbounds);
     final skipped = servers.length - valid.length;
+    AppLog.add('windows: ping ${servers.length} servers, ${valid.length} valid configs');
     onProgress?.call(skipped);
     if (valid.isEmpty) return results;
 
@@ -172,13 +174,18 @@ class WindowsEngine implements VpnEngine {
     });
     final proc = await _spawn(['run', '-c', file.path]);
     unawaited(proc.stdout.drain<void>());
-    unawaited(proc.stderr.drain<void>());
+    _logStderr(proc, 'ping');
     final client = HttpClient();
     try {
-      if (!await _waitApi(api)) return results;
+      if (!await _waitApi(api)) {
+        AppLog.add('windows: ping core API did not start');
+        return results;
+      }
       final delays = await runPool(valid.length, 16, (k) async {
         if (isCancelled?.call() ?? false) return -1;
-        return _delay(client, api, 'p${valid[k]}', options);
+        final delay = await _delay(client, api, 'p${valid[k]}', options);
+        onResult?.call(valid[k], delay);
+        return delay;
       }, onProgress: (n) => onProgress?.call(skipped + n));
       for (var k = 0; k < valid.length; k++) {
         results[valid[k]] = delays[k];
@@ -264,7 +271,7 @@ class WindowsEngine implements VpnEngine {
     final file = await _writeConfig('active', _connectConfig(outbound, port, api, options));
     final proc = await _spawn(['run', '-c', file.path]);
     _proc = proc;
-    unawaited(proc.stderr.drain<void>());
+    _logStderr(proc, 'core');
     // stdout closes when the process exits: handle a crash while connected.
     unawaited(proc.stdout.drain<void>().whenComplete(() async {
       if (!identical(_proc, proc)) return;
@@ -279,7 +286,13 @@ class WindowsEngine implements VpnEngine {
       _states.add(VpnState.disconnected);
     }));
 
-    if (!await _waitApi(api) || !await _verifyThroughProxy(port, options.testUrl)) {
+    if (!await _waitApi(api)) {
+      AppLog.add('windows: core did not start for ${server.displayName} (see sing-box lines above)');
+      await disconnect();
+      return false;
+    }
+    if (!await _verifyThroughProxy(port, options.testUrl)) {
+      AppLog.add('windows: no traffic through ${server.displayName}');
       await disconnect();
       return false;
     }
@@ -290,6 +303,13 @@ class WindowsEngine implements VpnEngine {
     }
     unawaited(_streamTraffic(api));
     return true;
+  }
+
+  static void _logStderr(Process proc, String label) {
+    proc.stderr.transform(utf8.decoder).transform(const LineSplitter()).listen((line) {
+      final l = line.toLowerCase();
+      if (l.contains('error') || l.contains('fatal') || l.contains('warn')) AppLog.add('sing-box[$label]: $line');
+    }, onError: (_) {});
   }
 
   Future<void> _streamTraffic(int api) async {

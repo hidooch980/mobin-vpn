@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
@@ -48,33 +47,32 @@ class _LocationSheetState extends State<_LocationSheet> {
       maxChildSize: 0.95,
       builder: (context, scroll) => ClipRRect(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(34)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+        child: RepaintBoundary(
           child: Container(
             decoration: BoxDecoration(
-              color: const Color(0xFF0B0B1A).withValues(alpha: 0.82),
-              border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.12))),
+              color: Palette.sheet,
+              border: Border(top: BorderSide(color: Palette.border)),
             ),
             child: Column(
               children: [
                 const SizedBox(height: 12),
-                Container(width: 44, height: 5, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(3))),
+                Container(width: 44, height: 5, decoration: BoxDecoration(color: Palette.border, borderRadius: BorderRadius.circular(3))),
                 const SizedBox(height: 18),
-                const Text('انتخاب موقعیت', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Palette.text)),
+                Text('انتخاب موقعیت', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Palette.text)),
                 const SizedBox(height: 4),
                 Text('${c.servers.length} سرور تست‌شده در ${c.countries.length} کشور',
-                    style: const TextStyle(fontSize: 13, color: Palette.muted)),
+                    style: TextStyle(fontSize: 13, color: Palette.muted)),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
                   child: TextField(
                     onChanged: (v) => setState(() => _query = v),
-                    style: const TextStyle(color: Palette.text),
+                    style: TextStyle(color: Palette.text),
                     decoration: InputDecoration(
                       hintText: 'جستجوی کشور…',
-                      hintStyle: const TextStyle(color: Palette.muted),
-                      prefixIcon: const Icon(Icons.search_rounded, color: Palette.muted),
+                      hintStyle: TextStyle(color: Palette.muted),
+                      prefixIcon: Icon(Icons.search_rounded, color: Palette.muted),
                       filled: true,
-                      fillColor: Colors.white.withValues(alpha: 0.06),
+                      fillColor: Palette.fill,
                       contentPadding: const EdgeInsets.symmetric(vertical: 14),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
                     ),
@@ -184,9 +182,9 @@ class _Tile extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(20),
-              color: Colors.white.withValues(alpha: selected ? 0.10 : 0.035),
+              color: selected ? Palette.fillStrong : Palette.fill,
               border: Border.all(
-                color: selected ? const Color(0xFF8B5CF6).withValues(alpha: 0.9) : Colors.white.withValues(alpha: 0.06),
+                color: selected ? const Color(0xFF8B5CF6).withValues(alpha: 0.9) : Palette.fill,
                 width: selected ? 1.5 : 1,
               ),
             ),
@@ -198,9 +196,9 @@ class _Tile extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Palette.text)),
+                      Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Palette.text)),
                       const SizedBox(height: 2),
-                      Text(subtitle, style: const TextStyle(fontSize: 12.5, color: Palette.muted)),
+                      Text(subtitle, style: TextStyle(fontSize: 12.5, color: Palette.muted)),
                     ],
                   ),
                 ),
@@ -208,8 +206,8 @@ class _Tile extends StatelessWidget {
                   duration: const Duration(milliseconds: 250),
                   transitionBuilder: (child, a) => ScaleTransition(scale: a, child: child),
                   child: selected
-                      ? const Icon(Icons.check_circle_rounded, key: ValueKey(true), color: Color(0xFFA78BFA))
-                      : const Icon(Icons.chevron_left_rounded, key: ValueKey(false), color: Palette.muted),
+                      ? Icon(Icons.check_circle_rounded, key: ValueKey(true), color: Palette.accent)
+                      : Icon(Icons.chevron_left_rounded, key: ValueKey(false), color: Palette.muted),
                 ),
               ],
             ),

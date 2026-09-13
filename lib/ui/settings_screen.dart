@@ -11,9 +11,12 @@ import '../core/settings.dart';
 import '../core/vpn_controller.dart';
 import '../core/win_startup.dart';
 import '../core/windows_engine.dart';
+import '../main.dart' show appNavigatorKey;
 import 'apps_screen.dart';
-import 'import_screen.dart';
 import 'aurora_background.dart';
+import 'help_screen.dart';
+import 'import_screen.dart';
+import 'log_screen.dart';
 import 'glass.dart';
 import 'style.dart';
 
@@ -23,6 +26,17 @@ class SettingsScreen extends StatelessWidget {
   final VpnController controller;
 
   AppSettings get s => controller.settings;
+
+  /// A theme switch rebuilds the whole app (and its navigator); reopen this screen on top of the new home.
+  void _changeAppearance(Future<void> Function() change) {
+    change();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      appNavigatorKey.currentState?.push(PageRouteBuilder<void>(
+        transitionDuration: Duration.zero,
+        pageBuilder: (context, a, b) => SettingsScreen(controller: controller),
+      ));
+    });
+  }
 
   void _toast(BuildContext context, String text) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text), behavior: SnackBarBehavior.floating));
@@ -45,6 +59,22 @@ class SettingsScreen extends StatelessWidget {
                     _TopBar(title: 'تنظیمات پیشرفته', onBack: () => Navigator.of(context).pop()),
                     if (controller.state != VpnState.disconnected)
                       const _Hint('تغییرات اتصال از اتصال بعدی اعمال می‌شوند.'),
+                    _Section(title: 'ظاهر', icon: Icons.palette_rounded, children: [
+                      _ChoiceRow<String>(
+                        icon: Icons.brightness_6_rounded,
+                        title: 'تم',
+                        options: const {'system': 'خودکار', 'light': 'روشن ☀️', 'dark': 'تیره 🌙'},
+                        value: s.themeMode,
+                        onChanged: (v) => _changeAppearance(() => s.update((x) => x.themeMode = v)),
+                      ),
+                      _SwitchRow(
+                        icon: Icons.animation_rounded,
+                        title: 'کاهش انیمیشن',
+                        subtitle: 'برای گوشی‌ها و کامپیوترهای ضعیف روان‌تر',
+                        value: s.reduceMotion,
+                        onChanged: (v) => _changeAppearance(() => s.update((x) => x.reduceMotion = v)),
+                      ),
+                    ]),
                     _Section(title: 'اتصال', icon: Icons.power_rounded, children: [
                       _SwitchRow(
                         icon: Icons.autorenew_rounded,
@@ -242,6 +272,20 @@ class SettingsScreen extends StatelessWidget {
                         onTap: controller.refresh,
                       ),
                     ]),
+                    _Section(title: 'پشتیبانی', icon: Icons.support_agent_rounded, children: [
+                      _ActionRow(
+                        icon: Icons.menu_book_rounded,
+                        title: 'راهنما',
+                        subtitle: 'اگر وصل نشد یا کند بود، اینجا را بخوانید',
+                        onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const HelpScreen())),
+                      ),
+                      _ActionRow(
+                        icon: Icons.bug_report_rounded,
+                        title: 'گزارش خطا',
+                        subtitle: 'جزئیات آخرین اتصال‌ها؛ کپی کنید و بفرستید',
+                        onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => LogScreen(controller: controller))),
+                      ),
+                    ]),
                     _Section(title: 'درباره', icon: Icons.info_outline_rounded, children: [
                       FutureBuilder<PackageInfo>(
                         future: PackageInfo.fromPlatform(),
@@ -302,7 +346,7 @@ Future<String?> _prompt(BuildContext context, String title, String initial, {Tex
     builder: (context) => Directionality(
       textDirection: TextDirection.rtl,
       child: AlertDialog(
-        backgroundColor: const Color(0xFF14142A),
+        backgroundColor: Palette.sheet,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: Text(title, style: const TextStyle(fontSize: 16)),
         content: TextField(
@@ -312,7 +356,7 @@ Future<String?> _prompt(BuildContext context, String title, String initial, {Tex
           textDirection: TextDirection.ltr,
           decoration: InputDecoration(
             filled: true,
-            fillColor: Colors.white.withValues(alpha: 0.06),
+            fillColor: Palette.fill,
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
           ),
         ),
@@ -337,9 +381,9 @@ class _TopBar extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         children: [
-          Glass(radius: 16, padding: const EdgeInsets.all(10), onTap: onBack, child: const Icon(Icons.arrow_forward_rounded, color: Palette.text)),
+          Glass(radius: 16, padding: const EdgeInsets.all(10), onTap: onBack, child: Icon(Icons.arrow_forward_rounded, color: Palette.text)),
           const SizedBox(width: 14),
-          Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Palette.text)),
+          Text(title, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Palette.text)),
         ],
       ),
     );
@@ -387,9 +431,9 @@ class _Section extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.fromLTRB(10, 0, 10, 6),
                 child: Row(children: [
-                  Icon(icon, size: 18, color: const Color(0xFFA78BFA)),
+                  Icon(icon, size: 18, color: Palette.accent),
                   const SizedBox(width: 8),
-                  Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFFA78BFA))),
+                  Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Palette.accent)),
                 ]),
               ),
               ...children,
@@ -426,7 +470,7 @@ class _RowShell extends StatelessWidget {
                 Container(
                   width: 36,
                   height: 36,
-                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(11)),
+                  decoration: BoxDecoration(color: Palette.fill, borderRadius: BorderRadius.circular(11)),
                   child: Icon(icon, size: 19, color: color ?? Palette.text),
                 ),
                 const SizedBox(width: 12),
@@ -438,7 +482,7 @@ class _RowShell extends StatelessWidget {
                       if (subtitle != null)
                         Padding(
                           padding: const EdgeInsets.only(top: 2),
-                          child: Text(subtitle!, style: const TextStyle(fontSize: 12, height: 1.5, color: Palette.muted)),
+                          child: Text(subtitle!, style: TextStyle(fontSize: 12, height: 1.5, color: Palette.muted)),
                         ),
                     ],
                   ),
@@ -469,7 +513,7 @@ class _SwitchRow extends StatelessWidget {
         title: title,
         subtitle: subtitle,
         onTap: () => onChanged(!value),
-        trailing: Switch(value: value, onChanged: onChanged, activeThumbColor: const Color(0xFFA78BFA)),
+        trailing: Switch(value: value, onChanged: onChanged, activeThumbColor: Palette.accent),
       );
 }
 
@@ -498,8 +542,8 @@ class _ChoiceRow<T> extends StatelessWidget {
                 selected: e.key == value,
                 onSelected: (_) => onChanged(e.key),
                 selectedColor: const Color(0xFF7C3AED),
-                backgroundColor: Colors.white.withValues(alpha: 0.05),
-                side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+                backgroundColor: Palette.fill,
+                side: BorderSide(color: Palette.border),
                 showCheckmark: false,
               ),
           ],
@@ -530,8 +574,8 @@ class _ProtocolRow extends StatelessWidget {
               label: Text(Server(uri: '', remark: '', countryCode: '', protocol: p).protocolLabel),
               selected: settings.protocols.contains(p),
               selectedColor: const Color(0xFF0E7490),
-              backgroundColor: Colors.white.withValues(alpha: 0.05),
-              side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+              backgroundColor: Palette.fill,
+              side: BorderSide(color: Palette.border),
               onSelected: (on) {
                 final next = {...settings.protocols};
                 on ? next.add(p) : next.remove(p);
@@ -562,7 +606,7 @@ class _TextRow extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textDirection: TextDirection.ltr,
-              style: const TextStyle(fontSize: 13, color: Palette.muted)),
+              style: TextStyle(fontSize: 13, color: Palette.muted)),
         ),
       );
 }
@@ -585,6 +629,6 @@ class _ActionRow extends StatelessWidget {
         onTap: busy ? null : onTap,
         trailing: busy
             ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
-            : const Icon(Icons.chevron_left_rounded, color: Palette.muted),
+            : Icon(Icons.chevron_left_rounded, color: Palette.muted),
       );
 }

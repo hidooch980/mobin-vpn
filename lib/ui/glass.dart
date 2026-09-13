@@ -1,8 +1,8 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
-/// Frosted-glass surface.
+import 'style.dart';
+
+/// Frosted-looking card. No BackdropFilter: re-blurring an animated background every frame was the main source of lag.
 class Glass extends StatelessWidget {
   const Glass({
     super.key,
@@ -22,30 +22,25 @@ class Glass extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shape = BorderRadius.circular(radius);
-    return ClipRRect(
-      borderRadius: shape,
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-        child: Material(
-          type: MaterialType.transparency,
-          child: InkWell(
-            onTap: onTap,
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: shape,
+        splashColor: Palette.fillStrong,
+        highlightColor: Palette.fill,
+        child: Ink(
+          decoration: BoxDecoration(
             borderRadius: shape,
-            splashColor: Colors.white.withValues(alpha: 0.06),
-            highlightColor: Colors.white.withValues(alpha: 0.03),
-            child: Ink(
-              decoration: BoxDecoration(
-                borderRadius: shape,
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Colors.white.withValues(alpha: 0.11), Colors.white.withValues(alpha: 0.03)],
-                ),
-                border: Border.all(color: borderColor ?? Colors.white.withValues(alpha: 0.12)),
-              ),
-              child: Padding(padding: padding, child: child),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Palette.cardTop, Palette.cardBottom],
             ),
+            border: Border.all(color: borderColor ?? Palette.border),
+            boxShadow: Palette.isDark ? null : [BoxShadow(color: Palette.shadow, blurRadius: 22, offset: const Offset(0, 8))],
           ),
+          child: Padding(padding: padding, child: child),
         ),
       ),
     );

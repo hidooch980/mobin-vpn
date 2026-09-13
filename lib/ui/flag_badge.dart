@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../core/countries.dart';
+import 'style.dart';
 
 /// Country flag. Windows cannot render flag emoji, so it gets a colored code badge instead.
 class FlagBadge extends StatelessWidget {
@@ -41,7 +42,7 @@ class FlagBadge extends StatelessWidget {
     }
     if (!Platform.isWindows) {
       return _circle(
-        [Colors.white.withValues(alpha: 0.12), Colors.white.withValues(alpha: 0.04)],
+        [Palette.border, Palette.fill],
         Text(flagEmoji(code), style: TextStyle(fontSize: size * 0.56)),
       );
     }
@@ -59,7 +60,7 @@ class FlagBadge extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: colors),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+          border: Border.all(color: Palette.border),
         ),
         child: child,
       );

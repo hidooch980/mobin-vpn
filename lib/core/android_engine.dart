@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter_v2ray/flutter_v2ray.dart';
 
+import 'app_log.dart';
 import 'engine.dart';
 import 'server.dart';
 
@@ -92,17 +93,21 @@ class AndroidEngine implements VpnEngine {
   @override
   Future<void> init() => _v2.initializeV2Ray();
 
+  /// The plugin measures delays on a single native thread, so requests must go one at a time:
+  /// firing several at once made queued requests hit the Dart timeout and every server looked dead.
   @override
   Future<List<int>> pingAll(List<Server> servers, EngineOptions options,
-      {void Function(int done)? onProgress, bool Function()? isCancelled}) {
+      {void Function(int done)? onProgress, bool Function()? isCancelled, void Function(int index, int delay)? onResult}) {
     final pingOptions = options.forPing;
-    return runPool(servers.length, 8, (i) async {
+    return runPool(servers.length, 1, (i) async {
       final config = _config(servers[i], pingOptions);
       if (config == null || (isCancelled?.call() ?? false)) return -1;
-      final delay = await _v2
+      final raw = await _v2
           .getServerDelay(config: config, url: options.testUrl)
-          .timeout(options.timeout + const Duration(seconds: 2), onTimeout: () => -1);
-      return delay > 0 && delay < options.timeout.inMilliseconds ? delay : -1;
+          .timeout(options.timeout + const Duration(seconds: 4), onTimeout: () => -1);
+      final delay = raw > 0 ? raw : -1;
+      onResult?.call(i, delay);
+      return delay;
     }, onProgress: onProgress);
   }
 
@@ -131,13 +136,17 @@ class AndroidEngine implements VpnEngine {
       proxyOnly: options.proxyOnly,
       notificationDisconnectButtonName: 'قطع اتصال',
     );
-    if (await _waitFor('CONNECTED', const Duration(seconds: 12))) {
-      for (var attempt = 0; attempt < 2; attempt++) {
-        final delay = await _v2
-            .getConnectedServerDelay(url: options.testUrl)
-            .timeout(const Duration(seconds: 12), onTimeout: () => -1);
-        if (delay > 0) return true;
-      }
+    if (!await _waitFor('CONNECTED', const Duration(seconds: 15))) {
+      AppLog.add('android: core did not report CONNECTED for ${server.displayName} (state=$_coreState)');
+      await _v2.stopV2Ray();
+      return false;
+    }
+    for (var attempt = 0; attempt < 3; attempt++) {
+      final delay = await _v2
+          .getConnectedServerDelay(url: options.testUrl)
+          .timeout(const Duration(seconds: 12), onTimeout: () => -1);
+      if (delay > 0) return true;
+      AppLog.add('android: tunnel check ${attempt + 1} failed for ${server.displayName}');
     }
     await _v2.stopV2Ray();
     return false;
