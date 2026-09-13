@@ -18,6 +18,7 @@ class AppSettings extends ChangeNotifier {
   bool reduceMotion = false;
 
   // Connection
+  String androidCore = 'xray'; // xray | singbox
   bool autoReconnect = true;
   bool connectOnLaunch = false;
   bool proxyOnly = false; // Android: local proxy without VPN tunnel
@@ -50,6 +51,7 @@ class AppSettings extends ChangeNotifier {
     final p = await SharedPreferences.getInstance();
     themeMode = p.getString('s_themeMode') ?? themeMode;
     reduceMotion = p.getBool('s_reduceMotion') ?? reduceMotion;
+    androidCore = p.getString('s_androidCore') ?? androidCore;
     autoReconnect = p.getBool('s_autoReconnect') ?? autoReconnect;
     connectOnLaunch = p.getBool('s_connectOnLaunch') ?? connectOnLaunch;
     proxyOnly = p.getBool('s_proxyOnly') ?? proxyOnly;
@@ -83,6 +85,7 @@ class AppSettings extends ChangeNotifier {
     await Future.wait([
       p.setString('s_themeMode', themeMode),
       p.setBool('s_reduceMotion', reduceMotion),
+      p.setString('s_androidCore', androidCore),
       p.setBool('s_autoReconnect', autoReconnect),
       p.setBool('s_connectOnLaunch', connectOnLaunch),
       p.setBool('s_proxyOnly', proxyOnly),

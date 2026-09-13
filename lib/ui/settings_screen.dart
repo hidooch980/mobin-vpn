@@ -109,6 +109,19 @@ class SettingsScreen extends StatelessWidget {
                           onChanged: (v) => s.update((x) => x.proxyOnly = v),
                         ),
                       if (Platform.isAndroid)
+                        _ChoiceRow<String>(
+                          icon: Icons.memory_rounded,
+                          title: 'هسته‌ی اتصال',
+                          subtitle: 'اگر با یکی وصل نشد، دیگری را امتحان کنید. sing-box همه‌ی پروتکل‌ها (Hysteria2، TUIC، WireGuard…) و تست پینگ سریع‌تر دارد',
+                          options: const {'xray': 'Xray', 'singbox': 'sing-box'},
+                          value: s.androidCore,
+                          onChanged: (v) async {
+                            if (controller.state != VpnState.disconnected) await controller.disconnect();
+                            await s.update((x) => x.androidCore = v);
+                            await controller.refresh();
+                          },
+                        ),
+                      if (Platform.isAndroid)
                         _ActionRow(
                           icon: Icons.shield_rounded,
                           title: 'Kill Switch (قطع اینترنت بدون VPN)',
@@ -560,7 +573,8 @@ class _ProtocolRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final available = Platform.isAndroid ? Protocol.values.where(_android.contains) : Protocol.values;
+    final xrayOnly = Platform.isAndroid && settings.androidCore == 'xray';
+    final available = xrayOnly ? Protocol.values.where(_android.contains) : Protocol.values;
     return _RowShell(
       icon: Icons.security_rounded,
       title: 'پروتکل‌ها',

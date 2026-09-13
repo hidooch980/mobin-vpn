@@ -124,29 +124,41 @@ class AndroidEngine implements VpnEngine {
   Future<bool> connect(Server server, EngineOptions options) async {
     final config = _config(server, options);
     if (config == null) return false;
+    return startTunnel(remark: server.displayName, config: config, options: options);
+  }
+
+  /// Starts the VpnService with any Xray [config] and returns true once traffic passes through it.
+  /// Also used by the sing-box engine, whose Xray config just forwards to sing-box's local port.
+  Future<bool> startTunnel({
+    required String remark,
+    required String config,
+    required EngineOptions options,
+    List<String> extraBlockedApps = const [],
+  }) async {
     if (!options.proxyOnly && !await _v2.requestPermission()) throw const PermissionDeniedError();
     if (_coreState != 'DISCONNECTED') {
       await _v2.stopV2Ray();
       await _waitFor('DISCONNECTED', const Duration(seconds: 3));
     }
+    final blocked = [...options.excludedApps, ...extraBlockedApps];
     await _v2.startV2Ray(
-      remark: server.displayName,
+      remark: remark,
       config: config,
-      blockedApps: options.excludedApps.isEmpty ? null : options.excludedApps,
+      blockedApps: blocked.isEmpty ? null : blocked,
       proxyOnly: options.proxyOnly,
       notificationDisconnectButtonName: 'قطع اتصال',
     );
-    if (!await _waitFor('CONNECTED', const Duration(seconds: 15))) {
-      AppLog.add('android: core did not report CONNECTED for ${server.displayName} (state=$_coreState)');
+    if (!await _waitFor('CONNECTED', const Duration(seconds: 8))) {
+      AppLog.add('android: core did not report CONNECTED for $remark (state=$_coreState)');
       await _v2.stopV2Ray();
       return false;
     }
-    for (var attempt = 0; attempt < 3; attempt++) {
+    for (var attempt = 0; attempt < 2; attempt++) {
       final delay = await _v2
           .getConnectedServerDelay(url: options.testUrl)
-          .timeout(const Duration(seconds: 12), onTimeout: () => -1);
+          .timeout(const Duration(seconds: 7), onTimeout: () => -1);
       if (delay > 0) return true;
-      AppLog.add('android: tunnel check ${attempt + 1} failed for ${server.displayName}');
+      AppLog.add('android: tunnel check ${attempt + 1} failed for $remark');
     }
     await _v2.stopV2Ray();
     return false;

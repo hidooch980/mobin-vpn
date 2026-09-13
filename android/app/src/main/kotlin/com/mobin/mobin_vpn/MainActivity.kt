@@ -22,6 +22,8 @@ class MainActivity : FlutterActivity() {
                     }
                     result.success(null)
                 }
+                // Executables must live in the extracted native library dir (bundled sing-box: libsingbox.so).
+                "nativeLibDir" -> result.success(applicationInfo.nativeLibraryDir)
                 else -> result.notImplemented()
             }
         }

@@ -46,3 +46,6 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# sing-box binaries are downloaded in CI
+/android/app/src/main/jniLibs/

@@ -33,10 +33,11 @@ class _UserError implements Exception {
 
 class VpnController extends ChangeNotifier {
   VpnController({VpnEngine? engine, SubscriptionRepository? repository})
-      : engine = engine ?? VpnEngine.create(),
+      : _engineOverride = engine,
         repository = repository ?? SubscriptionRepository();
 
-  final VpnEngine engine;
+  final VpnEngine? _engineOverride;
+  late final VpnEngine engine = _engineOverride ?? VpnEngine.create(settings);
   final SubscriptionRepository repository;
   final settings = AppSettings();
   final updater = Updater();
@@ -62,8 +63,8 @@ class VpnController extends ChangeNotifier {
   ];
   static const _gamingRefine = 8, _gamingRounds = 2;
 
-  /// Smart mode stops pinging after this many responsive servers.
-  static const _enoughGood = 4;
+  /// Smart mode stops pinging after this many responsive servers (Android pings one by one, so stop at the first).
+  static int get _enoughGood => Platform.isAndroid ? 1 : 3;
 
   bool get isGaming => selectedCountry == gamingMode;
 
@@ -372,8 +373,10 @@ class VpnController extends ChangeNotifier {
     }
     final last = (await SharedPreferences.getInstance()).getString(_lastServerKey);
     final lastServer = servers.where((s) => s.uri == last).firstOrNull;
-    if (lastServer != null && !pool.contains(lastServer) && (country == null || lastServer.countryCode == country)) {
-      pool.insert(0, lastServer);
+    if (lastServer != null && (country == null || lastServer.countryCode == country)) {
+      pool
+        ..remove(lastServer)
+        ..insert(0, lastServer);
     }
     return pool;
   }
@@ -400,6 +403,44 @@ class VpnController extends ChangeNotifier {
       }
       final List<Server> pool = only != null ? [only] : await _candidates();
       if (pool.isEmpty) throw const _UserError('سروری برای این موقعیت پیدا نشد.');
+
+      // Fast path like v2rayNG: reconnect straight to the last working server, no ping round.
+      final last = (await SharedPreferences.getInstance()).getString(_lastServerKey);
+      if (only == null && !isGaming && pool.isNotEmpty && pool.first.uri == last) {
+        final server = pool.first;
+        phase = 'اتصال سریع به ${server.displayName}';
+        notifyListeners();
+        AppLog.add('connect: fast path to last server ${server.displayName}');
+        if (await engine.connect(server, options)) {
+          _checkCancel();
+          current = server;
+          currentDelay = null;
+          connectedAt = DateTime.now();
+          state = VpnState.connected;
+          phase = null;
+          notifyListeners();
+          return;
+        }
+        AppLog.add('connect: fast path failed, testing servers');
+        pool.removeAt(0);
+        _checkCancel();
+      }
+      if (only != null) {
+        // A server the user picked: connect directly, the tunnel check itself proves it works.
+        phase = 'اتصال به ${only.displayName}';
+        notifyListeners();
+        if (await engine.connect(only, options)) {
+          _checkCancel();
+          current = only;
+          connectedAt = DateTime.now();
+          state = VpnState.connected;
+          phase = null;
+          notifyListeners();
+          await (await SharedPreferences.getInstance()).setString(_lastServerKey, only.uri);
+          return;
+        }
+        throw const _UserError('این سرور وصل نشد. سرور دیگری را امتحان کنید.');
+      }
 
       phase = 'سنجش سرورها با اینترنت شما';
       progressTotal = pool.length;
