@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_v2ray/flutter_v2ray.dart';
 
@@ -46,11 +47,31 @@ class AndroidEngine implements VpnEngine {
             {'type': 'field', 'ip': _privateRanges, 'outboundTag': 'direct'},
             if (o.bypassIran) {'type': 'field', 'domain': ['domain:ir'], 'outboundTag': 'direct'},
           ];
-          return p.getFullConfiguration();
+          final config = p.getFullConfiguration();
+          return o.fragment ? _withFragment(config) : config;
         } catch (_) {
           return null;
         }
       });
+
+  /// Splits the TLS ClientHello into small pieces (Xray freedom "fragment") to slip past SNI filtering.
+  static String _withFragment(String config) {
+    final json = jsonDecode(config) as Map<String, dynamic>;
+    final outbounds = json['outbounds'] as List;
+    final proxy = outbounds.first as Map<String, dynamic>;
+    final stream = (proxy['streamSettings'] as Map<String, dynamic>?) ?? {};
+    if (stream['security'] != 'tls') return config;
+    stream['sockopt'] = {...?(stream['sockopt'] as Map<String, dynamic>?), 'dialerProxy': 'fragment'};
+    proxy['streamSettings'] = stream;
+    outbounds.add({
+      'tag': 'fragment',
+      'protocol': 'freedom',
+      'settings': {
+        'fragment': {'packets': 'tlshello', 'length': '10-20', 'interval': '10-20'},
+      },
+    });
+    return jsonEncode(json);
+  }
 
   @override
   bool supports(Server server) => _supported.contains(server.protocol) && _config(server, const EngineOptions()) != null;
@@ -92,6 +113,7 @@ class AndroidEngine implements VpnEngine {
     await _v2.startV2Ray(
       remark: server.displayName,
       config: config,
+      blockedApps: options.excludedApps.isEmpty ? null : options.excludedApps,
       proxyOnly: options.proxyOnly,
       notificationDisconnectButtonName: 'قطع اتصال',
     );

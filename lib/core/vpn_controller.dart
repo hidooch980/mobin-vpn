@@ -10,6 +10,7 @@ import 'server.dart';
 import 'settings.dart';
 import 'subscription.dart';
 import 'updater.dart';
+import 'usage_stats.dart';
 
 class CountryGroup {
   CountryGroup(this.code);
@@ -36,6 +37,7 @@ class VpnController extends ChangeNotifier {
   final SubscriptionRepository repository;
   final settings = AppSettings();
   final updater = Updater();
+  final usage = UsageStats();
 
   static const _countryKey = 'country', _lastServerKey = 'last_server';
   static const _countryPoolSize = 30, _connectAttempts = 4;
@@ -83,13 +85,17 @@ class VpnController extends ChangeNotifier {
         timeout: Duration(seconds: settings.timeoutSeconds),
         proxyOnly: settings.proxyOnly,
         systemProxy: settings.systemProxy,
+        tunMode: settings.tunMode,
+        killSwitch: settings.killSwitch,
         localPort: settings.localPort,
         bypassIran: settings.bypassIran,
         dns: settings.dns,
+        fragment: settings.fragment,
+        excludedApps: settings.excludedApps.toList(),
       );
 
   Future<void> init() async {
-    await settings.load();
+    await Future.wait([settings.load(), usage.load()]);
     settings.addListener(() {
       final data = _data;
       if (data != null) _apply(data);
@@ -104,6 +110,7 @@ class VpnController extends ChangeNotifier {
     });
     engine.traffic.listen((t) {
       if (state != VpnState.connected) return;
+      usage.add(t);
       traffic = t;
       notifyListeners();
     });
@@ -363,6 +370,9 @@ class VpnController extends ChangeNotifier {
       throw const _UserError('اتصال برقرار نشد. دوباره تلاش کنید.');
     } on _Cancelled {
       _markDisconnected();
+    } on AdminRequiredError {
+      error = 'حالت VPN کامل (TUN) دسترسی Administrator می‌خواهد. از تنظیمات «اجرای دوباره به‌عنوان ادمین» را بزنید.';
+      _markDisconnected();
     } on PermissionDeniedError {
       error = 'برای اتصال، اجازه‌ی VPN لازم است.';
       _markDisconnected();
@@ -390,6 +400,7 @@ class VpnController extends ChangeNotifier {
   }
 
   void _markDisconnected() {
+    unawaited(usage.save());
     state = VpnState.disconnected;
     current = null;
     currentDelay = null;

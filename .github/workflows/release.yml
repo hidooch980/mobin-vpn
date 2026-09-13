@@ -81,17 +81,47 @@ jobs:
           channel: stable
           cache: true
       - run: flutter build windows --release --build-name $env:VERSION --build-number ${{ github.run_number }}
-      - name: Bundle sing-box (latest 1.11.x)
+      - name: Bundle sing-box (latest 1.12.x)
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG=$(gh release list -R SagerNet/sing-box --exclude-pre-releases --limit 100 --json tagName \
-                --jq '[.[].tagName | select(startswith("v1.11."))][0]')
+                --jq '[.[].tagName | select(startswith("v1.12."))][0]')
           VER=${TAG#v}
           gh release download "$TAG" -R SagerNet/sing-box -p "sing-box-${VER}-windows-amd64.zip" -O sb.zip
           unzip -q sb.zip
           cp "sing-box-${VER}-windows-amd64/sing-box.exe" build/windows/x64/runner/Release/
+      - name: Validate the config shapes the app generates (TUN, fragment, DNS)
+        shell: bash
+        run: |
+          cat > app-config-test.json <<'JSON'
+          {
+            "log": {"level": "warn"},
+            "dns": {"servers": [{"type": "local", "tag": "local"},
+                                {"type": "https", "tag": "remote", "server": "1.1.1.1", "detour": "proxy"}],
+                    "final": "remote", "strategy": "prefer_ipv4"},
+            "inbounds": [
+              {"type": "mixed", "tag": "in", "listen": "127.0.0.1", "listen_port": 10808},
+              {"type": "tun", "tag": "tun", "interface_name": "MobinVPN",
+               "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"], "auto_route": true, "strict_route": true, "stack": "mixed"}
+            ],
+            "outbounds": [
+              {"type": "vless", "tag": "proxy", "server": "example.com", "server_port": 443,
+               "uuid": "11111111-1111-1111-1111-111111111111", "packet_encoding": "xudp",
+               "tls": {"enabled": true, "server_name": "example.com", "record_fragment": true,
+                       "utls": {"enabled": true, "fingerprint": "chrome"}},
+               "transport": {"type": "ws", "path": "/"}},
+              {"type": "direct", "tag": "direct"}
+            ],
+            "route": {"rules": [{"action": "sniff"}, {"protocol": "dns", "action": "hijack-dns"},
+                                {"ip_is_private": true, "outbound": "direct"},
+                                {"domain_suffix": ["ir"], "outbound": "direct"}],
+                      "final": "proxy", "auto_detect_interface": true, "default_domain_resolver": "local"},
+            "experimental": {"clash_api": {"external_controller": "127.0.0.1:9090"}}
+          }
+          JSON
+          build/windows/x64/runner/Release/sing-box.exe check -c app-config-test.json
       - name: Zip
         run: |
           New-Item -ItemType Directory dist | Out-Null

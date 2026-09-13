@@ -11,6 +11,7 @@ import 'glass.dart';
 import 'location_sheet.dart';
 import 'servers_screen.dart';
 import 'settings_screen.dart';
+import 'usage_screen.dart';
 import 'style.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -119,6 +120,12 @@ class _Header extends StatelessWidget {
           ],
         ),
         const Spacer(),
+        _RoundButton(
+          tooltip: 'آمار مصرف',
+          icon: Icons.insights_rounded,
+          onTap: () => Navigator.of(context).push(_fadeRoute(UsageScreen(controller: controller))),
+        ),
+        const SizedBox(width: 8),
         _RoundButton(
           tooltip: 'همه‌ی سرورها',
           icon: Icons.dns_rounded,

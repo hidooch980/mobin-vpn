@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ffi';
 import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
@@ -12,7 +13,7 @@ import 'win_system_proxy.dart';
 
 const _proxyOwnedKey = 'win_proxy_owned';
 
-/// Windows: bundled sing-box.exe as a local proxy + Windows system proxy.
+/// Windows: bundled sing-box.exe (1.12) — local proxy + system proxy, or full TUN VPN as administrator.
 class WindowsEngine implements VpnEngine {
   final _states = StreamController<VpnState>.broadcast();
   final _traffic = StreamController<TrafficStat>.broadcast();
@@ -23,6 +24,22 @@ class WindowsEngine implements VpnEngine {
   int? _proxyPort;
 
   String get _bin => '${File(Platform.resolvedExecutable).parent.path}\\sing-box.exe';
+
+  static bool get isAdmin {
+    try {
+      final isUserAnAdmin = DynamicLibrary.open('shell32.dll').lookupFunction<Int32 Function(), int Function()>('IsUserAnAdmin');
+      return isUserAnAdmin() != 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Starts a UAC-elevated copy of the app; the caller exits afterwards.
+  static Future<void> relaunchAsAdmin() => Process.start(
+        'powershell',
+        ['-NoProfile', '-WindowStyle', 'Hidden', '-Command', "Start-Process -FilePath '${Platform.resolvedExecutable.replaceAll("'", "''")}' -Verb RunAs"],
+        mode: ProcessStartMode.detached,
+      );
 
   @override
   Stream<VpnState> get states => _states.stream;
@@ -53,6 +70,16 @@ class WindowsEngine implements VpnEngine {
     return port;
   }
 
+  /// Local DNS resolves proxy server domains (required by sing-box 1.12 when servers use domains).
+  static Json _baseConfig(String logLevel) => {
+        'log': {'level': logLevel},
+        'dns': {
+          'servers': [
+            {'type': 'local', 'tag': 'local'},
+          ],
+        },
+      };
+
   Future<File> _writeConfig(String name, Json config) =>
       File('${_work.path}\\$name.json').writeAsString(jsonEncode(config));
 
@@ -61,7 +88,11 @@ class WindowsEngine implements VpnEngine {
       Process.start(_bin, args, workingDirectory: _work.path, mode: ProcessStartMode.detachedWithStdio);
 
   Future<bool> _configValid(List<Json> outbounds) async {
-    final file = await _writeConfig('check', {'log': {'level': 'error'}, 'outbounds': outbounds});
+    final file = await _writeConfig('check', {
+      ..._baseConfig('error'),
+      'outbounds': outbounds,
+      'route': {'default_domain_resolver': 'local'},
+    });
     final p = await _spawn(['check', '-c', file.path]);
     final output = await Future.wait([p.stdout.transform(utf8.decoder).join(), p.stderr.transform(utf8.decoder).join()]);
     final text = output.join().toLowerCase();
@@ -82,7 +113,7 @@ class WindowsEngine implements VpnEngine {
   Future<bool> _waitApi(int api) async {
     final client = HttpClient()..connectionTimeout = const Duration(milliseconds: 500);
     try {
-      for (var i = 0; i < 40; i++) {
+      for (var i = 0; i < 60; i++) {
         try {
           final res = await (await client.getUrl(Uri.parse('http://127.0.0.1:$api/version'))).close();
           await res.drain<void>();
@@ -110,12 +141,21 @@ class WindowsEngine implements VpnEngine {
     }
   }
 
+  static Json _tagged(Json outbound, String tag, EngineOptions o) {
+    final result = {...outbound, 'tag': tag};
+    final tls = outbound['tls'];
+    if (o.fragment && tls is Map && tls['enabled'] == true && tls['reality'] == null) {
+      result['tls'] = {...tls, 'record_fragment': true};
+    }
+    return result;
+  }
+
   @override
   Future<List<int>> pingAll(List<Server> servers, EngineOptions options,
       {void Function(int done)? onProgress, bool Function()? isCancelled}) async {
     final results = List<int>.filled(servers.length, -1);
     final outbounds = [
-      for (var i = 0; i < servers.length; i++) <String, dynamic>{...?_outbound(servers[i]), 'tag': 'p$i'},
+      for (var i = 0; i < servers.length; i++) _tagged(_outbound(servers[i]) ?? const {}, 'p$i', options),
     ];
     final usable = [for (var i = 0; i < servers.length; i++) if (_outbound(servers[i]) != null) i];
     final valid = await _validSubset(usable, outbounds);
@@ -125,8 +165,9 @@ class WindowsEngine implements VpnEngine {
 
     final api = await _freePort();
     final file = await _writeConfig('ping', {
-      'log': {'level': 'error'},
+      ..._baseConfig('error'),
       'outbounds': [for (final i in valid) outbounds[i], {'type': 'direct', 'tag': 'direct'}],
+      'route': {'default_domain_resolver': 'local'},
       'experimental': {'clash_api': {'external_controller': '127.0.0.1:$api'}},
     });
     final proc = await _spawn(['run', '-c', file.path]);
@@ -167,43 +208,74 @@ class WindowsEngine implements VpnEngine {
     }
   }
 
+  Json _connectConfig(Json outbound, int port, int api, EngineOptions o) {
+    final base = _baseConfig('warn');
+    return {
+      ...base,
+      'dns': {
+        'servers': [
+          {'type': 'local', 'tag': 'local'},
+          if (o.tunMode) {'type': 'https', 'tag': 'remote', 'server': '1.1.1.1', 'detour': 'proxy'},
+        ],
+        'final': o.tunMode ? 'remote' : 'local',
+        'strategy': 'prefer_ipv4',
+      },
+      'inbounds': [
+        {'type': 'mixed', 'tag': 'in', 'listen': '127.0.0.1', 'listen_port': port},
+        if (o.tunMode)
+          {
+            'type': 'tun',
+            'tag': 'tun',
+            'interface_name': 'MobinVPN',
+            'address': ['172.19.0.1/30', 'fdfe:dcba:9876::1/126'],
+            'auto_route': true,
+            'strict_route': o.killSwitch,
+            'stack': 'mixed',
+          },
+      ],
+      'outbounds': [
+        _tagged(outbound, 'proxy', o),
+        {'type': 'direct', 'tag': 'direct'},
+      ],
+      'route': {
+        'rules': [
+          {'action': 'sniff'},
+          if (o.tunMode) {'protocol': 'dns', 'action': 'hijack-dns'},
+          {'ip_is_private': true, 'outbound': 'direct'},
+          if (o.bypassIran) {'domain_suffix': ['ir'], 'outbound': 'direct'},
+        ],
+        'final': 'proxy',
+        'auto_detect_interface': true,
+        'default_domain_resolver': 'local',
+      },
+      'experimental': {'clash_api': {'external_controller': '127.0.0.1:$api'}},
+    };
+  }
+
   @override
   Future<bool> connect(Server server, EngineOptions options) async {
+    if (options.tunMode && !isAdmin) throw const AdminRequiredError();
     await disconnect();
     final outbound = _outbound(server);
     if (outbound == null) return false;
     final port = options.localPort > 0 ? options.localPort : await _freePort();
     final api = await _freePort();
-    final file = await _writeConfig('active', {
-      'log': {'level': 'warn'},
-      'inbounds': [
-        {'type': 'mixed', 'tag': 'in', 'listen': '127.0.0.1', 'listen_port': port},
-      ],
-      'outbounds': [
-        {...outbound, 'tag': 'proxy'},
-        {'type': 'direct', 'tag': 'direct'},
-      ],
-      'route': {
-        'rules': [
-          {'ip_is_private': true, 'outbound': 'direct'},
-          if (options.bypassIran) {'domain_suffix': ['ir'], 'outbound': 'direct'},
-        ],
-        'final': 'proxy',
-        'auto_detect_interface': true,
-      },
-      'experimental': {'clash_api': {'external_controller': '127.0.0.1:$api'}},
-    });
+    final file = await _writeConfig('active', _connectConfig(outbound, port, api, options));
     final proc = await _spawn(['run', '-c', file.path]);
     _proc = proc;
     unawaited(proc.stderr.drain<void>());
     // stdout closes when the process exits: handle a crash while connected.
     unawaited(proc.stdout.drain<void>().whenComplete(() async {
-      if (identical(_proc, proc)) {
-        _proc = null;
-        _proxyPort = null;
+      if (!identical(_proc, proc)) return;
+      _proc = null;
+      _proxyPort = null;
+      if (options.killSwitch && !options.tunMode && options.systemProxy) {
+        // Kill switch: point browsers at a dead proxy so nothing leaks until reconnect or disconnect.
+        WinSystemProxy.enable('127.0.0.1:9');
+      } else {
         await _releaseProxy();
-        _states.add(VpnState.disconnected);
       }
+      _states.add(VpnState.disconnected);
     }));
 
     if (!await _waitApi(api) || !await _verifyThroughProxy(port, options.testUrl)) {
@@ -211,7 +283,7 @@ class WindowsEngine implements VpnEngine {
       return false;
     }
     _proxyPort = port;
-    if (options.systemProxy) {
+    if (options.systemProxy && !options.tunMode) {
       WinSystemProxy.enable('127.0.0.1:$port');
       await (await SharedPreferences.getInstance()).setBool(_proxyOwnedKey, true);
     }

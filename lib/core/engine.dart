@@ -19,25 +19,34 @@ class PermissionDeniedError implements Exception {
   const PermissionDeniedError();
 }
 
+class AdminRequiredError implements Exception {
+  const AdminRequiredError();
+}
+
 class EngineOptions {
   const EngineOptions({
     this.testUrl = 'https://www.gstatic.com/generate_204',
     this.timeout = const Duration(seconds: 8),
     this.proxyOnly = false,
     this.systemProxy = true,
+    this.tunMode = false,
+    this.killSwitch = false,
     this.localPort = 0,
     this.bypassIran = true,
     this.dns = '1.1.1.1',
+    this.fragment = false,
+    this.excludedApps = const [],
   });
 
   final String testUrl;
   final Duration timeout;
-  final bool proxyOnly, systemProxy, bypassIran;
+  final bool proxyOnly, systemProxy, tunMode, killSwitch, bypassIran, fragment;
   final int localPort;
   final String dns;
+  final List<String> excludedApps;
 
   /// Settings that change the generated core config.
-  String get configKey => '$dns|$bypassIran';
+  String get configKey => '$dns|$bypassIran|$fragment';
 }
 
 /// Platform VPN core. Delays are measured from the user's own connection.

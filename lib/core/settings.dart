@@ -18,11 +18,15 @@ class AppSettings extends ChangeNotifier {
   bool connectOnLaunch = false;
   bool proxyOnly = false; // Android: local proxy without VPN tunnel
   bool systemProxy = true; // Windows: set the Windows system proxy
+  bool tunMode = false; // Windows: full-device VPN (administrator)
+  bool killSwitch = false; // Windows: block traffic if the core dies
   int localPort = 0; // Windows: 0 = random free port
 
-  // Routing / DNS
+  // Routing / DNS / anti-censorship
   bool bypassIran = true;
   String dns = '1.1.1.1';
+  bool fragment = false;
+  Set<String> excludedApps = {}; // Android package names that skip the VPN
 
   // Server selection
   int poolSize = 40;
@@ -37,9 +41,13 @@ class AppSettings extends ChangeNotifier {
     connectOnLaunch = p.getBool('s_connectOnLaunch') ?? connectOnLaunch;
     proxyOnly = p.getBool('s_proxyOnly') ?? proxyOnly;
     systemProxy = p.getBool('s_systemProxy') ?? systemProxy;
+    tunMode = p.getBool('s_tunMode') ?? tunMode;
+    killSwitch = p.getBool('s_killSwitch') ?? killSwitch;
     localPort = p.getInt('s_localPort') ?? localPort;
     bypassIran = p.getBool('s_bypassIran') ?? bypassIran;
     dns = p.getString('s_dns') ?? dns;
+    fragment = p.getBool('s_fragment') ?? fragment;
+    excludedApps = (p.getStringList('s_excludedApps') ?? const []).toSet();
     poolSize = p.getInt('s_poolSize') ?? poolSize;
     timeoutSeconds = p.getInt('s_timeout') ?? timeoutSeconds;
     testUrl = p.getString('s_testUrl') ?? testUrl;
@@ -59,9 +67,13 @@ class AppSettings extends ChangeNotifier {
       p.setBool('s_connectOnLaunch', connectOnLaunch),
       p.setBool('s_proxyOnly', proxyOnly),
       p.setBool('s_systemProxy', systemProxy),
+      p.setBool('s_tunMode', tunMode),
+      p.setBool('s_killSwitch', killSwitch),
       p.setInt('s_localPort', localPort),
       p.setBool('s_bypassIran', bypassIran),
       p.setString('s_dns', dns),
+      p.setBool('s_fragment', fragment),
+      p.setStringList('s_excludedApps', excludedApps.toList()),
       p.setInt('s_poolSize', poolSize),
       p.setInt('s_timeout', timeoutSeconds),
       p.setString('s_testUrl', testUrl),
@@ -82,9 +94,13 @@ class AppSettings extends ChangeNotifier {
           ..connectOnLaunch = false
           ..proxyOnly = false
           ..systemProxy = true
+          ..tunMode = false
+          ..killSwitch = false
           ..localPort = 0
           ..bypassIran = true
           ..dns = '1.1.1.1'
+          ..fragment = false
+          ..excludedApps = {}
           ..poolSize = 40
           ..timeoutSeconds = 8
           ..testUrl = defaultTestUrl

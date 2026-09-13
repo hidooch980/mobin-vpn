@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:android_intent_plus/android_intent.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -8,6 +9,8 @@ import '../core/engine.dart';
 import '../core/server.dart';
 import '../core/settings.dart';
 import '../core/vpn_controller.dart';
+import '../core/windows_engine.dart';
+import 'apps_screen.dart';
 import 'aurora_background.dart';
 import 'glass.dart';
 import 'style.dart';
@@ -62,7 +65,42 @@ class SettingsScreen extends StatelessWidget {
                           value: s.proxyOnly,
                           onChanged: (v) => s.update((x) => x.proxyOnly = v),
                         ),
+                      if (Platform.isAndroid)
+                        _ActionRow(
+                          icon: Icons.shield_rounded,
+                          title: 'Kill Switch (قطع اینترنت بدون VPN)',
+                          subtitle: 'در تنظیمات VPN اندروید، Mobin VPN را «همیشه روشن» و «مسدود کردن اتصال بدون VPN» کنید',
+                          onTap: () => const AndroidIntent(action: 'android.settings.VPN_SETTINGS').launch(),
+                        ),
                       if (Platform.isWindows) ...[
+                        _SwitchRow(
+                          icon: Icons.vpn_lock_rounded,
+                          title: 'VPN کامل (TUN)',
+                          subtitle: WindowsEngine.isAdmin
+                              ? 'همه‌ی برنامه‌ها و بازی‌ها از VPN عبور می‌کنند'
+                              : 'همه‌ی برنامه‌ها و بازی‌ها — نیاز به اجرای برنامه به‌عنوان Administrator',
+                          value: s.tunMode,
+                          onChanged: (v) => s.update((x) => x.tunMode = v),
+                        ),
+                        if (s.tunMode && !WindowsEngine.isAdmin)
+                          _ActionRow(
+                            icon: Icons.admin_panel_settings_rounded,
+                            title: 'اجرای دوباره به‌عنوان Administrator',
+                            onTap: () async {
+                              await controller.disconnect();
+                              await WindowsEngine.relaunchAsAdmin();
+                              exit(0);
+                            },
+                          ),
+                        _SwitchRow(
+                          icon: Icons.shield_rounded,
+                          title: 'Kill Switch',
+                          subtitle: s.tunMode
+                              ? 'فقط ترافیک از تونل عبور می‌کند (strict route)'
+                              : 'اگر هسته قطع شد، مرورگرها تا اتصال دوباره یا قطع دستی اینترنت ندارند',
+                          value: s.killSwitch,
+                          onChanged: (v) => s.update((x) => x.killSwitch = v),
+                        ),
                         _SwitchRow(
                           icon: Icons.settings_ethernet_rounded,
                           title: 'تنظیم پراکسی ویندوز',
@@ -101,6 +139,22 @@ class SettingsScreen extends StatelessWidget {
                         subtitle: 'دامنه‌های .ir و شبکه‌ی محلی از VPN عبور نمی‌کنند (سریع‌تر، بانک‌ها کار می‌کنند)',
                         value: s.bypassIran,
                         onChanged: (v) => s.update((x) => x.bypassIran = v),
+                      ),
+                      if (Platform.isAndroid)
+                        _ActionRow(
+                          icon: Icons.apps_rounded,
+                          title: 'برنامه‌های خارج از VPN',
+                          subtitle: s.excludedApps.isEmpty
+                              ? 'مثلاً بانک و تاکسی اینترنتی را مستقیم وصل کنید'
+                              : '${s.excludedApps.length} برنامه مستقیم وصل می‌شوند',
+                          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AppsScreen(settings: s))),
+                        ),
+                      _SwitchRow(
+                        icon: Icons.content_cut_rounded,
+                        title: 'ضد فیلتر (TLS Fragment)',
+                        subtitle: 'تکه‌تکه کردن شروع اتصال TLS برای عبور از فیلترینگ شدید؛ کمی کندتر',
+                        value: s.fragment,
+                        onChanged: (v) => s.update((x) => x.fragment = v),
                       ),
                       if (Platform.isAndroid)
                         _ChoiceRow<String>(

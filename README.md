@@ -7,6 +7,7 @@ One-button VPN client for **Android** and **Windows**, fed by the tested server 
 - **Locations:** pick a country; the fastest server there is used.
 - **Gaming:** servers near Iran, re-tested for average ping + jitter.
 - **Advanced:** settings (reconnect, proxy-only, Iran bypass, DNS, pool size, test URL, protocols, custom subscription), full server list with ping test.
+- **Pro:** split tunneling (Android), full-device TUN VPN as administrator (Windows), kill switch, TLS fragment anti-censorship, daily/monthly usage stats.
 - **Updates:** on launch the app checks the latest GitHub Release; one tap downloads it (Android opens the installer, Windows swaps files and relaunches). The server list refreshes on every launch.
 
 Download from **[Releases](../../releases/latest)**.

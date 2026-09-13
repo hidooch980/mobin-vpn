@@ -41,6 +41,8 @@ dependencies:
   shared_preferences: ^2.3.3
   package_info_plus: ^10.2.1
   open_filex: ^4.7.0
+  installed_apps: ^2.1.1
+  android_intent_plus: ^6.1.0
 
 dev_dependencies:
   flutter_test:
