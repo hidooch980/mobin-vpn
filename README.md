@@ -5,6 +5,7 @@ One-button VPN client for **Android** and **Windows**, fed by the tested server 
 
 - **Smart mode:** measures real delay to many servers *from the user's own internet*, connects to the fastest one and retries the next if it fails.
 - **Locations:** pick a country; the fastest server there is used.
+- **Updates:** on launch the app checks the latest GitHub Release; one tap downloads it (Android opens the installer, Windows swaps files and relaunches). The server list refreshes on every launch.
 - **iPhone:** not built here. Use Hiddify with the subscription link or QR shown in the app (QR button, top corner).
 
 Download from **[Releases](../../releases/latest)**.

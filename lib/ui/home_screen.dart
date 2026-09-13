@@ -59,6 +59,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         children: [
                           const SizedBox(height: 10),
                           _Header(controller: c, colors: colors),
+                          _UpdateBanner(controller: c, colors: colors),
                           const Spacer(),
                           _StatusText(controller: c, colors: colors),
                           const SizedBox(height: 8),
@@ -144,6 +145,77 @@ class _RoundButton extends StatelessWidget {
         onTap: onTap,
         child: Icon(icon, color: Palette.text, size: 24),
       ),
+    );
+  }
+}
+
+class _UpdateBanner extends StatelessWidget {
+  const _UpdateBanner({required this.controller, required this.colors});
+
+  final VpnController controller;
+  final List<Color> colors;
+
+  @override
+  Widget build(BuildContext context) {
+    final update = controller.update;
+    final progress = controller.updateProgress;
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeOutBack,
+      child: update == null
+          ? const SizedBox(width: double.infinity)
+          : Padding(
+              padding: const EdgeInsets.only(top: 14),
+              child: Glass(
+                radius: 20,
+                padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+                borderColor: colors[1].withValues(alpha: 0.6),
+                onTap: controller.installUpdate,
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.system_update_rounded, color: colors[1]),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            progress == null
+                                ? 'نسخه‌ی جدید ${update.version} آماده است'
+                                : 'در حال دانلود… ${(progress * 100).toStringAsFixed(0)}٪',
+                            style: const TextStyle(color: Palette.text, fontWeight: FontWeight.w700, fontSize: 13.5),
+                          ),
+                        ),
+                        if (progress == null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              gradient: LinearGradient(colors: [colors[0], colors[1]]),
+                            ),
+                            child: const Text('به‌روزرسانی', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12.5)),
+                          ),
+                      ],
+                    ),
+                    if (progress != null) ...[
+                      const SizedBox(height: 10),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: TweenAnimationBuilder<double>(
+                          tween: Tween(end: progress),
+                          duration: const Duration(milliseconds: 300),
+                          builder: (context, v, _) => LinearProgressIndicator(
+                            value: v,
+                            minHeight: 5,
+                            backgroundColor: Colors.white12,
+                            valueColor: AlwaysStoppedAnimation(colors[1]),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
     );
   }
 }

@@ -27,6 +27,9 @@ abstract class VpnEngine {
   Stream<VpnState> get states;
   Stream<TrafficStat> get traffic;
 
+  /// Local HTTP proxy "host:port" while connected, for the app's own requests (Windows only).
+  String? get httpProxy;
+
   bool supports(Server server);
   Future<void> init();
 

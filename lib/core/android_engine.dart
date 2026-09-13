@@ -23,6 +23,10 @@ class AndroidEngine implements VpnEngine {
   @override
   Stream<TrafficStat> get traffic => _traffic.stream;
 
+  // The VpnService already routes this app's own traffic.
+  @override
+  String? get httpProxy => null;
+
   void _onStatus(V2RayStatus status) {
     _coreState = status.state;
     _traffic.add(TrafficStat(up: status.uploadSpeed, down: status.downloadSpeed));

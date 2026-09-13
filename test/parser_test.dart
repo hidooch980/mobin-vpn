@@ -5,8 +5,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mobin_vpn/core/countries.dart';
 import 'package:mobin_vpn/core/server.dart';
 import 'package:mobin_vpn/core/singbox_outbound.dart';
+import 'package:mobin_vpn/core/updater.dart';
 
 void main() {
+  test('update version comparison', () {
+    expect(Updater.isNewer('1.0.12', '1.0.9'), isTrue);
+    expect(Updater.isNewer('1.0.9', '1.0.12'), isFalse);
+    expect(Updater.isNewer('1.0.5', '1.0.5+5'), isFalse);
+    expect(Updater.isNewer('1.1.0', '1.0.99'), isTrue);
+  });
+
   test('remark gives country, number and protocol', () {
     final s = Server.fromUri(
       'vless://11111111-1111-1111-1111-111111111111@1.2.3.4:443?security=reality&sni=a.com&pbk=KEY&sid=ab'

@@ -30,6 +30,11 @@ class WindowsEngine implements VpnEngine {
   @override
   Stream<TrafficStat> get traffic => _traffic.stream;
 
+  int? _proxyPort;
+
+  @override
+  String? get httpProxy => _proxyPort == null ? null : '127.0.0.1:$_proxyPort';
+
   Json? _outbound(Server s) => _outbounds.putIfAbsent(s.uri, () => parseOutbound(s.uri));
 
   @override
@@ -204,6 +209,7 @@ class WindowsEngine implements VpnEngine {
       return false;
     }
     WinSystemProxy.enable('127.0.0.1:$port');
+    _proxyPort = port;
     await (await SharedPreferences.getInstance()).setBool(_proxyOwnedKey, true);
     unawaited(_streamTraffic(api));
     return true;
@@ -234,6 +240,7 @@ class WindowsEngine implements VpnEngine {
   Future<void> disconnect() async {
     final proc = _proc;
     _proc = null;
+    _proxyPort = null;
     _trafficClient?.close(force: true);
     _trafficClient = null;
     await _releaseProxy();

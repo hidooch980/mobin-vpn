@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,6 +8,7 @@ import 'countries.dart';
 import 'engine.dart';
 import 'server.dart';
 import 'subscription.dart';
+import 'updater.dart';
 
 class CountryGroup {
   CountryGroup(this.code);
@@ -52,6 +54,12 @@ class VpnController extends ChangeNotifier {
   String? error;
   bool _cancel = false;
 
+  final updater = Updater();
+  UpdateInfo? update;
+
+  /// null = not downloading.
+  double? updateProgress;
+
   double? get progress => progressTotal == 0 ? null : progressDone / progressTotal;
 
   Future<void> init() async {
@@ -73,6 +81,37 @@ class VpnController extends ChangeNotifier {
     final cached = await repository.loadCached();
     if (cached != null) _apply(cached);
     await refresh();
+    await checkUpdate();
+  }
+
+  Future<void> checkUpdate() async {
+    try {
+      update = await updater.check(proxy: engine.httpProxy);
+      notifyListeners();
+    } catch (_) {
+      // Offline or GitHub blocked: try again next launch.
+    }
+  }
+
+  Future<void> installUpdate() async {
+    final info = update;
+    if (info == null || updateProgress != null) return;
+    updateProgress = 0;
+    notifyListeners();
+    try {
+      final file = await updater.download(info, proxy: engine.httpProxy, onProgress: (p) {
+        updateProgress = p;
+        notifyListeners();
+      });
+      if (Platform.isWindows) await disconnect();
+      await updater.install(file);
+      if (Platform.isWindows) exit(0);
+    } catch (e) {
+      error = 'به‌روزرسانی ناموفق بود. اگر گیت‌هاب باز نمی‌شود، اول وصل شوید و دوباره امتحان کنید.';
+    } finally {
+      updateProgress = null;
+      notifyListeners();
+    }
   }
 
   void _apply(SubscriptionData data) {
