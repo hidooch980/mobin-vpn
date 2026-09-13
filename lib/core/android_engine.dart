@@ -109,10 +109,12 @@ class AndroidEngine implements VpnEngine {
   @override
   Future<bool> healthCheck(EngineOptions options) async {
     if (_coreState != 'CONNECTED') return false;
-    final delay = await _v2
-        .getConnectedServerDelay(url: options.testUrl)
-        .timeout(const Duration(seconds: 10), onTimeout: () => -1);
-    return delay > 0;
+    // Two different test URLs: only a failure on both counts as "no traffic".
+    for (final url in [options.testUrl, 'https://cp.cloudflare.com/generate_204']) {
+      final delay = await _v2.getConnectedServerDelay(url: url).timeout(const Duration(seconds: 10), onTimeout: () => -1);
+      if (delay > 0) return true;
+    }
+    return false;
   }
 
   /// The plugin measures delays on a single native thread, so requests must go one at a time:
@@ -175,15 +177,13 @@ class AndroidEngine implements VpnEngine {
       await _v2.stopV2Ray();
       return false;
     }
-    for (var attempt = 0; attempt < 2; attempt++) {
-      final delay = await _v2
-          .getConnectedServerDelay(url: options.testUrl)
-          .timeout(const Duration(seconds: 7), onTimeout: () => -1);
-      if (delay > 0) return true;
-      AppLog.add('android: tunnel check ${attempt + 1} failed for $remark');
-    }
-    await _v2.stopV2Ray();
-    return false;
+    // Like v2rayNG: once the core reports CONNECTED the tunnel stays up. The delay test can fail even
+    // when the tunnel works (blocked test URL), so a failed test is only logged — the watchdog handles dead servers.
+    final delay = await _v2
+        .getConnectedServerDelay(url: options.testUrl)
+        .timeout(const Duration(seconds: 7), onTimeout: () => -1);
+    AppLog.add(delay > 0 ? 'android: tunnel ok ($delay ms) for $remark' : 'android: tunnel up for $remark, delay test did not answer');
+    return true;
   }
 
   @override

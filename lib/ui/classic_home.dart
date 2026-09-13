@@ -206,8 +206,56 @@ class _ServerList extends StatelessWidget {
       onRefresh: c.refresh,
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(8, 8, 8, 96),
-        itemCount: servers.length,
-        itemBuilder: (context, i) => _ServerCard(controller: c, server: servers[i]),
+        itemCount: servers.length + 1,
+        itemBuilder: (context, i) => i == 0 ? _AutoCard(controller: c) : _ServerCard(controller: c, server: servers[i - 1]),
+      ),
+    );
+  }
+}
+
+/// Automatic mode: no fixed server — connect picks the best responsive one and switches when it drops.
+class _AutoCard extends StatelessWidget {
+  const _AutoCard({required this.controller});
+
+  final VpnController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = controller;
+    final selected = c.chosen == null;
+    final activeAuto = selected && c.current != null;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8, top: 2),
+      elevation: Palette.isDark ? 0 : 1,
+      color: Palette.surface,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(6),
+        side: BorderSide(color: selected ? Palette.accent : Colors.transparent, width: 1.4),
+      ),
+      child: InkWell(
+        onTap: () => c.choose(null),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(children: [
+            const FlagBadge(code: null, size: 34),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('خودکار · بهترین سرور', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Palette.text)),
+                const SizedBox(height: 3),
+                Text(
+                  activeAuto
+                      ? 'متصل به ${c.current!.displayName} · اگر قطع شد خودش عوض می‌کند'
+                      : 'سریع‌ترین سرور سالم را پیدا می‌کند و در صورت قطعی جابه‌جا می‌شود',
+                  style: TextStyle(fontSize: 12, color: Palette.muted),
+                ),
+              ]),
+            ),
+            Icon(selected ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
+                color: selected ? Palette.accent : Palette.muted),
+          ]),
+        ),
       ),
     );
   }
@@ -222,7 +270,7 @@ class _ServerCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = controller;
-    final selected = (c.current ?? c.chosen)?.uri == server.uri;
+    final selected = c.chosen?.uri == server.uri || (c.chosen == null && c.current?.uri == server.uri);
     final active = c.current?.uri == server.uri;
     final d = c.delays[server.uri];
     final delayText = d == null ? '' : (d <= 0 ? '-1ms' : '${d}ms');

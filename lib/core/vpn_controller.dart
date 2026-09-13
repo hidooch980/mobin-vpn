@@ -182,7 +182,7 @@ class VpnController extends ChangeNotifier {
       if (state != VpnState.connected) return;
       _healthFailures = ok ? 0 : _healthFailures + 1;
       if (!ok) AppLog.add('watchdog: no traffic through ${current?.displayName} ($_healthFailures)');
-      if (_healthFailures >= 2) await _switchAway(current);
+      if (_healthFailures >= 3) await _switchAway(current);
     } finally {
       _watching = false;
     }
