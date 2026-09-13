@@ -56,19 +56,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: native/core/aether -> target
-      - name: Prebuilt Psiphon, Tor and Xray from upstream MSN-GUARD
+      - name: Prebuilt Psiphon, Tor and Xray (our mirror, checksum verified)
         working-directory: native
-        run: |
-          set -e
-          base=https://github.com/mbm110/MSN-GUARD/raw/master/app
-          mkdir -p app/libs
-          curl -fL --retry 3 -o app/libs/psiphontunnel-2.0.39.aar "$base/libs/psiphontunnel-2.0.39.aar"
-          for abi in arm64-v8a armeabi-v7a; do
-            mkdir -p "app/src/main/jniLibs/$abi"
-            for lib in libtor.so libobfs4proxy.so libxray.so; do
-              curl -fL --retry 3 -o "app/src/main/jniLibs/$abi/$lib" "$base/src/main/jniLibs/$abi/$lib"
-            done
-          done
+        run: bash tools/fetch-binaries.sh
       - name: Build APKs
         working-directory: native
         env:
@@ -93,6 +83,39 @@ jobs:
         with:
           name: android
           path: dist/*
+
+  android-smoke:
+    # Installs the universal APK on an emulator, launches it and fails the release on a crash.
+    needs: android
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: android
+          path: dist
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Launch on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: |
+            adb install -r dist/MobinVPN-android-universal.apk
+            adb logcat -c
+            adb shell monkey -p com.mobin.mobin_vpn -c android.intent.category.LAUNCHER 1
+            sleep 25
+            adb logcat -d > logcat.txt || true
+            adb shell pidof com.mobin.mobin_vpn || { echo "app is not running"; grep -A20 "FATAL EXCEPTION" logcat.txt | head -60; exit 1; }
+            if grep -q "FATAL EXCEPTION" logcat.txt; then grep -A30 "FATAL EXCEPTION" logcat.txt | head -80; exit 1; fi
+            echo "app launched and is still running after 25 s"
 
   windows:
     needs: test
@@ -192,7 +215,7 @@ jobs:
           path: dist/*
 
   release:
-    needs: [android, windows]
+    needs: [android, android-smoke, windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
