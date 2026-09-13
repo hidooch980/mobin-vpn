@@ -14,7 +14,8 @@ class SubscriptionData {
 
 /// Downloads the tested server list from the vpn-sub repo, with CDN mirrors and an offline cache.
 class SubscriptionRepository {
-  static const shareLink = 'https://raw.githubusercontent.com/hidooch980/vpn-sub/sub/sub_base64.txt';
+  /// Light list (40 servers) for iPhone/Hiddify — the full list can exceed iOS VPN memory limits.
+  static const shareLink = 'https://raw.githubusercontent.com/hidooch980/vpn-sub/sub/lite_base64.txt';
 
   static const _mirrors = [
     'https://raw.githubusercontent.com/hidooch980/vpn-sub/sub/sub.txt',

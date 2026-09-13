@@ -126,9 +126,13 @@ jobs:
             | ویندوز ۱۰ و ۱۱ | `MobinVPN-windows-x64.zip` ← از حالت فشرده خارج کنید و `mobin_vpn.exe` را اجرا کنید |
 
             ## آیفون و آیپد
-            برنامه‌ی **Hiddify** را از App Store نصب کنید و این لینک اشتراک را در آن وارد کنید:
+            ۱. برنامه‌ی **Hiddify** را از App Store نصب کنید.
+            ۲. در Hiddify دکمه‌ی **+** را بزنید و این QR را اسکن کنید (یا لینک زیر را کپی و «افزودن از کلیپ‌بورد» را بزنید).
+
+            <img src="https://raw.githubusercontent.com/hidooch980/mobin-vpn/main/docs/iphone-qr.png" width="240" alt="QR اشتراک آیفون">
+
             ```
-            https://raw.githubusercontent.com/hidooch980/vpn-sub/sub/sub_base64.txt
+            https://raw.githubusercontent.com/hidooch980/vpn-sub/sub/lite_base64.txt
             ```
 
             ## استفاده
