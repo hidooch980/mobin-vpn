@@ -341,6 +341,22 @@ class VpnController extends ChangeNotifier {
     }
   }
 
+  /// Server picked in the list (v2rayNG style: tap selects, the connect button connects to it).
+  Server? chosen;
+
+  void choose(Server? server) {
+    chosen = server;
+    notifyListeners();
+  }
+
+  /// While connected: time for a request through the tunnel in ms, or null when it fails.
+  Future<int?> measureConnection() async {
+    if (state != VpnState.connected) return null;
+    final watch = Stopwatch()..start();
+    final ok = await engine.healthCheck(_options);
+    return ok ? watch.elapsedMilliseconds : null;
+  }
+
   bool isFavorite(Server s) => settings.favorites.contains(s.uri);
 
   Future<void> toggleFavorite(Server s) => settings.update((x) {

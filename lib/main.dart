@@ -10,7 +10,7 @@ import 'core/native_bridge.dart';
 import 'core/update_notifier.dart';
 import 'core/vpn_controller.dart';
 import 'ui/auth_screen.dart';
-import 'ui/dashboard_screen.dart';
+import 'ui/classic_home.dart';
 import 'ui/style.dart';
 
 /// Survives app rebuilds on theme changes, so screens can be reopened after the switch.
@@ -100,7 +100,7 @@ class _MobinAppState extends State<MobinApp> with WidgetsBindingObserver {
             theme: ThemeData(
               brightness: brightness,
               useMaterial3: true,
-              colorSchemeSeed: const Color(0xFF7C3AED),
+              colorSchemeSeed: const Color(0xFF1976D2),
               scaffoldBackgroundColor: Palette.bg,
               fontFamily: Platform.isWindows ? 'Segoe UI' : null,
             ),
@@ -113,7 +113,7 @@ class _MobinAppState extends State<MobinApp> with WidgetsBindingObserver {
                   AccountStatus.loading => Scaffold(body: Center(child: CircularProgressIndicator(color: Palette.accent))),
                   AccountStatus.signedOut => AuthScreen(account: account),
                   AccountStatus.disabled || AccountStatus.otherDevice => AccountBlockedScreen(account: account),
-                  AccountStatus.ok => DashboardScreen(controller: widget.controller),
+                  AccountStatus.ok => ClassicHome(controller: widget.controller),
                 };
               },
             ),

@@ -28,41 +28,41 @@ class Palette {
   static void apply(Brightness brightness, {required bool reduceMotion}) {
     Palette.reduceMotion = reduceMotion;
     isDark = brightness == Brightness.dark;
-    // Graphite + emerald: near-black grounds, hairline borders, one green accent.
+    // Material look in the style of v2rayNG: blue primary, plain grey/white grounds, flat cards.
     if (isDark) {
       bg = const Color(0xFF121212);
-      surface = const Color(0xFF1C1C1C);
-      raised = const Color(0xFF181818);
-      text = const Color(0xFFEDEDED);
-      muted = const Color(0xFF8F8F8F);
-      accent = const Color(0xFF3ECF8E);
-      amber = const Color(0xFF3ECF8E);
-      mapDot = const Color(0x33EDEDED);
+      surface = const Color(0xFF1E1E1E);
+      raised = const Color(0xFF242424);
+      text = const Color(0xFFE6E6E6);
+      muted = const Color(0xFF9E9E9E);
+      accent = const Color(0xFF64B5F6);
+      amber = const Color(0xFF64B5F6);
+      mapDot = const Color(0x33E6E6E6);
       fill = const Color(0x0FFFFFFF);
       fillStrong = const Color(0x1AFFFFFF);
-      border = const Color(0xFF2E2E2E);
-      sheet = const Color(0xFF171717);
-      cardTop = const Color(0xFF1A1A1A);
-      cardBottom = const Color(0xFF1A1A1A);
+      border = const Color(0xFF2C2C2C);
+      sheet = const Color(0xFF1E1E1E);
+      cardTop = const Color(0xFF1E1E1E);
+      cardBottom = const Color(0xFF1E1E1E);
       shadow = const Color(0x00000000);
-      auroraStrength = 0.06;
+      auroraStrength = 0.0;
     } else {
-      bg = const Color(0xFFF8F8F8);
+      bg = const Color(0xFFF2F2F2);
       surface = const Color(0xFFFFFFFF);
-      raised = const Color(0xFFFCFCFC);
-      text = const Color(0xFF171717);
-      muted = const Color(0xFF6B6B6B);
-      accent = const Color(0xFF1B9E66);
-      amber = const Color(0xFF1B9E66);
-      mapDot = const Color(0x2E171717);
+      raised = const Color(0xFFFFFFFF);
+      text = const Color(0xFF212121);
+      muted = const Color(0xFF757575);
+      accent = const Color(0xFF1976D2);
+      amber = const Color(0xFF1976D2);
+      mapDot = const Color(0x2E212121);
       fill = const Color(0x0A000000);
       fillStrong = const Color(0x14000000);
-      border = const Color(0xFFE4E4E4);
+      border = const Color(0xFFE0E0E0);
       sheet = const Color(0xFFFFFFFF);
       cardTop = const Color(0xFFFFFFFF);
       cardBottom = const Color(0xFFFFFFFF);
-      shadow = const Color(0x0F000000);
-      auroraStrength = 0.05;
+      shadow = const Color(0x14000000);
+      auroraStrength = 0.0;
     }
   }
 
@@ -70,15 +70,15 @@ class Palette {
   static List<Color> forState(VpnState state) {
     if (isDark) {
       return switch (state) {
-        VpnState.connected => const [Color(0xFF3ECF8E), Color(0xFF24B47E), Color(0xFF6EE7B7)],
-        VpnState.connecting || VpnState.disconnecting => const [Color(0xFFF5B83D), Color(0xFFD99A2B), Color(0xFF3ECF8E)],
-        VpnState.disconnected => const [Color(0xFF3ECF8E), Color(0xFF2A8F63), Color(0xFF6EE7B7)],
+        VpnState.connected => const [Color(0xFF66BB6A), Color(0xFF43A047), Color(0xFF81C784)],
+        VpnState.connecting || VpnState.disconnecting => const [Color(0xFFFFB74D), Color(0xFFFFA726), Color(0xFF64B5F6)],
+        VpnState.disconnected => const [Color(0xFF64B5F6), Color(0xFF42A5F5), Color(0xFF90CAF9)],
       };
     }
     return switch (state) {
-      VpnState.connected => const [Color(0xFF1B9E66), Color(0xFF15805A), Color(0xFF34C38A)],
-      VpnState.connecting || VpnState.disconnecting => const [Color(0xFFC98300), Color(0xFFA86D00), Color(0xFF1B9E66)],
-      VpnState.disconnected => const [Color(0xFF1B9E66), Color(0xFF15805A), Color(0xFF34C38A)],
+      VpnState.connected => const [Color(0xFF43A047), Color(0xFF2E7D32), Color(0xFF66BB6A)],
+      VpnState.connecting || VpnState.disconnecting => const [Color(0xFFF57C00), Color(0xFFEF6C00), Color(0xFF1976D2)],
+      VpnState.disconnected => const [Color(0xFF1976D2), Color(0xFF1565C0), Color(0xFF42A5F5)],
     };
   }
 
