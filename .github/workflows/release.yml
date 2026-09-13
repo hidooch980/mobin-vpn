@@ -168,7 +168,9 @@ jobs:
           DisableProgramGroupPage=yes
           OutputDir=dist
           OutputBaseFilename=MolidoVPN-windows-setup
-          SetupIconFile=windowsunneresourcespp_icon.ico
+          SetupIconFile=windows
+unner
+esourcespp_icon.ico
           Compression=lzma2
           SolidCompression=yes
           WizardStyle=modern
@@ -177,7 +179,8 @@ jobs:
           [Tasks]
           Name: "desktopicon"; Description: "Desktop shortcut"; Flags: checkedonce
           [Files]
-          Source: "build\windowsdunner\Release\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
+          Source: "build\windowsd
+unner\Release\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
           [Icons]
           Name: "{autoprograms}\MolidoVPN"; Filename: "{app}\mobin_vpn.exe"
           Name: "{autodesktop}\MolidoVPN"; Filename: "{app}\mobin_vpn.exe"; Tasks: desktopicon
