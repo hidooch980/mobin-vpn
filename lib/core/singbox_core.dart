@@ -250,7 +250,10 @@ class SingboxCore {
   static bool useFakeIp(EngineOptions o, {required bool tun}) => tun && o.tunnelDns == null;
 
   Json connectConfig(Json outbound, int port, int api, EngineOptions o,
-          {bool tun = false, int mtu = 1420, List<String> directProcesses = const []}) =>
+          {bool tun = false,
+          int mtu = 1420,
+          List<String> directProcesses = const [],
+          List<Json> standby = const []}) =>
       {
         ..._baseConfig('warn'),
         'dns': {
@@ -286,7 +289,21 @@ class SingboxCore {
             },
         ],
         'outbounds': [
-          tagged(outbound, 'proxy', o),
+          if (standby.isEmpty)
+            tagged(outbound, 'proxy', o)
+          else ...[
+            // Anti-freeze: "proxy" is a selector over the main server and pre-tested backups;
+            // the app switches it through the Clash API without restarting the core.
+            {
+              'type': 'selector',
+              'tag': 'proxy',
+              'outbounds': [for (var i = 0; i <= standby.length; i++) 'proxy-$i'],
+              'default': 'proxy-0',
+              'interrupt_exist_connections': true,
+            },
+            tagged(outbound, 'proxy-0', o),
+            for (final (i, backup) in standby.indexed) tagged(backup, 'proxy-${i + 1}', o),
+          ],
           {'type': 'direct', 'tag': 'direct'},
           if (o.warp case final warp?) warp.singBoxOutbound('warp', 'proxy'),
         ],
@@ -324,14 +341,32 @@ class SingboxCore {
     return proc;
   }
 
-  Future<bool> verifyThroughProxy(int port, String testUrl) async {
+  /// Switches the "proxy" selector to [tag] (e.g. "proxy-1") without restarting the core.
+  Future<bool> selectOutbound(int api, String tag) async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
+    try {
+      final req = await client.putUrl(Uri.parse('http://127.0.0.1:$api/proxies/proxy'));
+      req.headers.contentType = ContentType.json;
+      req.write(jsonEncode({'name': tag}));
+      final res = await req.close().timeout(const Duration(seconds: 3));
+      await res.drain<void>();
+      return res.statusCode >= 200 && res.statusCode < 300;
+    } catch (_) {
+      return false;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<bool> verifyThroughProxy(int port, String testUrl,
+      {int attempts = 2, Duration timeout = const Duration(seconds: 10)}) async {
     final client = HttpClient()
       ..findProxy = ((_) => 'PROXY 127.0.0.1:$port')
-      ..connectionTimeout = const Duration(seconds: 8);
+      ..connectionTimeout = timeout < const Duration(seconds: 8) ? timeout : const Duration(seconds: 8);
     try {
-      for (var attempt = 0; attempt < 2; attempt++) {
+      for (var attempt = 0; attempt < attempts; attempt++) {
         try {
-          final res = await (await client.getUrl(Uri.parse(testUrl))).close().timeout(const Duration(seconds: 10));
+          final res = await (await client.getUrl(Uri.parse(testUrl))).close().timeout(timeout);
           await res.drain<void>();
           if (res.statusCode >= 200 && res.statusCode < 400) return true;
         } catch (_) {}

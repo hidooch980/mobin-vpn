@@ -229,10 +229,15 @@ class VpnController extends ChangeNotifier {
 
   int _watchTick = 0;
 
+  /// True after the anti-freeze watchdog moved the running tunnel to a backup server (shown on the home screen).
+  bool switchedToBackup = false;
+
   Future<void> _watchdog() async {
     _watchTick++;
+    final eng = engine;
+    final quick = eng is WindowsEngine; // Windows: light 4 s check every 5 s with in-core failover
     final fresh = connectedAt != null && DateTime.now().difference(connectedAt!) < const Duration(seconds: 40);
-    if (!fresh && _watchTick % 3 != 0) return; // every 5 s while fresh, then every 15 s
+    if (!quick && !fresh && _watchTick % 3 != 0) return; // every 5 s while fresh, then every 15 s
     if (_watching || state != VpnState.connected || !settings.autoReconnect) {
       if (state != VpnState.connected) _healthFailures = 0;
       return;
@@ -243,6 +248,20 @@ class VpnController extends ChangeNotifier {
       if (state != VpnState.connected) return;
       _healthFailures = ok ? 0 : _healthFailures + 1;
       if (!ok) AppLog.add('watchdog: no traffic through ${current?.displayName} ($_healthFailures)');
+      if (eng is WindowsEngine && _healthFailures >= 2) {
+        final dropped = current;
+        final backup = await eng.failover();
+        if (backup != null && state == VpnState.connected) {
+          if (dropped != null) _badUntil[dropped.uri] = DateTime.now().add(const Duration(minutes: 10));
+          _healthFailures = 0;
+          current = backup;
+          currentDelay = delays[backup.uri];
+          switchedToBackup = true;
+          notifyListeners();
+          _report(backup, true, ms: delays[backup.uri]);
+          return;
+        }
+      }
       // Right after connecting, two failed checks (~10 s) are enough to move on; later three (~45 s).
       final fresh = connectedAt != null && DateTime.now().difference(connectedAt!) < const Duration(seconds: 40);
       if (_healthFailures >= (fresh ? 2 : 3)) await _switchAway(current);
@@ -520,6 +539,27 @@ class VpnController extends ChangeNotifier {
     await connect(only: server);
   }
 
+  /// Connects to [server] with up to two backups (best recent delays, same location mode) ready inside the core.
+  Future<bool> _engineConnect(Server server, EngineOptions options) {
+    final eng = engine;
+    if (eng is WindowsEngine) {
+      final country = selectedCountry;
+      final backups = servers
+          .where((s) =>
+              s.uri != server.uri &&
+              (delays[s.uri] ?? -1) > 0 &&
+              !_isWarp(s) &&
+              !FreeRoutes.isFree(s) &&
+              !_isBad(s) &&
+              (country == null ||
+                  (country == favoritesMode ? settings.favorites.contains(s.uri) : s.countryCode == country)))
+          .toList()
+        ..sort((a, b) => delays[a.uri]!.compareTo(delays[b.uri]!));
+      eng.standby = backups.take(2).toList();
+    }
+    return engine.connect(server, options);
+  }
+
   void _checkCancel() {
     if (_cancel) throw _Cancelled();
   }
@@ -693,7 +733,7 @@ class VpnController extends ChangeNotifier {
         phase = 'اتصال سریع به ${server.displayName}';
         notifyListeners();
         AppLog.add('connect: fast path to last server ${server.displayName}');
-        if (await engine.connect(server, options)) {
+        if (await _engineConnect(server, options)) {
           _checkCancel();
           current = server;
           currentDelay = null;
@@ -735,7 +775,7 @@ class VpnController extends ChangeNotifier {
           _checkCancel();
           phase = 'اتصال مستقیم به ${server.displayName}';
           notifyListeners();
-          if (await engine.connect(server, options)) {
+          if (await _engineConnect(server, options)) {
             _checkCancel();
             AppLog.add('connect: direct to ${server.displayName} (${server.protocolLabel})');
             current = server;
@@ -805,7 +845,7 @@ class VpnController extends ChangeNotifier {
         final server = pool[i];
         phase = 'اتصال به ${server.displayName}';
         notifyListeners();
-        if (!await engine.connect(server, options)) {
+        if (!await _engineConnect(server, options)) {
           AppLog.add('connect: ${server.displayName} (${server.protocolLabel}) failed');
           if (!_cancel) _report(server, false, ms: measured[i]);
           continue;
@@ -868,6 +908,7 @@ class VpnController extends ChangeNotifier {
     current = null;
     currentDelay = null;
     connectedAt = null;
+    switchedToBackup = false;
     traffic = const TrafficStat();
     phase = null;
     progressDone = progressTotal = 0;

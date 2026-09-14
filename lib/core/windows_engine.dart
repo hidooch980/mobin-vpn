@@ -61,10 +61,31 @@ class WindowsEngine implements VpnEngine {
   @override
   Future<bool> requestPermission() async => true;
 
+  /// Pre-tested backup servers for the next [connect] (set by the controller); switched to by [failover].
+  List<Server> standby = const [];
+  List<Server> _activeStandby = const [];
+  int _activeIndex = 0;
+  int? _api;
+
+  /// Quick check (one request, 4 s) so a frozen tunnel is noticed within a few seconds.
   @override
   Future<bool> healthCheck(EngineOptions options) async {
     final port = _proxyPort;
-    return port != null && _core.process != null && await _core.verifyThroughProxy(port, options.testUrl);
+    return port != null &&
+        _core.process != null &&
+        await _core.verifyThroughProxy(port, options.testUrl, attempts: 1, timeout: const Duration(seconds: 4));
+  }
+
+  /// Moves the running core to the next backup server; returns it, or null when none is left.
+  Future<Server?> failover() async {
+    final api = _api;
+    if (api == null || _core.process == null || _activeIndex >= _activeStandby.length) return null;
+    final next = _activeIndex + 1;
+    if (!await _core.selectOutbound(api, 'proxy-$next')) return null;
+    _activeIndex = next;
+    final server = _activeStandby[next - 1];
+    AppLog.add('windows: failover to backup ${server.displayName}');
+    return server;
   }
 
   @override
@@ -117,8 +138,24 @@ class WindowsEngine implements VpnEngine {
     final api = await SingboxCore.freePort();
     final mtu = options.tunMode ? await NetworkInfo.tunMtu(options.tunMtu) : 1420;
     if (options.tunMode) AppLog.add('windows: tun mtu $mtu');
+    final backups = <Server>[];
+    final backupOutbounds = <Map<String, dynamic>>[];
+    if (!free) {
+      for (final s in standby) {
+        if (s.uri == server.uri || FreeRoutes.isFree(s) || s.uri.startsWith('warp://')) continue;
+        final o = _core.outbound(s);
+        if (o == null) continue;
+        backups.add(s);
+        backupOutbounds.add(o);
+      }
+    }
+    _activeStandby = backups;
+    _activeIndex = 0;
     final proc = await _core.start(_core.connectConfig(outbound, port, api, options,
-        tun: options.tunMode, mtu: mtu, directProcesses: free ? WinFreeRoutes.processNames : const []));
+        tun: options.tunMode,
+        mtu: mtu,
+        directProcesses: free ? WinFreeRoutes.processNames : const [],
+        standby: backupOutbounds));
     // stdout closes when the process exits: handle a crash while connected.
     unawaited(proc.stdout.drain<void>().whenComplete(() async {
       if (!identical(_core.process, proc)) return;
@@ -137,8 +174,19 @@ class WindowsEngine implements VpnEngine {
     if (!await _core.waitApi(api)) {
       AppLog.add('windows: core did not start for ${server.displayName} (see sing-box lines above)');
       await disconnect();
+      if (backups.isNotEmpty) {
+        // A backup config may be what the core rejected: try once more with the main server alone.
+        final saved = standby;
+        standby = const [];
+        try {
+          return await connect(server, options);
+        } finally {
+          standby = saved;
+        }
+      }
       return false;
     }
+    _api = api;
     if (!await _core.verifyThroughProxy(port, options.testUrl)) {
       AppLog.add('windows: no traffic through ${server.displayName}');
       await disconnect();
@@ -166,6 +214,9 @@ class WindowsEngine implements VpnEngine {
   @override
   Future<void> disconnect() async {
     _proxyPort = null;
+    _api = null;
+    _activeStandby = const [];
+    _activeIndex = 0;
     await _releaseProxy();
     await _core.stop();
     await _free.stop();
