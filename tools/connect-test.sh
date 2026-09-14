@@ -1,39 +1,82 @@
 #!/usr/bin/env bash
-# Real connection test on the CI emulator: grants VPN consent, taps the Quick Settings tile
-# (the only exported way to start the tunnel), then checks for a VPN network and a page load through it.
+# Real connection tests on the CI emulator. For each mode (auto, then gaming):
+# select the mode via MainActivity's molido_mode extra, start the tunnel with the Quick Settings tile
+# (the only exported way to connect), wait for tun0, then load a page through the tunnel.
+# Gaming also has to log its chosen node and keep request latency reasonable.
 set -u
 PKG=com.mobin.mobin_vpn
 TILE=$PKG/com.msnguard.vpn.MsnGuardTileService
 
+tunnel_up() { adb shell ip addr show tun0 2>/dev/null | grep -q "inet "; }
+
+http_check() { # prints the status line of a plain HTTP request made from the device
+  adb shell "printf 'GET /generate_204 HTTP/1.1\r\nHost: connectivitycheck.gstatic.com\r\nConnection: close\r\n\r\n' | toybox nc -w 20 connectivitycheck.gstatic.com 80 | head -1" 2>/dev/null | tr -d '\r'
+}
+
+connect_mode() { # mode
+  local mode=$1
+  echo "=== mode: $mode ==="
+  adb shell am start -n $PKG/com.msnguard.vpn.MainActivity --es molido_mode "$mode" >/dev/null
+  sleep 5
+  adb logcat -c
+  adb shell cmd statusbar click-tile $TILE
+  adb shell cmd statusbar collapse || true
+  for i in $(seq 1 36); do
+    if tunnel_up; then echo "tunnel interface up after $((i * 5)) s"; break; fi
+    sleep 5
+  done
+  if ! tunnel_up; then
+    echo "no tun0 after 180 s"
+    adb logcat -d | grep -iE "msnguard|aether|shard|vpn|MolidoGaming" | tail -60
+    return 1
+  fi
+  sleep 10
+  for i in 1 2 3 4 5 6; do
+    code=$(http_check)
+    echo "attempt $i: $code"
+    if echo "$code" | grep -q " 204"; then echo "page loaded through the tunnel ✅"; return 0; fi
+    sleep 10
+  done
+  adb logcat -d | grep -iE "msnguard|aether|shard" | tail -60
+  return 1
+}
+
+disconnect() {
+  adb shell cmd statusbar click-tile $TILE
+  adb shell cmd statusbar collapse || true
+  for i in $(seq 1 12); do tunnel_up || { echo "disconnected"; return 0; }; sleep 5; done
+  echo "tunnel still up after 60 s"
+  return 1
+}
+
 adb shell appops set $PKG ACTIVATE_VPN allow
 adb shell cmd statusbar add-tile $TILE || true
 sleep 3
-adb shell cmd statusbar click-tile $TILE
-adb shell cmd statusbar collapse || true
 
-for i in $(seq 1 36); do
-  if adb shell ip addr show tun0 2>/dev/null | grep -q "inet "; then
-    echo "tunnel interface up after $((i * 5)) s"
-    break
-  fi
-  sleep 5
-done
-if ! adb shell ip addr show tun0 2>/dev/null | grep -q "inet "; then
-  echo "no tun0 after 180 s"
-  adb logcat -d | grep -iE "msnguard|aether|shard|vpn" | tail -60
+connect_mode auto || exit 1
+disconnect || exit 1
+
+connect_mode gaming || exit 1
+line=$(adb logcat -d -s MolidoGaming:* | grep -v "^-" | tail -1)
+if [ -z "$line" ]; then
+  echo "gaming mode connected but did not log its node choice (MolidoGaming)"
   exit 1
 fi
+echo "gaming choice: $line"
 
-sleep 10
-# The emulator image has no curl; toybox nc makes a plain HTTP request (DNS + TCP both go through the tunnel).
-for i in 1 2 3 4 5 6; do
-  code=$(adb shell "printf 'GET /generate_204 HTTP/1.1\r\nHost: connectivitycheck.gstatic.com\r\nConnection: close\r\n\r\n' | toybox nc -w 20 connectivitycheck.gstatic.com 80 | head -1" 2>/dev/null | tr -d '\r')
-  echo "attempt $i: $code"
-  if echo "$code" | grep -q " 204"; then
-    echo "page loaded through the tunnel ✅"
-    exit 0
+# Five timed requests through the tunnel; gaming should average under 1.5 s on the CI network.
+total=0; ok=0
+for i in 1 2 3 4 5; do
+  start=$(date +%s%N)
+  if http_check | grep -q " 204"; then
+    ms=$(( ($(date +%s%N) - start) / 1000000 )); total=$((total + ms)); ok=$((ok + 1)); echo "gaming request $i: ${ms} ms"
+  else
+    echo "gaming request $i: failed"
   fi
-  sleep 10
 done
-adb logcat -d | grep -iE "msnguard|aether|shard" | tail -60
-exit 1
+[ "$ok" -ge 4 ] || { echo "gaming: only $ok/5 requests succeeded"; exit 1; }
+avg=$((total / ok))
+echo "gaming average: ${avg} ms over $ok requests"
+[ "$avg" -lt 1500 ] || { echo "gaming latency too high"; exit 1; }
+disconnect || true
+echo "all connection tests passed ✅"
