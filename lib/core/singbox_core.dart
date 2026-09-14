@@ -436,19 +436,19 @@ class SingboxCore {
         },
       };
 
-  /// Smart chain helper: a local mixed (HTTP+SOCKS) proxy on [port] whose traffic all leaves through [warp]
-  /// (a WireGuard outbound without tag). Used as Psiphon's upstream proxy.
-  Json warpSocksConfig(Json warp, int port, int api) => {
+  /// Helper relay: a local mixed (HTTP+SOCKS) proxy on [port] whose traffic all leaves through [outbound]
+  /// (without tag). Used as Psiphon's WARP upstream and to register WARP through a V2Ray server.
+  Json relayConfig(Json outbound, int port, int api) => {
         ..._baseConfig('warn'),
         'inbounds': [
           {'type': 'mixed', 'tag': 'in', 'listen': '127.0.0.1', 'listen_port': port},
         ],
         'outbounds': [
-          {...warp, 'tag': 'warp'},
+          {...outbound, 'tag': 'relay'},
           {'type': 'direct', 'tag': 'direct'},
         ],
         'route': {
-          'final': 'warp',
+          'final': 'relay',
           if (detectInterface) 'auto_detect_interface': true,
           'default_domain_resolver': 'local',
         },

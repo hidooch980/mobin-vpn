@@ -88,13 +88,37 @@ class WindowsEngine implements VpnEngine {
     onPhase?.call('راه‌اندازی WARP برای Psiphon…');
     final port = await SingboxCore.freePort();
     final api = await SingboxCore.freePort();
-    await _warpHelper.start(_warpHelper.warpSocksConfig(warp, port, api));
+    await _warpHelper.start(_warpHelper.relayConfig(warp, port, api));
     if (await _warpHelper.waitApi(api) &&
         await _warpHelper.verifyThroughProxy(port, options.testUrl, attempts: 1)) {
       return port;
     }
     AppLog.add('windows: WARP helper for Psiphon did not pass traffic ($_warpEndpoint)');
     await _warpHelper.stop();
+    return null;
+  }
+
+  /// WARP registration when api.cloudflareclient.com is blocked on this network: a temporary relay core
+  /// forwards the registration through each of up to 3 [candidates] (V2Ray servers) until one succeeds.
+  Future<WarpAccount?> registerWarpVia(List<Server> candidates) async {
+    for (final s in candidates.take(3)) {
+      if (isCancelled()) break;
+      final o = _core.outbound(s);
+      if (o == null) continue;
+      final port = await SingboxCore.freePort();
+      final api = await SingboxCore.freePort();
+      try {
+        await _warpHelper.start(_warpHelper.relayConfig(CleanIp.apply(o), port, api));
+        if (!await _warpHelper.waitApi(api, stop: isCancelled)) continue;
+        final account = await WarpAccount.register(proxy: '127.0.0.1:$port').timeout(const Duration(seconds: 25));
+        AppLog.add('warp: registered through ${s.displayName}');
+        return account;
+      } catch (e) {
+        AppLog.add('warp: registration through ${s.displayName} failed ($e)');
+      } finally {
+        await _warpHelper.stop();
+      }
+    }
     return null;
   }
 

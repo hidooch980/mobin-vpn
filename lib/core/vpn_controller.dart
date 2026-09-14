@@ -614,18 +614,62 @@ class VpnController extends ChangeNotifier {
   Future<void> removeManualConfig(String uri) =>
       settings.update((x) => x.manualConfigs = x.manualConfigs.where((u) => u != uri).toList());
 
-  /// Creates the WARP identity once; tries direct first, then through the active local proxy.
-  Future<bool> ensureWarp() async {
+  static const warpFailedMessage = 'ثبت WARP از اینترنت شما ممکن نشد (سرور ثبت Cloudflare در ایران مسدود است). '
+      'مسیر «V2Ray» یا «Psiphon» را انتخاب کنید؛ پس از یک اتصال موفق، WARP خودکار از داخل تونل ثبت می‌شود.';
+
+  /// Last failed quick registration: automatic mode does not wait for WARP again for 30 minutes.
+  DateTime? _warpQuickFailedAt;
+
+  /// Creates the WARP identity once and keeps it permanently in settings (later connects never need the API).
+  /// Order: through the active tunnel when connected, directly, then (Windows, not connected) through a
+  /// temporary relay over the best V2Ray servers. [quick]: one attempt of at most 3 s, for automatic mode.
+  Future<bool> ensureWarp({bool quick = false}) async {
     if (WarpAccount.fromJsonString(settings.warpAccount) != null) return true;
-    for (final proxy in {null, engine.httpProxy}) {
-      try {
-        final account = await WarpAccount.register(proxy: proxy);
-        WarpRegistry.account = account;
-        await settings.update((x) => x.warpAccount = jsonEncode(account.toJson()));
+    if (quick) {
+      final failed = _warpQuickFailedAt;
+      if (failed != null && DateTime.now().difference(failed) < const Duration(minutes: 30)) return false;
+      if (await _registerWarp(engine.httpProxy, const Duration(seconds: 3))) return true;
+      _warpQuickFailedAt = DateTime.now();
+      return false;
+    }
+    for (final proxy in {engine.httpProxy, null}) {
+      if (await _registerWarp(proxy, const Duration(seconds: 25))) return true;
+    }
+    final eng = engine;
+    if (eng is WindowsEngine && state != VpnState.connected) {
+      final account = await eng.registerWarpVia(_warpRelayCandidates());
+      if (account != null) {
+        await _saveWarp(account);
         return true;
-      } catch (_) {}
+      }
     }
     return false;
+  }
+
+  Future<bool> _registerWarp(String? proxy, Duration limit) async {
+    try {
+      await _saveWarp(await WarpAccount.register(proxy: proxy).timeout(limit));
+      return true;
+    } catch (e) {
+      AppLog.add('warp: registration ${proxy == null ? 'direct' : 'through the tunnel'} failed ($e)');
+      return false;
+    }
+  }
+
+  Future<void> _saveWarp(WarpAccount account) async {
+    WarpRegistry.account = account;
+    _warpQuickFailedAt = null;
+    await settings.update((x) => x.warpAccount = jsonEncode(account.toJson()));
+    AppLog.add('warp: identity registered and saved');
+  }
+
+  /// Best-pinged healthy TCP servers first, then the rest of the list.
+  List<Server> _warpRelayCandidates() {
+    final list = servers.where((s) => !_isWarp(s) && !UdpProbe.udpOnly(s) && !_isBad(s)).toList();
+    final pinged = list.where((s) => (delays[s.uri] ?? -1) > 0).toList()
+      ..sort((a, b) => delays[a.uri]!.compareTo(delays[b.uri]!));
+    final seen = pinged.map((s) => s.uri).toSet();
+    return [...pinged, ...list.where((s) => !seen.contains(s.uri))].take(3).toList();
   }
 
   /// Connects to one specific server chosen by the user.
@@ -823,6 +867,12 @@ class VpnController extends ChangeNotifier {
     } finally {
       if (identical(_connectRun, run)) _connectRun = null;
     }
+    // WARP could not be registered before: now the tunnel carries the request (saved for next time).
+    if (state == VpnState.connected &&
+        WarpRegistry.account == null &&
+        (settings.warp || settings.transport == 'auto')) {
+      unawaited(ensureWarp());
+    }
   }
 
   Future<void> _connect(Server? only) async {
@@ -865,7 +915,7 @@ class VpnController extends ChangeNotifier {
       if (settings.warp && options.warp == null) {
         phase = 'ساخت هویت Cloudflare WARP…';
         notifyListeners();
-        if (await ensureWarp()) {
+        if (await ensureWarp(quick: true)) {
           options = _options;
         } else {
           error = 'ثبت WARP ناموفق بود؛ این بار بدون WARP وصل می‌شویم.';
@@ -873,14 +923,14 @@ class VpnController extends ChangeNotifier {
       }
       final List<Server> pool = only != null ? [only] : _byTransport(await _candidates());
       if (pool.any(_needsWarp) && WarpRegistry.account == null) {
+        // Automatic mode spends at most 3 s on WARP registration; an explicit WARP choice tries every way.
+        final quick = only == null && settings.transport != 'warp';
         phase = 'ساخت هویت رایگان Cloudflare WARP…';
         notifyListeners();
-        if (!await ensureWarp()) {
-          AppLog.add('warp: registration failed');
+        if (!await ensureWarp(quick: quick)) {
+          AppLog.add('warp: registration failed${quick ? ', automatic mode skips WARP routes' : ''}');
           pool.removeWhere(_needsWarp);
-          if (pool.isEmpty) {
-            throw const _UserError('ثبت WARP ناموفق بود؛ اینترنت را بررسی کنید یا مسیر دیگری انتخاب کنید.');
-          }
+          if (pool.isEmpty) throw const _UserError(warpFailedMessage);
         }
       }
       if (pool.isEmpty) throw const _UserError('سروری برای این موقعیت پیدا نشد.');
