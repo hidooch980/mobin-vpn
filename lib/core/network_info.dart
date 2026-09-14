@@ -69,6 +69,22 @@ class NetworkInfo extends ChangeNotifier {
     }
   }
 
+  static String? _ownProvider;
+
+  /// Coarse ISP bucket of the user's own network for reports/scores: mci, irancell, tci, rightel, shatel or other.
+  /// null until a lookup outside the VPN has run.
+  static String? get operatorBucket {
+    final raw = _ownProvider;
+    if (raw == null || raw.trim().isEmpty) return null;
+    if (raw.contains('cloudflare')) return null; // measured through WARP, not the user's ISP
+    if (raw.contains('mobile communication company of iran') || raw.contains('hamrah') || raw.contains('mci')) return 'mci';
+    if (raw.contains('irancell') || raw.contains('mtn')) return 'irancell';
+    if (raw.contains('rightel')) return 'rightel';
+    if (raw.contains('telecommunication company of iran') || raw.contains('tci')) return 'tci';
+    if (raw.contains('shatel')) return 'shatel';
+    return 'other';
+  }
+
   /// True when the PC is online through a cellular modem or a USB-tethered phone (smaller MTU helps there).
   /// Heuristic on adapter names; Wi-Fi / Ethernet (the usual Windows case) returns false.
   static Future<bool> cellularLike() async {
@@ -102,6 +118,10 @@ class NetworkInfo extends ChangeNotifier {
         carrier = (m?['operator'] as String?)?.trim();
       }
       await _lookupIp(proxy);
+      // Only a lookup outside the tunnel describes the user's own ISP.
+      if (proxy == null && (isp != null || carrier != null)) {
+        _ownProvider = '${isp ?? ''} ${type == 'mobile' ? carrier ?? '' : ''}'.toLowerCase();
+      }
     } catch (e) {
       AppLog.add('network info: $e');
     } finally {

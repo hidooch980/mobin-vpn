@@ -36,6 +36,7 @@ class AppSettings extends ChangeNotifier {
   bool autoReconnect = true;
   bool connectOnLaunch = true; // "اتصال خودکار": connect once servers load (also after Windows startup)
   bool anonymousReports = false; // opt-in anonymous server quality reports
+  bool reportsAsked = false; // the first-launch consent dialog for reports was shown
   bool proxyOnly = false; // Android: local proxy without VPN tunnel
   bool systemProxy = true; // Windows: set the Windows system proxy
   bool tunMode = false; // Windows: full-device VPN (administrator)
@@ -76,6 +77,7 @@ class AppSettings extends ChangeNotifier {
     autoReconnect = p.getBool('s_autoReconnect') ?? autoReconnect;
     connectOnLaunch = p.getBool('s_autoConnect') ?? connectOnLaunch;
     anonymousReports = p.getBool('s_anonReports') ?? anonymousReports;
+    reportsAsked = p.getBool('s_reportsAsked') ?? anonymousReports;
     proxyOnly = p.getBool('s_proxyOnly') ?? proxyOnly;
     systemProxy = p.getBool('s_systemProxy') ?? systemProxy;
     tunMode = p.getBool('s_tunMode') ?? tunMode;
@@ -127,6 +129,7 @@ class AppSettings extends ChangeNotifier {
       p.setBool('s_autoReconnect', autoReconnect),
       p.setBool('s_autoConnect', connectOnLaunch),
       p.setBool('s_anonReports', anonymousReports),
+      p.setBool('s_reportsAsked', reportsAsked),
       p.setBool('s_proxyOnly', proxyOnly),
       p.setBool('s_systemProxy', systemProxy),
       p.setBool('s_tunMode', tunMode),

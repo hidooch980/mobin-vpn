@@ -56,6 +56,7 @@ class ServerReports {
         'net': await _netType(),
         'app': Platform.isWindows ? 'windows' : Platform.operatingSystem,
         'ver': await _appVersion(),
+        if (NetworkInfo.operatorBucket case final op?) 'op': op,
       });
       final req = await client.postUrl(Uri.parse('$_base/report')).timeout(const Duration(seconds: 10));
       req.headers.contentType = ContentType.json;
@@ -70,11 +71,13 @@ class ServerReports {
   }
 
   /// Fingerprint -> score (0..1), or null when the endpoint is unreachable.
-  static Future<Map<String, double>?> fetchScores({String? proxy}) async {
+  /// [op]: ISP bucket (see [NetworkInfo.operatorBucket]) so scores reflect the user's operator.
+  static Future<Map<String, double>?> fetchScores({String? proxy, String? op}) async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
     if (proxy != null) client.findProxy = (_) => 'PROXY $proxy';
     try {
-      final req = await client.getUrl(Uri.parse('$_base/scores')).timeout(const Duration(seconds: 10));
+      final url = op == null ? '$_base/scores' : '$_base/scores?op=${Uri.encodeQueryComponent(op)}';
+      final req = await client.getUrl(Uri.parse(url)).timeout(const Duration(seconds: 10));
       final res = await req.close().timeout(const Duration(seconds: 10));
       if (res.statusCode != 200) return null;
       final json = jsonDecode(await res.transform(utf8.decoder).join().timeout(const Duration(seconds: 10)));

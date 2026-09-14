@@ -179,9 +179,14 @@ class VpnController extends ChangeNotifier {
   /// Shared quality score (0..1) per server uri from the optional /scores endpoint; empty when unavailable.
   final Map<String, double> _scoreByUri = {};
 
+  /// Operator bucket the current scores were loaded for ('' = none).
+  String? _scoresOp;
+
   Future<void> _loadScores() async {
     try {
-      final scores = await ServerReports.fetchScores(proxy: engine.httpProxy);
+      final op = NetworkInfo.operatorBucket;
+      _scoresOp = op ?? '';
+      final scores = await ServerReports.fetchScores(proxy: engine.httpProxy, op: op);
       if (scores == null || scores.isEmpty) return;
       _scoreByUri.clear();
       for (final s in servers) {
@@ -555,6 +560,8 @@ class VpnController extends ChangeNotifier {
   Future<void> _connect(Server? only) async {
     error = null;
     _cancel = false;
+    // The ISP became known (or changed) since scores were loaded: refresh them for this operator.
+    if (_scoresOp != null && (NetworkInfo.operatorBucket ?? '') != _scoresOp) unawaited(_loadScores());
     state = VpnState.connecting;
     phase = 'در حال آماده‌سازی…';
     progressDone = progressTotal = 0;

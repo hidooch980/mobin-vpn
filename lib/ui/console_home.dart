@@ -41,6 +41,36 @@ class _ConsoleHomeState extends State<ConsoleHome> {
     c.addListener(_onController);
     unawaited(network.refresh());
     _netTimer = Timer.periodic(const Duration(minutes: 2), (_) => network.refresh(proxy: c.engine.httpProxy));
+    unawaited(_askReportsConsent());
+  }
+
+  /// Asked once: opt in to anonymous server quality reports.
+  Future<void> _askReportsConsent() async {
+    await c.ready.future;
+    final s = c.settings;
+    if (!mounted || s.reportsAsked) return;
+    final accepted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text(tr('کمک به انتخاب سرورهای بهتر', 'Help pick better servers')),
+        content: Text(tr(
+            'اجازه می‌دهید گزارش ناشناس کیفیت اتصال فرستاده شود؟ فقط شناسه‌ی ناشناس سرور، موفق یا ناموفق بودن، '
+                'تأخیر، نوع شبکه و نام کلی اپراتور (مثل همراه اول یا ایرانسل) فرستاده می‌شود؛ بدون IP، نام یا اطلاعات وب‌گردی. '
+                'بعداً از تنظیمات ← حریم خصوصی قابل تغییر است.',
+            'Send anonymous connection quality reports? Only an anonymous server id, success or failure, latency, '
+                'network type and the operator family (e.g. MCI or Irancell) are sent; no IP, name or browsing data. '
+                'You can change this later in Settings → Privacy.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(tr('نه، ممنون', 'No thanks'))),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: Text(tr('موافقم', 'Allow'))),
+        ],
+      ),
+    );
+    await s.update((x) {
+      x.reportsAsked = true;
+      if (accepted == true) x.anonymousReports = true;
+    });
   }
 
   void _onController() {
