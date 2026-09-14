@@ -23,6 +23,10 @@ connect_mode() { # mode
   sleep 8
   echo "saved mode: $(adb shell run-as $PKG cat shared_prefs/settings.xml 2>/dev/null | grep -o 'default_protocol">[^<]*' || echo 'n/a (release build)')"
   adb logcat -c
+  # After a force-stop SystemUI drops its binding to the tile service; clicks are ignored
+  # until the Quick Settings panel is shown again and rebinds it.
+  adb shell cmd statusbar expand-settings
+  sleep 4
   adb shell cmd statusbar click-tile $TILE
   adb shell cmd statusbar collapse || true
   for i in $(seq 1 36); do
