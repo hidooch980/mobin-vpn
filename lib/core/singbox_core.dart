@@ -69,8 +69,11 @@ class SingboxCore {
     return result;
   }
 
+  // Rotating file names: a background ping round never overwrites the config of another running one.
+  int _checkSeq = 0, _pingSeq = 0;
+
   Future<bool> _configValid(List<Json> outbounds) async {
-    final file = await _writeConfig('check', {
+    final file = await _writeConfig('check${_checkSeq++ % 8}', {
       ..._baseConfig('error'),
       'outbounds': outbounds,
       'route': {'default_domain_resolver': 'local'},
@@ -138,7 +141,7 @@ class SingboxCore {
     if (valid.isEmpty) return results;
 
     final api = await freePort();
-    final file = await _writeConfig('ping', {
+    final file = await _writeConfig('ping${_pingSeq++ % 4}', {
       ..._baseConfig('error'),
       'outbounds': [for (final i in valid) outbounds[i], {'type': 'direct', 'tag': 'direct'}],
       'route': {'default_domain_resolver': 'local'},

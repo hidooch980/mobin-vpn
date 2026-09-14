@@ -419,6 +419,27 @@ class VpnController extends ChangeNotifier {
     }
   }
 
+  DateTime _lastNotify = DateTime.fromMillisecondsSinceEpoch(0);
+  Timer? _notifyTimer;
+
+  /// Big ping rounds report progress per server: rebuild the UI at most every 250 ms.
+  void _throttledNotify() {
+    const gap = Duration(milliseconds: 250);
+    final since = DateTime.now().difference(_lastNotify);
+    if (since >= gap) {
+      _notifyTimer?.cancel();
+      _notifyTimer = null;
+      _lastNotify = DateTime.now();
+      notifyListeners();
+    } else {
+      _notifyTimer ??= Timer(gap - since, () {
+        _notifyTimer = null;
+        _lastNotify = DateTime.now();
+        notifyListeners();
+      });
+    }
+  }
+
   void clearError() {
     error = null;
     notifyListeners();
@@ -704,7 +725,7 @@ class VpnController extends ChangeNotifier {
         },
         onProgress: (done) {
           progressDone = done;
-          notifyListeners();
+          _throttledNotify();
         },
       );
       _checkCancel();

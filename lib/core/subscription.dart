@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'server.dart';
@@ -32,7 +33,7 @@ class SubscriptionRepository {
     final text = prefs.getString(_textKey);
     final time = prefs.getInt(_timeKey);
     if (text == null || time == null) return null;
-    final servers = parseSubscription(text);
+    final servers = await _parse(text);
     return servers.isEmpty ? null : SubscriptionData(servers, DateTime.fromMillisecondsSinceEpoch(time));
   }
 
@@ -40,7 +41,7 @@ class SubscriptionRepository {
     for (final url in [if (customUrl.trim().isNotEmpty) customUrl.trim(), ..._mirrors]) {
       try {
         final text = await _get(url);
-        final servers = parseSubscription(text);
+        final servers = await _parse(text);
         if (servers.isEmpty) continue;
         final now = DateTime.now();
         final prefs = await SharedPreferences.getInstance();
@@ -52,6 +53,15 @@ class SubscriptionRepository {
       }
     }
     throw const SocketException('all subscription mirrors failed');
+  }
+
+  /// Parsing hundreds of links is heavy: do it off the UI isolate (falls back to inline parsing).
+  static Future<List<Server>> _parse(String text) async {
+    try {
+      return await compute(parseSubscription, text);
+    } catch (_) {
+      return parseSubscription(text);
+    }
   }
 
   Future<String> _get(String url) async {
