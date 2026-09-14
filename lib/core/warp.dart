@@ -93,8 +93,14 @@ class WarpAccount {
         },
       };
 
-  /// Registers a new device with Cloudflare. [proxy] ("host:port") is used when the API is blocked locally.
-  static Future<WarpAccount> register({String? proxy}) async {
+  static const apiUrl = 'https://api.cloudflareclient.com/v0a2158/reg';
+
+  /// MolidoVPN worker relay: same JSON body, forwarded to [apiUrl] with the right headers, response unchanged.
+  static const relayUrl = 'https://molido-sub.hidooch980.workers.dev/warp/reg';
+
+  /// Registers a new device with Cloudflare. [proxy] ("host:port") is used when the API is blocked locally;
+  /// [url] may be [relayUrl] instead of the Cloudflare API.
+  static Future<WarpAccount> register({String? proxy, String url = apiUrl}) async {
     final keyPair = await X25519().newKeyPair();
     final privateKey = base64.encode(await keyPair.extractPrivateKeyBytes());
     final publicKey = base64.encode((await keyPair.extractPublicKey()).bytes);
@@ -102,7 +108,7 @@ class WarpAccount {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
     if (proxy != null) client.findProxy = (_) => 'PROXY $proxy';
     try {
-      final req = await client.postUrl(Uri.parse('https://api.cloudflareclient.com/v0a2158/reg'));
+      final req = await client.postUrl(Uri.parse(url));
       req.headers
         ..contentType = ContentType.json
         ..set(HttpHeaders.userAgentHeader, 'okhttp/3.12.1')

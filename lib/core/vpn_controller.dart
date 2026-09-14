@@ -622,20 +622,23 @@ class VpnController extends ChangeNotifier {
   DateTime? _warpQuickFailedAt;
 
   /// Creates the WARP identity once and keeps it permanently in settings (later connects never need the API).
-  /// Order: through the active tunnel when connected, directly, then (Windows, not connected) through a
-  /// temporary relay over the best V2Ray servers. [quick]: one attempt of at most 3 s, for automatic mode.
+  /// Order: Cloudflare API directly (3 s), the MolidoVPN worker relay (8 s), then — full mode only — through
+  /// the active tunnel, or (Windows, not connected) a temporary relay over the best V2Ray servers.
+  /// [quick] (automatic mode): only the first two steps, and not again for 30 minutes after a failure.
   Future<bool> ensureWarp({bool quick = false}) async {
     if (WarpAccount.fromJsonString(settings.warpAccount) != null) return true;
     if (quick) {
       final failed = _warpQuickFailedAt;
       if (failed != null && DateTime.now().difference(failed) < const Duration(minutes: 30)) return false;
-      if (await _registerWarp(engine.httpProxy, const Duration(seconds: 3))) return true;
+    }
+    if (await _registerWarp(null, const Duration(seconds: 3))) return true;
+    if (await _registerWarp(null, const Duration(seconds: 8), url: WarpAccount.relayUrl)) return true;
+    if (quick) {
       _warpQuickFailedAt = DateTime.now();
       return false;
     }
-    for (final proxy in {engine.httpProxy, null}) {
-      if (await _registerWarp(proxy, const Duration(seconds: 25))) return true;
-    }
+    final tunnel = engine.httpProxy;
+    if (tunnel != null && await _registerWarp(tunnel, const Duration(seconds: 25))) return true;
     final eng = engine;
     if (eng is WindowsEngine && state != VpnState.connected) {
       final account = await eng.registerWarpVia(_warpRelayCandidates());
@@ -647,12 +650,14 @@ class VpnController extends ChangeNotifier {
     return false;
   }
 
-  Future<bool> _registerWarp(String? proxy, Duration limit) async {
+  Future<bool> _registerWarp(String? proxy, Duration limit, {String url = WarpAccount.apiUrl}) async {
+    final how = url != WarpAccount.apiUrl ? 'via worker relay' : (proxy == null ? 'direct' : 'through the tunnel');
     try {
-      await _saveWarp(await WarpAccount.register(proxy: proxy).timeout(limit));
+      await _saveWarp(await WarpAccount.register(proxy: proxy, url: url).timeout(limit));
+      AppLog.add('warp: registered $how');
       return true;
     } catch (e) {
-      AppLog.add('warp: registration ${proxy == null ? 'direct' : 'through the tunnel'} failed ($e)');
+      AppLog.add('warp: registration $how failed ($e)');
       return false;
     }
   }
@@ -926,7 +931,7 @@ class VpnController extends ChangeNotifier {
       }
       final List<Server> pool = only != null ? [only] : _byTransport(await _candidates());
       if (pool.any(_needsWarp) && WarpRegistry.account == null) {
-        // Automatic mode spends at most 3 s on WARP registration; an explicit WARP choice tries every way.
+        // Automatic mode only tries the direct API and the worker relay; an explicit WARP choice tries every way.
         final quick = only == null && settings.transport != 'warp';
         phase = 'ساخت هویت رایگان Cloudflare WARP…';
         notifyListeners();
