@@ -76,7 +76,7 @@ footer a{color:var(--muted)}
     <p class="tag">VPN رایگان برای خانواده · آیفون، اندروید و ویندوز</p>
   </header>
   <nav class="jump" aria-label="بخش‌های صفحه">
-    <a href="#install">نصب</a><a href="#subs">لینک‌های اشتراک</a><a href="#help">اگر وصل نشد</a><a href="#faq">سؤال‌های رایج</a><a href="status.html">وضعیت سرویس</a>
+    <a href="#install">نصب</a><a href="#subs">لینک‌های اشتراک</a><a href="#gamedns">DNS گیمینگ</a><a href="#help">اگر وصل نشد</a><a href="#faq">سؤال‌های رایج</a><a href="status.html">وضعیت سرویس</a>
   </nav>
 
   <section id="install" aria-labelledby="install-title">
@@ -225,6 +225,35 @@ footer a{color:var(--muted)}
     <p class="lead">برای آیفون و برنامه‌هایی مثل Hiddify، Streisand، Karing، v2rayNG و NekoBox. <b>برنامه‌ی اندروید و ویندوز MolidoVPN به این لینک‌ها نیازی ندارد.</b> هر لینک اشتراک ۵۰ تا ۱۰۰ سرور متفاوت دارد؛ <b>۲ یا ۳ تا از آن‌ها را اضافه کنید</b> تا اگر یک فهرست از کار افتاد، بقیه کار کنند.</p>
     <div id="sub-list" style="display:flex;flex-direction:column;gap:12px"></div>
     <p class="alt" style="margin-top:10px">فهرست کامل (خیلی بزرگ، مناسب آیفون نیست): <code id="full-url"></code></p>
+  </section>
+
+  <section id="gamedns" aria-labelledby="gamedns-title">
+  <h2 class="sec" id="gamedns-title">🎮 DNS گیمینگ</h2>
+  <p class="lead">این DNSها سرورهای ایرانی مخصوص بازی‌اند: پینگ به سرور بازی‌های آنلاین را کم می‌کنند و بعضی بازی‌های تحریم‌شده را باز می‌کنند. فقط داخل اینترنت ایران کار می‌کنند.</p>
+  <div class="card">
+    <h3>آدرس‌ها</h3>
+    <ul>
+      <li><b>رادار گیم:</b> <code>10.202.10.10</code> و <code>10.202.10.11</code></li>
+      <li><b>الکترو:</b> <code>78.157.42.100</code> و <code>78.157.42.101</code></li>
+      <li><b>شکن:</b> <code>178.22.122.100</code> و <code>185.51.200.2</code></li>
+      <li><b>403:</b> <code>10.202.10.202</code> و <code>10.202.10.102</code></li>
+    </ul>
+    <p>اگر یکی پینگ خوبی نداد، بعدی را امتحان کنید.</p>
+  </div>
+  <div class="card">
+    <h3>اندروید و ویندوز (برنامه‌ی MolidoVPN)</h3>
+    <p>تنظیمات ← <b>DNS</b> ← یکی از گزینه‌های «DNS گیمینگ». برنامه این DNS را بیرون از VPN می‌فرستد تا از داخل ایران جواب بدهد. برای بازی، <b>حالت گیمینگ</b> را هم روشن کنید.</p>
+    <p class="note">در اندروید، DNS گیمینگ از اندروید ۱۳ به بالا کامل کار می‌کند؛ در نسخه‌های قدیمی‌تر برنامه خودکار DNS عادی را استفاده می‌کند.</p>
+  </div>
+  <div class="card">
+    <h3>آیفون (بدون VPN، فقط برای بازی)</h3>
+    <ol>
+      <li>Settings ← Wi-Fi ← روی ⓘ کنار وای‌فای وصل‌شده بزنید.</li>
+      <li>Configure DNS ← <b>Manual</b> ← DNSهای قبلی را پاک کنید و دو آدرس یکی از سرویس‌های بالا را اضافه کنید ← Save.</li>
+      <li>برای برگشت: همان‌جا <b>Automatic</b> را انتخاب کنید.</li>
+    </ol>
+    <p class="note">وقتی VPN روشن است، DNS دستی آیفون استفاده نمی‌شود. برای بازی‌هایی که با DNS گیمینگ باز می‌شوند، VPN را خاموش کنید.</p>
+  </div>
   </section>
 
   <section id="help" aria-labelledby="help-title">
