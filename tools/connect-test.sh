@@ -49,8 +49,9 @@ connect_mode() { # mode
 }
 
 disconnect() {
-  adb shell cmd statusbar click-tile $TILE
-  adb shell cmd statusbar collapse || true
+  # Stopping the app tears the VpnService down; a second tile tap is unreliable because the
+  # tile's cached state can lag behind the service.
+  adb shell am force-stop $PKG
   for i in $(seq 1 12); do tunnel_up || { echo "disconnected"; return 0; }; sleep 5; done
   echo "tunnel still up after 60 s"
   return 1
