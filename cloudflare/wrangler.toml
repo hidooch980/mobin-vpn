@@ -2,3 +2,11 @@ name = "molido-sub"
 main = "sub-worker.js"
 compatibility_date = "2026-09-01"
 workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "molido-reports"
+database_id = "07132224-99e6-4446-b48d-743258b426e8"
+
+[triggers]
+crons = ["17 3 * * *"]
