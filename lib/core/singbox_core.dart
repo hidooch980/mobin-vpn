@@ -97,10 +97,12 @@ class SingboxCore {
     ];
   }
 
-  Future<bool> waitApi(int api) async {
+  /// [stop]: checked before every try, so a cancelled or over-budget connect stops waiting at once.
+  Future<bool> waitApi(int api, {bool Function()? stop}) async {
     final client = HttpClient()..connectionTimeout = const Duration(milliseconds: 500);
     try {
       for (var i = 0; i < 60; i++) {
+        if (stop?.call() ?? false) return false;
         try {
           final res = await (await client.getUrl(Uri.parse('http://127.0.0.1:$api/version'))).close();
           await res.drain<void>();
@@ -133,6 +135,7 @@ class SingboxCore {
       {void Function(int done)? onProgress,
       bool Function()? isCancelled,
       void Function(int index, int delay)? onResult,
+      bool Function()? abort,
       int concurrency = 16}) async {
     final results = List<int>.filled(servers.length, -1);
     final outbounds = [
@@ -156,6 +159,15 @@ class SingboxCore {
     unawaited(proc.stdout.drain<void>());
     _logStderr(proc, 'ping');
     final client = HttpClient();
+    // [abort] (user cancel): end the throwaway core so in-flight delay tests fail at once instead of timing out.
+    final aborter = abort == null
+        ? null
+        : Timer.periodic(const Duration(milliseconds: 200), (t) {
+            if (!abort()) return;
+            t.cancel();
+            Process.killPid(proc.pid);
+            client.close(force: true);
+          });
     try {
       if (!await waitApi(api)) {
         AppLog.add('$label: ping core API did not start');
@@ -172,6 +184,7 @@ class SingboxCore {
       }
       return results;
     } finally {
+      aborter?.cancel();
       client.close(force: true);
       Process.killPid(proc.pid);
     }
@@ -491,21 +504,36 @@ class SingboxCore {
     }
   }
 
+  /// [stop] is polled every 200 ms while a request is in flight: when it turns true the check fails at once.
   Future<bool> verifyThroughProxy(int port, String testUrl,
-      {int attempts = 2, Duration timeout = const Duration(seconds: 10)}) async {
+      {int attempts = 2, Duration timeout = const Duration(seconds: 10), bool Function()? stop}) async {
     final client = HttpClient()
       ..findProxy = ((_) => 'PROXY 127.0.0.1:$port')
       ..connectionTimeout = timeout < const Duration(seconds: 8) ? timeout : const Duration(seconds: 8);
+    final aborted = Completer<bool>();
+    final watcher = stop == null
+        ? null
+        : Timer.periodic(const Duration(milliseconds: 200), (_) {
+            if (!aborted.isCompleted && stop()) aborted.complete(false);
+          });
+    Future<bool> request() async {
+      try {
+        final res = await (await client.getUrl(Uri.parse(testUrl))).close().timeout(timeout);
+        await res.drain<void>().timeout(timeout);
+        return res.statusCode >= 200 && res.statusCode < 400;
+      } catch (_) {
+        return false;
+      }
+    }
+
     try {
       for (var attempt = 0; attempt < attempts; attempt++) {
-        try {
-          final res = await (await client.getUrl(Uri.parse(testUrl))).close().timeout(timeout);
-          await res.drain<void>();
-          if (res.statusCode >= 200 && res.statusCode < 400) return true;
-        } catch (_) {}
+        if (aborted.isCompleted || (stop?.call() ?? false)) return false;
+        if (await Future.any([request(), aborted.future])) return true;
       }
       return false;
     } finally {
+      watcher?.cancel();
       client.close(force: true);
     }
   }

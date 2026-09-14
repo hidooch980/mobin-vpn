@@ -42,6 +42,13 @@ class WindowsEngine implements VpnEngine {
   /// Set by the controller so a slow Psiphon/Tor start can be cancelled.
   bool Function() isCancelled = () => false;
 
+  /// Hard end of the next direct / fast-path attempt (set by the controller, null = no budget). V2Ray/WARP
+  /// attempts stop at it (core start and tunnel check included); Psiphon, Tor and chains ignore it.
+  DateTime? deadline;
+
+  /// A tunnel check slower than this fails a budgeted attempt (a 13 s response is not a usable server).
+  static const budgetedCheck = Duration(seconds: 5);
+
   static bool get isAdmin {
     try {
       final isUserAnAdmin = DynamicLibrary.open('shell32.dll').lookupFunction<Int32 Function(), int Function()>('IsUserAnAdmin');
@@ -160,7 +167,8 @@ class WindowsEngine implements VpnEngine {
   @override
   Future<List<int>> pingAll(List<Server> servers, EngineOptions options,
           {void Function(int done)? onProgress, bool Function()? isCancelled, void Function(int index, int delay)? onResult}) =>
-      _core.pingAll(servers, options.forPing, onProgress: onProgress, isCancelled: isCancelled, onResult: onResult);
+      _core.pingAll(servers, options.forPing,
+          onProgress: onProgress, isCancelled: isCancelled, onResult: onResult, abort: this.isCancelled);
 
   /// Failed real connections per server uri (this session), for [evasive] retries.
   final _failures = <String, int>{};
@@ -227,6 +235,8 @@ class WindowsEngine implements VpnEngine {
     await disconnect();
     final free = FreeRoutes.isFree(server);
     final chain = WinFreeRoutes.isChain(server);
+    final deadlineAt = free || chain ? null : deadline;
+    bool stopped() => isCancelled() || (deadlineAt != null && DateTime.now().isAfter(deadlineAt));
     Map<String, dynamic>? outbound;
     var extraOutbounds = const <Map<String, dynamic>>[];
     if (free) {
@@ -325,10 +335,12 @@ class WindowsEngine implements VpnEngine {
       _states.add(VpnState.disconnected);
     }));
 
-    if (!await _core.waitApi(api)) {
-      AppLog.add('windows: core did not start for ${server.displayName} (see sing-box lines above)');
+    if (!await _core.waitApi(api, stop: stopped)) {
+      AppLog.add(stopped()
+          ? 'windows: ${server.displayName} stopped (cancelled or over the time budget)'
+          : 'windows: core did not start for ${server.displayName} (see sing-box lines above)');
       await disconnect();
-      if (backups.isNotEmpty || warpMember != null) {
+      if (!stopped() && (backups.isNotEmpty || warpMember != null)) {
         // A backup (or WARP member) config may be what the core rejected: try once more with the main server alone.
         final saved = standby;
         standby = const [];
@@ -343,8 +355,12 @@ class WindowsEngine implements VpnEngine {
       return false;
     }
     _api = api;
-    if (!await _core.verifyThroughProxy(port, options.testUrl)) {
-      AppLog.add('windows: no traffic through ${server.displayName}');
+    final passes = deadlineAt == null
+        ? await _core.verifyThroughProxy(port, options.testUrl, stop: isCancelled)
+        : await _core.verifyThroughProxy(port, options.testUrl, timeout: budgetedCheck, stop: stopped);
+    if (!passes) {
+      AppLog.add('windows: no traffic through ${server.displayName}'
+          '${deadlineAt != null ? ' within ${budgetedCheck.inSeconds} s per check / time budget' : ''}');
       await disconnect();
       if (cleanIp != null) CleanIp.markBad(cleanIp);
       if (_sniOverride != null) return false; // one SNI of a retry round
@@ -352,7 +368,7 @@ class WindowsEngine implements VpnEngine {
       if (realityBase != null) {
         if (sniUsed != null) await RealitySni.forget(realityBase);
         // Only on a retry (the server already failed before), once per server per session.
-        if (failures >= 1 && _sniRetried.add(server.uri)) return _retryRealitySni(server, options, realityBase);
+        if (deadlineAt == null && !isCancelled() && failures >= 1 && _sniRetried.add(server.uri)) return _retryRealitySni(server, options, realityBase);
       }
       return false;
     }

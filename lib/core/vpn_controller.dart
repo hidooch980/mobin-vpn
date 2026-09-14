@@ -655,6 +655,32 @@ class VpnController extends ChangeNotifier {
     return engine.connect(server, options);
   }
 
+  /// Hard budget of one direct / fast-path attempt (Windows), core start and tunnel check included.
+  static const _directBudget = Duration(seconds: 12);
+
+  /// Direct or fast-path attempt. Windows: bounded by [_directBudget] (a very slow server can no longer freeze
+  /// "connecting"); a server that fails is put aside for 10 minutes so the next connect does not start with it.
+  Future<bool> _directConnect(Server server, EngineOptions options) async {
+    final eng = engine;
+    if (eng is! WindowsEngine || FreeRoutes.isFree(server) || WinFreeRoutes.isChain(server)) {
+      return _engineConnect(server, options);
+    }
+    eng.deadline = DateTime.now().add(_directBudget);
+    try {
+      // The engine stops by itself at the deadline; this is only a safety net.
+      final ok = await _engineConnect(server, options).timeout(_directBudget + const Duration(seconds: 4),
+          onTimeout: () async {
+        AppLog.add('connect: ${server.displayName} exceeded the ${_directBudget.inSeconds} s budget');
+        await engine.disconnect();
+        return false;
+      });
+      if (!ok && !_cancel) _badUntil[server.uri] = DateTime.now().add(const Duration(minutes: 10));
+      return ok;
+    } finally {
+      eng.deadline = null;
+    }
+  }
+
   void _checkCancel() {
     if (_cancel) throw _Cancelled();
   }
@@ -875,7 +901,7 @@ class VpnController extends ChangeNotifier {
         phase = 'اتصال سریع به ${server.displayName}';
         notifyListeners();
         AppLog.add('connect: fast path to last server ${server.displayName}');
-        if (await _engineConnect(server, options)) {
+        if (await _directConnect(server, options)) {
           _checkCancel();
           current = server;
           currentDelay = null;
@@ -917,7 +943,7 @@ class VpnController extends ChangeNotifier {
           _checkCancel();
           phase = 'اتصال مستقیم به ${server.displayName}';
           notifyListeners();
-          if (await _engineConnect(server, options)) {
+          if (await _directConnect(server, options)) {
             _checkCancel();
             AppLog.add('connect: direct to ${server.displayName} (${server.protocolLabel})');
             current = server;
