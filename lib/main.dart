@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import 'core/account.dart';
 import 'core/native_bridge.dart';
+import 'core/tray.dart';
 import 'core/update_notifier.dart';
 import 'core/vpn_controller.dart';
 import 'ui/auth_screen.dart';
@@ -21,6 +22,7 @@ void main() {
   WidgetsFlutterBinding.ensureInitialized();
   final controller = VpnController();
   runApp(MobinApp(controller: controller));
+  unawaited(initTray(controller, showWindow: () {}));
   NativeBridge.attach(controller);
   unawaited(controller.account.init());
   unawaited(controller.init());
