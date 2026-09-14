@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -161,6 +163,82 @@ class AppSettings extends ChangeNotifier {
       p.setString('s_customSub', customSubscription),
       p.setStringList('s_protocols', protocols.map((x) => x.name).toList()),
     ]);
+  }
+
+  /// Portable backup of non-secret settings only: no WARP identity, imported configs, favorites,
+  /// custom subscription link or app lists.
+  String toBackupJson() => jsonEncode({
+        'molido_settings': 1,
+        'themeMode': themeMode,
+        'reduceMotion': reduceMotion,
+        'language': language,
+        'connectMode': connectMode,
+        'transport': transport,
+        'autoReconnect': autoReconnect,
+        'connectOnLaunch': connectOnLaunch,
+        'anonymousReports': anonymousReports,
+        'systemProxy': systemProxy,
+        'tunMode': tunMode,
+        'killSwitch': killSwitch,
+        'localPort': localPort,
+        'tunMtu': tunMtu,
+        'bypassIran': bypassIran,
+        'iranRuleSets': iranRuleSets,
+        'dnsPreset': dnsPreset,
+        'fragment': fragment,
+        'poolSize': poolSize,
+        'timeoutSeconds': timeoutSeconds,
+        'testUrl': testUrl,
+        'protocols': protocols.map((x) => x.name).toList(),
+        'scheduleEnabled': scheduleEnabled,
+        'scheduleFrom': scheduleFrom,
+        'scheduleTo': scheduleTo,
+      });
+
+  /// Applies a [toBackupJson] text; unknown or wrongly typed fields are ignored. Returns false when invalid.
+  Future<bool> restoreBackup(String text) async {
+    Object? decoded;
+    try {
+      decoded = jsonDecode(text.trim());
+    } catch (_) {
+      return false;
+    }
+    if (decoded is! Map<String, dynamic> || decoded['molido_settings'] != 1) return false;
+    final m = decoded;
+    T? pick<T>(String key) => m[key] is T ? m[key] as T : null;
+    await update((s) {
+      s
+        ..themeMode = pick<String>('themeMode') ?? s.themeMode
+        ..reduceMotion = pick<bool>('reduceMotion') ?? s.reduceMotion
+        ..language = pick<String>('language') == 'en' ? 'en' : (pick<String>('language') == 'fa' ? 'fa' : s.language)
+        ..connectMode = pick<String>('connectMode') ?? s.connectMode
+        ..transport = pick<String>('transport') ?? s.transport
+        ..autoReconnect = pick<bool>('autoReconnect') ?? s.autoReconnect
+        ..connectOnLaunch = pick<bool>('connectOnLaunch') ?? s.connectOnLaunch
+        ..anonymousReports = pick<bool>('anonymousReports') ?? s.anonymousReports
+        ..systemProxy = pick<bool>('systemProxy') ?? s.systemProxy
+        ..tunMode = pick<bool>('tunMode') ?? s.tunMode
+        ..killSwitch = pick<bool>('killSwitch') ?? s.killSwitch
+        ..localPort = pick<int>('localPort') ?? s.localPort
+        ..tunMtu = pick<int>('tunMtu') ?? s.tunMtu
+        ..bypassIran = pick<bool>('bypassIran') ?? s.bypassIran
+        ..iranRuleSets = pick<bool>('iranRuleSets') ?? s.iranRuleSets
+        ..dnsPreset = gamingDnsPresets.containsKey(pick<String>('dnsPreset')) ? pick<String>('dnsPreset')! : 'auto'
+        ..fragment = pick<bool>('fragment') ?? s.fragment
+        ..poolSize = pick<int>('poolSize') ?? s.poolSize
+        ..timeoutSeconds = pick<int>('timeoutSeconds') ?? s.timeoutSeconds
+        ..testUrl = pick<String>('testUrl') ?? s.testUrl
+        ..scheduleEnabled = pick<bool>('scheduleEnabled') ?? s.scheduleEnabled
+        ..scheduleFrom = parseTime(pick<String>('scheduleFrom') ?? '') != null ? pick<String>('scheduleFrom')! : s.scheduleFrom
+        ..scheduleTo = parseTime(pick<String>('scheduleTo') ?? '') != null ? pick<String>('scheduleTo')! : s.scheduleTo;
+      final names = m['protocols'];
+      if (names is List) {
+        final parsed = Protocol.values.where((x) => names.contains(x.name)).toSet();
+        if (parsed.isNotEmpty) s.protocols = parsed;
+      }
+      s.reportsAsked = true;
+    });
+    return true;
   }
 
   /// Minutes after midnight for "HH:MM", or null when invalid.

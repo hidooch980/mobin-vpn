@@ -4,6 +4,7 @@ import 'package:android_intent_plus/android_intent.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../core/engine.dart';
 import '../core/server.dart';
@@ -495,6 +496,49 @@ class SettingsScreen extends StatelessWidget {
                 onTap: () {
                   Clipboard.setData(const ClipboardData(text: 'https://github.com/hidooch980/mobin-vpn'));
                   _toast(context, tr('لینک کپی شد', 'Link copied'));
+                },
+              ),
+              NavSettingRow(
+                icon: Icons.qr_code_2_rounded,
+                title: tr('پشتیبان‌گیری تنظیمات', 'Back up settings'),
+                subtitle: tr('کپی JSON و QR؛ بدون کانفیگ‌ها، حساب WARP یا لینک اشتراک',
+                    'Copies JSON and shows a QR; no configs, WARP identity or subscription link'),
+                onTap: () async {
+                  final json = s.toBackupJson();
+                  await Clipboard.setData(ClipboardData(text: json));
+                  if (!context.mounted) return;
+                  await showDialog<void>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: Text(tr('پشتیبان تنظیمات (کپی شد)', 'Settings backup (copied)')),
+                      content: SizedBox(
+                        width: 260,
+                        height: 260,
+                        child: ColoredBox(
+                          color: Colors.white,
+                          child: QrImageView(data: json, size: 260, backgroundColor: Colors.white),
+                        ),
+                      ),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(context), child: Text(tr('بستن', 'Close'))),
+                      ],
+                    ),
+                  );
+                },
+              ),
+              NavSettingRow(
+                icon: Icons.settings_backup_restore_rounded,
+                title: tr('بازیابی تنظیمات', 'Restore settings'),
+                subtitle: tr('متن JSON پشتیبان را جای‌گذاری کنید', 'Paste the backup JSON text'),
+                onTap: () async {
+                  final clip = await Clipboard.getData(Clipboard.kTextPlain);
+                  if (!context.mounted) return;
+                  final v = await _prompt(context, tr('JSON پشتیبان', 'Backup JSON'), clip?.text ?? '');
+                  if (v == null) return;
+                  final ok = await s.restoreBackup(v);
+                  if (context.mounted) {
+                    _toast(context, ok ? tr('تنظیمات بازیابی شد', 'Settings restored') : tr('متن پشتیبان معتبر نیست', 'Invalid backup text'));
+                  }
                 },
               ),
               NavSettingRow(
