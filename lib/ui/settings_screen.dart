@@ -177,7 +177,11 @@ class SettingsScreen extends StatelessWidget {
                 subtitle: tr('دامنه‌های .ir و شبکه‌ی محلی از VPN عبور نمی‌کنند (سریع‌تر، بانک‌ها کار می‌کنند)',
                     '.ir domains and the local network bypass the VPN (faster, banks work)'),
                 value: s.bypassIran,
-                onChanged: (v) => s.update((x) => x.bypassIran = v),
+                onChanged: (v) => s.update((x) {
+                  x.bypassIran = v;
+                  // Turning it on (again) enables the full Iranian IP/domain lists too.
+                  if (v) x.iranRuleSets = true;
+                }),
               ),
             ]),
 

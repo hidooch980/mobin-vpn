@@ -80,6 +80,7 @@ class WindowsEngine implements VpnEngine {
       dataDir: Directory('${base.path}\\free')..createSync(recursive: true),
     );
     await _free.cleanupStale();
+    unawaited(_core.updateIranRuleSets());
     await _releaseProxy(); // a previous run may have been killed while connected
     if (!_core.binaryExists) throw StateError('sing-box.exe کنار برنامه پیدا نشد');
   }
@@ -140,6 +141,8 @@ class WindowsEngine implements VpnEngine {
       return false;
     }
     _proxyPort = port;
+    // Fetch or refresh the Iranian rule-sets for the next connection (daily, through the tunnel if needed).
+    if (options.bypassIran && options.iranRuleSets) unawaited(_core.updateIranRuleSets(proxy: '127.0.0.1:$port'));
     if (options.systemProxy && !options.tunMode) {
       WinSystemProxy.enable('127.0.0.1:$port');
       await (await SharedPreferences.getInstance()).setBool(_proxyOwnedKey, true);

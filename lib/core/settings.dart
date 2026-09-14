@@ -45,6 +45,7 @@ class AppSettings extends ChangeNotifier {
 
   // Routing / DNS / anti-censorship
   bool bypassIran = true;
+  bool iranRuleSets = true; // with bypassIran: full Iranian IP/domain lists direct (new installs; existing users keep .ir only)
   String dns = '1.1.1.1';
   String dnsPreset = 'auto'; // auto | a gamingDnsPresets id
   bool fragment = false;
@@ -82,6 +83,15 @@ class AppSettings extends ChangeNotifier {
     localPort = p.getInt('s_localPort') ?? localPort;
     tunMtu = p.getInt('s_tunMtu') ?? tunMtu;
     bypassIran = p.getBool('s_bypassIran') ?? bypassIran;
+    final storedRuleSets = p.getBool('s_iranRuleSets');
+    if (storedRuleSets == null) {
+      // Migration: only fresh installs get the Iranian rule-sets by default; existing users keep their behaviour.
+      final existing = p.containsKey('sub_time') || p.getKeys().any((k) => k.startsWith('s_'));
+      iranRuleSets = !existing;
+      await p.setBool('s_iranRuleSets', iranRuleSets);
+    } else {
+      iranRuleSets = storedRuleSets;
+    }
     dns = p.getString('s_dns') ?? dns;
     final storedDns = p.getString('s_dnsPreset');
     // Presets that no longer exist (Cloudflare, Google, custom...) fall back to automatic.
@@ -124,6 +134,7 @@ class AppSettings extends ChangeNotifier {
       p.setInt('s_localPort', localPort),
       p.setInt('s_tunMtu', tunMtu),
       p.setBool('s_bypassIran', bypassIran),
+      p.setBool('s_iranRuleSets', iranRuleSets),
       p.setString('s_dns', dns),
       p.setString('s_dnsPreset', dnsPreset),
       p.setBool('s_fragment', fragment),
@@ -159,6 +170,7 @@ class AppSettings extends ChangeNotifier {
           ..killSwitch = false
           ..localPort = 0
           ..bypassIran = true
+          ..iranRuleSets = true
           ..dns = '1.1.1.1'
           ..dnsPreset = 'auto'
           ..fragment = false

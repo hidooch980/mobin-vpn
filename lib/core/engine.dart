@@ -41,7 +41,11 @@ class EngineOptions {
     this.warp,
     this.tunnelDns,
     this.tunMtu = 0,
+    this.iranRuleSets = false,
   });
+
+  /// Route Iranian IPs/domains (geoip-ir / geosite-ir rule-sets) directly; only used together with [bypassIran].
+  final bool iranRuleSets;
 
   /// TUN interface MTU; 0 = automatic (1340 on cellular / USB tethering, 1420 otherwise).
   final int tunMtu;
@@ -74,10 +78,11 @@ class EngineOptions {
         excludedApps: excludedApps,
         tunnelDns: tunnelDns,
         tunMtu: tunMtu,
+        iranRuleSets: iranRuleSets,
       );
 
   /// Settings that change the generated core config.
-  String get configKey => '$dns|$tunnelDns|$bypassIran|$fragment|${warp?.privateKey}';
+  String get configKey => '$dns|$tunnelDns|$bypassIran|$iranRuleSets|$fragment|${warp?.privateKey}';
 }
 
 /// Platform VPN core. Delays are measured from the user's own connection.

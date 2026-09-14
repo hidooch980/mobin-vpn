@@ -169,6 +169,64 @@ class SingboxCore {
     }
   }
 
+  static const iranRuleSetUrls = {
+    'geoip-ir': 'https://raw.githubusercontent.com/Chocolate4U/Iran-sing-box-rules/rule-set/geoip-ir.srs',
+    'geosite-ir': 'https://raw.githubusercontent.com/Chocolate4U/Iran-sing-box-rules/rule-set/geosite-ir.srs',
+  };
+
+  File _ruleSetFile(String tag) => File('${workDir.path}${Platform.pathSeparator}$tag.srs');
+
+  bool _hasRuleSet(String tag) {
+    try {
+      final f = _ruleSetFile(tag);
+      return f.existsSync() && f.lengthSync() > 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Both Iranian rule-sets are on disk (downloaded earlier); configs only reference them when present,
+  /// so a failed download never stops sing-box from starting.
+  bool get iranRuleSetsReady => iranRuleSetUrls.keys.every(_hasRuleSet);
+
+  bool _ruleSetsBusy = false;
+
+  /// Downloads missing or day-old Iranian rule-sets in the background (update interval 1 day). Never throws.
+  Future<void> updateIranRuleSets({String? proxy}) async {
+    if (_ruleSetsBusy) return;
+    _ruleSetsBusy = true;
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+    if (proxy != null) client.findProxy = (_) => 'PROXY $proxy';
+    try {
+      for (final e in iranRuleSetUrls.entries) {
+        final file = _ruleSetFile(e.key);
+        try {
+          if (file.existsSync() &&
+              file.lengthSync() > 0 &&
+              DateTime.now().difference(file.lastModifiedSync()) < const Duration(days: 1)) {
+            continue;
+          }
+          final res = await (await client.getUrl(Uri.parse(e.value))).close().timeout(const Duration(seconds: 20));
+          if (res.statusCode != 200) {
+            await res.drain<void>();
+            continue;
+          }
+          final bytes = await res.fold<List<int>>(<int>[], (b, d) => b..addAll(d)).timeout(const Duration(seconds: 60));
+          if (bytes.length < 16) continue;
+          final tmp = File('${file.path}.tmp');
+          await tmp.writeAsBytes(bytes, flush: true);
+          await tmp.rename(file.path);
+          AppLog.add('$label: rule-set ${e.key} updated');
+        } catch (err) {
+          AppLog.add('$label: rule-set ${e.key} not updated ($err)');
+        }
+      }
+    } finally {
+      client.close(force: true);
+      _ruleSetsBusy = false;
+    }
+  }
+
   /// The selected Iranian gaming DNS as a sing-box 1.12 server tagged "remote"; null = automatic.
   /// It only answers inside Iran, so it connects directly: no detour (sing-box 1.12 rejects a detour
   /// to an empty direct outbound).
@@ -176,6 +234,8 @@ class SingboxCore {
     final value = o.tunnelDns;
     return value == null ? null : {'type': 'udp', 'tag': 'remote', 'server': value};
   }
+
+  bool _useIranRuleSets(EngineOptions o) => o.bypassIran && o.iranRuleSets && iranRuleSetsReady;
 
   /// Config for a live connection: local mixed proxy on [port], optional TUN (Windows), optional WARP chain.
   /// [directProcesses]: executables whose own traffic must bypass the tunnel (local Psiphon/Tor, avoids a loop).
@@ -218,7 +278,13 @@ class SingboxCore {
             if (tun) {'protocol': 'dns', 'action': 'hijack-dns'},
             {'ip_is_private': true, 'outbound': 'direct'},
             if (o.bypassIran) {'domain_suffix': ['ir'], 'outbound': 'direct'},
+            if (_useIranRuleSets(o)) {'rule_set': iranRuleSetUrls.keys.toList(), 'outbound': 'direct'},
           ],
+          if (_useIranRuleSets(o))
+            'rule_set': [
+              for (final tag in iranRuleSetUrls.keys)
+                {'type': 'local', 'tag': tag, 'format': 'binary', 'path': _ruleSetFile(tag).path},
+            ],
           'final': o.warp != null ? 'warp' : 'proxy',
           if (detectInterface) 'auto_detect_interface': true,
           'default_domain_resolver': 'local',

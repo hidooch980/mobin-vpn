@@ -115,6 +115,7 @@ class VpnController extends ChangeNotifier {
         warp: settings.warp ? WarpAccount.fromJsonString(settings.warpAccount) : null,
         tunnelDns: settings.tunnelDns,
         tunMtu: settings.tunMtu,
+        iranRuleSets: settings.bypassIran && settings.iranRuleSets,
       );
 
   Future<void> init() async {
