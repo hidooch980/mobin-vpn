@@ -894,6 +894,8 @@ class VpnController extends ChangeNotifier {
         notifyListeners();
       };
     } else if (eng is WindowsEngine) {
+      // Automatic mode: Tor is the last resort and may not hold the connect for minutes.
+      eng.torBudget = only == null && settings.transport == 'auto' ? const Duration(seconds: 90) : null;
       eng.isCancelled = () => _cancel;
       eng.onPhase = (text) {
         phase = text;
@@ -1013,7 +1015,15 @@ class VpnController extends ChangeNotifier {
         // None worked: test the remaining servers and connect to the fastest responsive one.
         AppLog.add('connect: direct attempts failed, testing the other servers');
         pool.removeWhere(tried.contains);
-        if (pool.isEmpty) throw const _UserError('اتصال برقرار نشد. لیست سرورها را به‌روزرسانی کنید یا کشور دیگری انتخاب کنید.');
+        if (pool.isEmpty) {
+          // Psiphon / Tor alone (or last): their own reason instead of the server-list advice.
+          final eng = engine;
+          final freeError = eng is WindowsEngine && tried.isNotEmpty && FreeRoutes.isFree(tried.last)
+              ? eng.freeRouteError
+              : null;
+          throw _UserError(
+              freeError ?? 'اتصال برقرار نشد. لیست سرورها را به‌روزرسانی کنید یا کشور دیگری انتخاب کنید.');
+        }
       }
 
       phase = 'سنجش سرورها با اینترنت شما';

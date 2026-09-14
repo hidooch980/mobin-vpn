@@ -88,14 +88,30 @@ class WinFreeRoutes {
 
   /// Starts [route] ('psiphon' or 'tor') and returns its local SOCKS port once it carries traffic, else null.
   /// [upstreamProxy] (Psiphon only), e.g. "socks5://127.0.0.1:port": Psiphon dials its servers through it.
+  /// User-facing reason of the last failed [start] (Persian), null after a success.
+  String? lastError;
+
+  /// [torBudget]: total time for all Tor rungs (automatic mode), null = the full ladder.
   Future<int?> start(String route,
-      {required bool Function() isCancelled, void Function(String phase)? onPhase, String? upstreamProxy}) async {
+      {required bool Function() isCancelled,
+      void Function(String phase)? onPhase,
+      String? upstreamProxy,
+      Duration? torBudget}) async {
+    lastError = null;
     await stop();
     if (!binaryExists(route)) {
       AppLog.add('$route: binary not found next to the app');
       return null;
     }
-    return route == 'tor' ? _startTor(isCancelled, onPhase) : _startPsiphon(isCancelled, onPhase, upstreamProxy);
+    final port = route == 'tor'
+        ? await _startTor(isCancelled, onPhase, torBudget)
+        : await _startPsiphon(isCancelled, onPhase, upstreamProxy);
+    if (port == null && lastError == null && !isCancelled()) {
+      lastError = route == 'tor'
+          ? 'Tor روی این اینترنت مسدود است (پل‌ها هم وصل نشدند). مسیر «خودکار» یا Psiphon را امتحان کنید.'
+          : 'Psiphon وصل نشد. چند دقیقه بعد دوباره امتحان کنید یا مسیر «خودکار» را انتخاب کنید.';
+    }
+    return port;
   }
 
   // ---------------------------------------------------------------- Psiphon
@@ -134,22 +150,31 @@ class WinFreeRoutes {
     final args = ['-config', config.path, if (File(entries).existsSync()) ...['-serverList', entries]];
     onPhase?.call('در حال یافتن سرور Psiphon…');
     var logged = 0;
-    final ok = await _launch(psiphonExe, args, const Duration(seconds: 60), 'psiphon', isCancelled, (line) {
-      final decoded = _tryJson(line);
+    String? lastAlert;
+    // Notices are JSON lines on stderr (stdout is read too); a line may carry a prefix before the JSON.
+    // Limit above Psiphon's own EstablishTunnelTimeoutSeconds so its final notices are still seen.
+    final ok = await _launch(psiphonExe, args, const Duration(seconds: 75), 'psiphon', isCancelled, (line) {
+      final brace = line.indexOf('{');
+      final decoded = brace < 0 ? null : _tryJson(line.substring(brace));
       if (decoded is! Map) return null;
       final type = decoded['noticeType'];
       final data = decoded['data'];
-      if (type == 'ListeningSocksProxyPort' && data is Map && data['port'] is int) {
-        socksPort = data['port'] as int;
-      } else if (type == 'Tunnels' && data is Map && (data['count'] as num? ?? 0) >= 1) {
+      if (type == 'ListeningSocksProxyPort' && data is Map && data['port'] != null) {
+        socksPort = int.tryParse('${data['port']}') ?? socksPort;
+        AppLog.add('psiphon: socks port $socksPort');
+      } else if (type == 'Tunnels' && data is Map && (num.tryParse('${data['count']}') ?? 0) >= 1) {
         return true;
-      } else if (type == 'ConnectingServer' || type == 'CandidateServers') {
+      } else if (type == 'ActiveTunnel') {
+        return true;
+      } else if (type == 'ConnectingServer' || type == 'CandidateServers' || type == 'AvailableEgressRegions') {
         onPhase?.call('اتصال به سرورهای Psiphon…');
-      } else if ((type == 'Alert' || type == 'Error') && logged++ < 20) {
-        AppLog.add('psiphon: $line');
+      } else if (type == 'Alert' || type == 'Error' || type == 'Warning') {
+        lastAlert = line;
+        if (logged++ < 20) AppLog.add('psiphon: $line');
       }
       return null;
     });
+    if (!ok && lastAlert != null) AppLog.add('psiphon: last notice before failure: $lastAlert');
     return ok ? socksPort : null;
   }
 
@@ -196,13 +221,19 @@ class WinFreeRoutes {
   /// torrc string value: quoted, forward slashes (paths may contain spaces).
   static String _q(String path) => '"${path.replaceAll('\\', '/').replaceAll('"', '\\"')}"';
 
-  Future<int?> _startTor(bool Function() isCancelled, void Function(String)? onPhase) async {
+  Future<int?> _startTor(bool Function() isCancelled, void Function(String)? onPhase, Duration? budget) async {
+    final end = budget == null ? null : DateTime.now().add(budget);
     final torDir = '$appDir\\tor';
     final lyrebird = '$torDir\\lyrebird.exe';
     final hasPt = File(lyrebird).existsSync();
     final dataPath = Directory('${dataDir.path}\\tor')..createSync(recursive: true);
     for (final (i, rung) in _rungs.indexed) {
       if (isCancelled()) return null;
+      final left = end?.difference(DateTime.now());
+      if (left != null && left < const Duration(seconds: 10)) {
+        AppLog.add('tor: time budget used up');
+        break;
+      }
       final bridged = rung.transport.isNotEmpty;
       if (bridged && !hasPt) break;
       final port = await SingboxCore.freePort();
@@ -235,7 +266,9 @@ class WinFreeRoutes {
       onPhase?.call('اتصال به شبکه‌ی $prefix…');
       AppLog.add('tor: trying ${rung.transport.isEmpty ? 'direct' : rung.transport}');
       final bootstrapped = RegExp(r'Bootstrapped (\d+)%');
-      final ok = await _launch(torExe, ['-f', torrcFile.path], Duration(seconds: rung.seconds), 'tor', isCancelled, (line) {
+      var limit = Duration(seconds: rung.seconds);
+      if (left != null && left < limit) limit = left;
+      final ok = await _launch(torExe, ['-f', torrcFile.path], limit, 'tor', isCancelled, (line) {
         final m = bootstrapped.firstMatch(line);
         if (m != null) {
           final pct = int.parse(m.group(1)!);

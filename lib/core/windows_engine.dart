@@ -39,6 +39,12 @@ class WindowsEngine implements VpnEngine {
   /// Status line while Psiphon / Tor is starting (set by the controller).
   void Function(String phase)? onPhase;
 
+  /// Total time Tor may use (set by the controller for automatic mode); null = the full bridge ladder.
+  Duration? torBudget;
+
+  /// User-facing reason of the last failed Psiphon/Tor start, or null.
+  String? get freeRouteError => _free.lastError;
+
   /// Set by the controller so a slow Psiphon/Tor start can be cancelled.
   bool Function() isCancelled = () => false;
 
@@ -273,7 +279,7 @@ class WindowsEngine implements VpnEngine {
       }
       // Psiphon / Tor run locally; sing-box just forwards to their SOCKS port.
       final socks = await _free.start(FreeRoutes.routeOf(server),
-          isCancelled: isCancelled, onPhase: onPhase, upstreamProxy: upstream);
+          isCancelled: isCancelled, onPhase: onPhase, upstreamProxy: upstream, torBudget: torBudget);
       if (socks == null) {
         await _free.stop();
         await _warpHelper.stop();
