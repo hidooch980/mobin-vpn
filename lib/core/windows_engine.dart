@@ -112,6 +112,34 @@ class WindowsEngine implements VpnEngine {
           {void Function(int done)? onProgress, bool Function()? isCancelled, void Function(int index, int delay)? onResult}) =>
       _core.pingAll(servers, options.forPing, onProgress: onProgress, isCancelled: isCancelled, onResult: onResult);
 
+  /// Failed real connections per server uri (this session), for [evasive] retries.
+  final _failures = <String, int>{};
+
+  static const _fingerprints = ['firefox', 'safari', 'randomized'];
+
+  /// Copy of a TCP-TLS outbound (vless/vmess/trojan) with the uTLS fingerprint rotated by [failures]
+  /// (firefox → safari → randomized) and, from the second failure, WebSocket early data when not set.
+  static Map<String, dynamic> evasive(Map<String, dynamic> outbound, int failures) {
+    if (failures <= 0 || !const {'vless', 'vmess', 'trojan'}.contains(outbound['type'])) return outbound;
+    final result = {...outbound};
+    final tls = outbound['tls'];
+    if (tls is Map && tls['enabled'] == true) {
+      result['tls'] = {
+        ...Map<String, dynamic>.from(tls),
+        'utls': {'enabled': true, 'fingerprint': _fingerprints[(failures - 1) % _fingerprints.length]},
+      };
+    }
+    final transport = outbound['transport'];
+    if (failures >= 2 && transport is Map && transport['type'] == 'ws' && transport['max_early_data'] == null) {
+      result['transport'] = {
+        ...Map<String, dynamic>.from(transport),
+        'max_early_data': 2048,
+        'early_data_header_name': 'Sec-WebSocket-Protocol',
+      };
+    }
+    return result;
+  }
+
   /// Background re-ping while idle: few parallel tests so the PC and UI stay responsive.
   Future<List<int>> prewarm(List<Server> servers, EngineOptions options, {bool Function()? isCancelled}) =>
       _core.pingAll(servers, options.forPing, isCancelled: isCancelled, concurrency: 4);
@@ -135,6 +163,9 @@ class WindowsEngine implements VpnEngine {
       outbound = _core.outbound(server);
     }
     if (outbound == null) return false;
+    // Anti-DPI retry: after failures, rotate the uTLS fingerprint and (ws) add early data.
+    final failures = free ? 0 : (_failures[server.uri] ?? 0);
+    if (failures > 0) outbound = evasive(outbound, failures);
     // Cloudflare CDN server: dial a clean edge IP found on this network (SNI/Host unchanged).
     final original = outbound;
     outbound = CleanIp.apply(outbound);
@@ -197,8 +228,10 @@ class WindowsEngine implements VpnEngine {
       AppLog.add('windows: no traffic through ${server.displayName}');
       await disconnect();
       if (cleanIp != null) CleanIp.markBad(cleanIp);
+      if (!free) _failures[server.uri] = failures + 1;
       return false;
     }
+    _failures.remove(server.uri);
     _proxyPort = port;
     // Fetch or refresh the Iranian rule-sets for the next connection (daily, through the tunnel if needed).
     if (options.bypassIran && options.iranRuleSets) unawaited(_core.updateIranRuleSets(proxy: '127.0.0.1:$port'));
