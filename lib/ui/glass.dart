@@ -21,8 +21,8 @@ class Glass extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Flat cards with modest corners (hairline border, no heavy rounding).
-    final shape = BorderRadius.circular(radius > 14 ? 14 : radius);
+    // Design-system card: 24 px corners, border only in light theme (or when a highlight color is given).
+    final shape = BorderRadius.circular(radius >= 18 ? Palette.cardRadius : radius);
     return Material(
       type: MaterialType.transparency,
       child: InkWell(
@@ -38,7 +38,9 @@ class Glass extends StatelessWidget {
               end: Alignment.bottomRight,
               colors: [Palette.cardTop, Palette.cardBottom],
             ),
-            border: Border.all(color: borderColor ?? Palette.border),
+            border: borderColor != null
+                ? Border.all(color: borderColor!, width: 1.5)
+                : (Palette.isDark ? null : Border.all(color: Palette.border)),
             boxShadow: Palette.isDark ? null : [BoxShadow(color: Palette.shadow, blurRadius: 22, offset: const Offset(0, 8))],
           ),
           child: Padding(padding: padding, child: child),

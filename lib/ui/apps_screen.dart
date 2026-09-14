@@ -6,6 +6,7 @@ import '../core/engine.dart';
 import '../core/settings.dart';
 import 'aurora_background.dart';
 import 'glass.dart';
+import 'strings.dart';
 import 'style.dart';
 
 /// Android split tunneling: checked apps bypass the VPN.
@@ -39,13 +40,13 @@ class _AppsScreenState extends State<AppsScreen> {
                     radius: 16,
                     padding: const EdgeInsets.all(10),
                     onTap: () => Navigator.of(context).pop(),
-                    child: Icon(Icons.arrow_forward_rounded, color: Palette.text),
+                    child: Icon(backIcon, color: Palette.text),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('برنامه‌های خارج از VPN', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Palette.text)),
-                      Text('برنامه‌های انتخاب‌شده مستقیم به اینترنت وصل می‌شوند', style: TextStyle(fontSize: 12, color: Palette.muted)),
+                      Text(tr('برنامه‌های خارج از VPN', 'Apps outside VPN'), style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Palette.text)),
+                      Text(tr('برنامه‌های انتخاب‌شده مستقیم به اینترنت وصل می‌شوند', 'Selected apps connect to the internet directly'), style: TextStyle(fontSize: 12, color: Palette.muted)),
                     ]),
                   ),
                 ]),
@@ -56,7 +57,7 @@ class _AppsScreenState extends State<AppsScreen> {
                   onChanged: (v) => setState(() => _query = v),
                   style: TextStyle(color: Palette.text),
                   decoration: InputDecoration(
-                    hintText: 'جستجوی برنامه…',
+                    hintText: tr('جستجوی برنامه…', 'Search apps…'),
                     hintStyle: TextStyle(color: Palette.muted),
                     prefixIcon: Icon(Icons.search_rounded, color: Palette.muted),
                     filled: true,
@@ -71,7 +72,7 @@ class _AppsScreenState extends State<AppsScreen> {
                   future: _apps,
                   builder: (context, snap) {
                     if (snap.hasError) {
-                      return Center(child: Text('فهرست برنامه‌ها در دسترس نیست', style: TextStyle(color: Palette.muted)));
+                      return Center(child: Text(tr('فهرست برنامه‌ها در دسترس نیست', 'App list is not available'), style: TextStyle(color: Palette.muted)));
                     }
                     if (!snap.hasData) return const Center(child: CircularProgressIndicator());
                     final q = _query.trim().toLowerCase();
@@ -120,7 +121,7 @@ class _AppsScreenState extends State<AppsScreen> {
                                 ),
                                 Checkbox(
                                   value: excluded,
-                                  activeColor: const Color(0xFF7C3AED),
+                                  activeColor: Palette.accent,
                                   onChanged: (_) => s.update((x) {
                                     final next = {...x.excludedApps};
                                     excluded ? next.remove(app.packageName) : next.add(app.packageName);

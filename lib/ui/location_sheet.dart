@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/vpn_controller.dart';
 import 'flag_badge.dart';
+import 'strings.dart';
 import 'style.dart';
 import 'widgets.dart';
 
@@ -17,10 +18,10 @@ Future<void> showLocationSheet(BuildContext context, VpnController controller) {
 
 /// Human label of the selected location (null = smart).
 String locationLabel(VpnController c) => switch (c.selectedCountry) {
-      null => 'هوشمند',
-      VpnController.favoritesMode => 'علاقه‌مندی‌ها',
-      VpnController.gamingMode => 'حالت گیمینگ',
-      final String code => c.countries.where((g) => g.code == code).firstOrNull?.name ?? code,
+      null => tr('هوشمند', 'Smart'),
+      VpnController.favoritesMode => tr('علاقه‌مندی‌ها', 'Favorites'),
+      VpnController.gamingMode => tr('حالت گیمینگ', 'Gaming mode'),
+      final String code => countryText(code, c.countries.where((g) => g.code == code).firstOrNull?.name ?? code),
     };
 
 class _LocationSheet extends StatefulWidget {
@@ -50,7 +51,8 @@ class _LocationSheetState extends State<_LocationSheet> {
     final c = widget.controller;
     final q = _query.trim().toLowerCase();
     final groups = c.countries
-        .where((g) => q.isEmpty || g.name.contains(q) || g.code.toLowerCase().contains(q))
+        .where((g) =>
+            q.isEmpty || g.name.contains(q) || countryText(g.code, g.name).toLowerCase().contains(q) || g.code.toLowerCase().contains(q))
         .toList();
 
     return DraggableScrollableSheet(
@@ -63,30 +65,29 @@ class _LocationSheetState extends State<_LocationSheet> {
           child: Container(
             decoration: BoxDecoration(
               color: Palette.bg,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-              border: Border(top: BorderSide(color: Palette.border)),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(Palette.cardRadius)),
             ),
             child: Column(children: [
               const SizedBox(height: 10),
               Container(width: 40, height: 4, decoration: BoxDecoration(color: Palette.border, borderRadius: BorderRadius.circular(2))),
               const SizedBox(height: 14),
-              Text('انتخاب موقعیت', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w600, color: Palette.text)),
+              Text(tr('انتخاب موقعیت', 'Choose location'), style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800, color: Palette.text)),
               const SizedBox(height: 4),
-              Text('${c.servers.length} سرور تست‌شده در ${c.countries.length} کشور', style: TextStyle(fontSize: 13, color: Palette.muted)),
+              Text(tr('${c.servers.length} سرور تست‌شده در ${c.countries.length} کشور', '${c.servers.length} tested servers in ${c.countries.length} countries'), style: TextStyle(fontSize: 13, color: Palette.muted)),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
                 child: TextField(
                   onChanged: (v) => setState(() => _query = v),
                   style: TextStyle(color: Palette.text),
                   decoration: InputDecoration(
-                    hintText: 'جستجوی کشور…',
+                    hintText: tr('جستجوی کشور…', 'Search country…'),
                     hintStyle: TextStyle(color: Palette.muted),
                     prefixIcon: Icon(Icons.search_rounded, color: Palette.muted),
                     filled: true,
                     fillColor: Palette.surface,
                     contentPadding: const EdgeInsets.symmetric(vertical: 12),
                     enabledBorder:
-                        OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Palette.border)),
+                        OutlineInputBorder(borderRadius: BorderRadius.circular(Palette.pillRadius), borderSide: Palette.cardSide),
                     focusedBorder:
                         OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Palette.accent)),
                   ),
@@ -98,36 +99,38 @@ class _LocationSheetState extends State<_LocationSheet> {
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
                   children: [
                     if (q.isEmpty) ...[
-                      const SectionHeader('حالت‌ها'),
+                      SectionHeader(tr('حالت‌ها', 'Modes')),
                       _Tile(
                         code: null,
-                        title: 'هوشمند',
-                        subtitle: 'اتصال خودکار به سریع‌ترین سرور برای اینترنت شما',
+                        title: tr('هوشمند', 'Smart'),
+                        subtitle: tr('اتصال خودکار به سریع‌ترین سرور برای اینترنت شما', 'Connects to the fastest server for your internet'),
                         selected: c.selectedCountry == null,
                         onTap: () => _pick(null),
                       ),
                       _Tile(
                         code: VpnController.gamingMode,
-                        title: 'حالت گیمینگ',
-                        subtitle: 'کمترین و پایدارترین پینگ از سرورهای نزدیک؛ مناسب بازی‌های آنلاین',
+                        title: tr('حالت گیمینگ', 'Gaming mode'),
+                        subtitle: tr('کمترین و پایدارترین پینگ از سرورهای نزدیک؛ مناسب بازی‌های آنلاین',
+                            'Lowest, most stable ping from nearby servers; for online games'),
                         selected: c.selectedCountry == VpnController.gamingMode,
                         onTap: () => _pick(VpnController.gamingMode),
                       ),
                       if (c.settings.favorites.isNotEmpty)
                         _Tile(
                           code: VpnController.favoritesMode,
-                          title: 'علاقه‌مندی‌ها',
-                          subtitle: '${c.settings.favorites.length} سرور ستاره‌دار · سریع‌ترین انتخاب می‌شود',
+                          title: tr('علاقه‌مندی‌ها', 'Favorites'),
+                          subtitle: tr('${c.settings.favorites.length} سرور ستاره‌دار · سریع‌ترین انتخاب می‌شود',
+                              '${c.settings.favorites.length} starred servers · fastest is used'),
                           selected: c.selectedCountry == VpnController.favoritesMode,
                           onTap: () => _pick(VpnController.favoritesMode),
                         ),
-                      const SectionHeader('کشورها'),
+                      SectionHeader(tr('کشورها', 'Countries')),
                     ],
                     for (final g in groups)
                       _Tile(
                         code: g.code,
-                        title: g.name,
-                        subtitle: '${g.servers.length} سرور',
+                        title: countryText(g.code, g.name),
+                        subtitle: tr('${g.servers.length} سرور', '${g.servers.length} servers'),
                         selected: c.selectedCountry == g.code,
                         onTap: () => _pick(g.code),
                       ),
@@ -170,7 +173,7 @@ class _Tile extends StatelessWidget {
           ),
           selected
               ? Icon(Icons.check_circle_rounded, color: Palette.accent)
-              : Icon(Icons.chevron_left_rounded, color: Palette.muted),
+              : Icon(chevronEnd, color: Palette.muted),
         ]),
       ),
     );

@@ -4,6 +4,7 @@ import '../core/account.dart';
 import '../core/engine.dart';
 import 'aurora_background.dart';
 import 'glass.dart';
+import 'strings.dart';
 import 'style.dart';
 
 /// Sign in / sign up. Shown before the app when accounts are enabled and nobody is signed in.
@@ -35,7 +36,9 @@ class _AuthScreenState extends State<AuthScreen> {
     if (!email.contains('@') || password.length < 6 || (_signUp && _name.text.trim().isEmpty)) {
       setState(() {
         _messageIsError = true;
-        _message = _signUp ? 'نام، ایمیل و رمز (دست‌کم ۶ کاراکتر) را وارد کنید.' : 'ایمیل و رمز (دست‌کم ۶ کاراکتر) را وارد کنید.';
+        _message = _signUp
+            ? tr('نام، ایمیل و رمز (دست‌کم ۶ کاراکتر) را وارد کنید.', 'Enter name, email and password (at least 6 characters).')
+            : tr('ایمیل و رمز (دست‌کم ۶ کاراکتر) را وارد کنید.', 'Enter email and password (at least 6 characters).');
       });
       return;
     }
@@ -51,7 +54,7 @@ class _AuthScreenState extends State<AuthScreen> {
       _busy = false;
       if (result == 'confirm') {
         _messageIsError = false;
-        _message = 'ثبت‌نام انجام شد. لینک تأیید به $email فرستاده شد؛ بعد از تأیید، وارد شوید.';
+        _message = tr('ثبت‌نام انجام شد. لینک تأیید به $email فرستاده شد؛ بعد از تأیید، وارد شوید.', 'Signed up. A confirmation link was sent to $email; sign in after confirming.');
         _signUp = false;
       } else {
         _messageIsError = true;
@@ -65,7 +68,7 @@ class _AuthScreenState extends State<AuthScreen> {
     if (!email.contains('@')) {
       setState(() {
         _messageIsError = true;
-        _message = 'اول ایمیل خود را بنویسید، بعد «فراموشی رمز» را بزنید.';
+        _message = tr('اول ایمیل خود را بنویسید، بعد «فراموشی رمز» را بزنید.', 'Enter your email first, then tap Forgot password.');
       });
       return;
     }
@@ -75,7 +78,7 @@ class _AuthScreenState extends State<AuthScreen> {
     setState(() {
       _busy = false;
       _messageIsError = result != null;
-      _message = result ?? 'لینک تغییر رمز به $email فرستاده شد.';
+      _message = result ?? tr('لینک تغییر رمز به $email فرستاده شد.', 'A password reset link was sent to $email.');
     });
   }
 
@@ -118,7 +121,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     ),
                     const SizedBox(height: 16),
                     Text('MolidoVPN', textAlign: TextAlign.center, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Palette.text)),
-                    Text(_signUp ? 'ساخت حساب جدید' : 'به حساب خود وارد شوید',
+                    Text(_signUp ? tr('ساخت حساب جدید', 'Create a new account') : tr('به حساب خود وارد شوید', 'Sign in to your account'),
                         textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: Palette.muted)),
                     const SizedBox(height: 22),
                     Glass(
@@ -142,7 +145,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                       controller: _name,
                                       textInputAction: TextInputAction.next,
                                       style: TextStyle(color: Palette.text),
-                                      decoration: _field('نام و نام خانوادگی', Icons.person_rounded),
+                                      decoration: _field(tr('نام و نام خانوادگی', 'Full name'), Icons.person_rounded),
                                     ),
                                   )
                                 : const SizedBox(width: double.infinity),
@@ -154,7 +157,7 @@ class _AuthScreenState extends State<AuthScreen> {
                             textInputAction: TextInputAction.next,
                             autofillHints: const [AutofillHints.email],
                             style: TextStyle(color: Palette.text),
-                            decoration: _field('ایمیل', Icons.alternate_email_rounded),
+                            decoration: _field(tr('ایمیل', 'Email'), Icons.alternate_email_rounded),
                           ),
                           const SizedBox(height: 12),
                           TextField(
@@ -165,10 +168,10 @@ class _AuthScreenState extends State<AuthScreen> {
                             autofillHints: const [AutofillHints.password],
                             style: TextStyle(color: Palette.text),
                             decoration: _field(
-                              'رمز عبور',
+                              tr('رمز عبور', 'Password'),
                               Icons.lock_rounded,
                               suffix: IconButton(
-                                tooltip: _hidden ? 'نمایش رمز' : 'پنهان کردن رمز',
+                                tooltip: _hidden ? tr('نمایش رمز', 'Show password') : tr('پنهان کردن رمز', 'Hide password'),
                                 onPressed: () => setState(() => _hidden = !_hidden),
                                 icon: Icon(_hidden ? Icons.visibility_rounded : Icons.visibility_off_rounded, color: Palette.muted),
                               ),
@@ -194,18 +197,18 @@ class _AuthScreenState extends State<AuthScreen> {
                             ),
                             child: _busy
                                 ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
-                                : Text(_signUp ? 'ثبت‌نام' : 'ورود', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                                : Text(_signUp ? tr('ثبت‌نام', 'Sign up') : tr('ورود', 'Sign in'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
                           ),
                           if (!_signUp)
                             TextButton(
                               onPressed: _busy ? null : _forgot,
-                              child: Text('رمز را فراموش کرده‌ام', style: TextStyle(color: Palette.muted)),
+                              child: Text(tr('رمز را فراموش کرده‌ام', 'Forgot password'), style: TextStyle(color: Palette.muted)),
                             ),
                         ],
                       ),
                     ),
                     const SizedBox(height: 14),
-                    Text('هر حساب روی یک دستگاه فعال می‌شود.',
+                    Text(tr('هر حساب روی یک دستگاه فعال می‌شود.', 'Each account is active on one device.'),
                         textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Palette.muted)),
                   ],
                 ),
@@ -249,7 +252,7 @@ class _Tabs extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(color: Palette.fill, borderRadius: BorderRadius.circular(16)),
-      child: Row(children: [tab('ورود', false), tab('ثبت‌نام', true)]),
+      child: Row(children: [tab(tr('ورود', 'Sign in'), false), tab(tr('ثبت‌نام', 'Sign up'), true)]),
     );
   }
 }
@@ -280,13 +283,13 @@ class AccountBlockedScreen extends StatelessWidget {
                     children: [
                       Icon(disabled ? Icons.block_rounded : Icons.devices_other_rounded, size: 56, color: Palette.forDelay(9999)),
                       const SizedBox(height: 12),
-                      Text(disabled ? 'حساب شما غیرفعال است' : 'این حساب روی دستگاه دیگری فعال است',
+                      Text(disabled ? tr('حساب شما غیرفعال است', 'Your account is disabled') : tr('این حساب روی دستگاه دیگری فعال است', 'This account is active on another device'),
                           textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Palette.text)),
                       const SizedBox(height: 8),
                       Text(
                         disabled
-                            ? 'مدیر دسترسی این حساب را قطع کرده است. برای فعال شدن با او تماس بگیرید.'
-                            : 'هر حساب فقط روی یک دستگاه کار می‌کند. از مدیر بخواهید دستگاه قبلی را آزاد کند، یا با حساب دیگری وارد شوید.',
+                            ? tr('مدیر دسترسی این حساب را قطع کرده است. برای فعال شدن با او تماس بگیرید.', 'An administrator turned this account off. Contact them to enable it.')
+                            : tr('هر حساب فقط روی یک دستگاه کار می‌کند. از مدیر بخواهید دستگاه قبلی را آزاد کند، یا با حساب دیگری وارد شوید.', 'Each account works on one device only. Ask the administrator to release the previous device, or sign in with another account.'),
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 14, height: 1.8, color: Palette.muted),
                       ),
@@ -296,7 +299,7 @@ class AccountBlockedScreen extends StatelessWidget {
                           child: FilledButton(
                             onPressed: account.refreshStatus,
                             style: FilledButton.styleFrom(backgroundColor: Palette.accent, padding: const EdgeInsets.symmetric(vertical: 14)),
-                            child: const Text('بررسی دوباره'),
+                            child: Text(tr('بررسی دوباره', 'Check again')),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -304,7 +307,7 @@ class AccountBlockedScreen extends StatelessWidget {
                           child: OutlinedButton(
                             onPressed: account.signOut,
                             style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
-                            child: Text('خروج از حساب', style: TextStyle(color: Palette.text)),
+                            child: Text(tr('خروج از حساب', 'Sign out'), style: TextStyle(color: Palette.text)),
                           ),
                         ),
                       ]),

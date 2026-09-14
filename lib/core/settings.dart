@@ -27,6 +27,7 @@ class AppSettings extends ChangeNotifier {
   // Appearance
   String themeMode = 'system'; // system | light | dark
   bool reduceMotion = false;
+  String language = 'fa'; // fa | en
 
   // Connection
   String androidCore = 'auto'; // auto | xray | singbox
@@ -66,6 +67,7 @@ class AppSettings extends ChangeNotifier {
     final p = await SharedPreferences.getInstance();
     themeMode = p.getString('s_themeMode') ?? themeMode;
     reduceMotion = p.getBool('s_reduceMotion') ?? reduceMotion;
+    language = p.getString('s_language') == 'en' ? 'en' : 'fa';
     androidCore = p.getString('s_androidCore') ?? androidCore;
     connectMode = p.getString('s_connectMode') ?? connectMode;
     transport = p.getString('s_transport') ?? transport;
@@ -106,6 +108,7 @@ class AppSettings extends ChangeNotifier {
     await Future.wait([
       p.setString('s_themeMode', themeMode),
       p.setBool('s_reduceMotion', reduceMotion),
+      p.setString('s_language', language),
       p.setString('s_androidCore', androidCore),
       p.setString('s_connectMode', connectMode),
       p.setString('s_transport', transport),

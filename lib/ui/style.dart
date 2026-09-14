@@ -1,95 +1,98 @@
 import 'package:flutter/material.dart';
 
 import '../core/engine.dart';
+import 'strings.dart';
 
-/// App colors for the active theme ("night map" design: deep navy / clean blue-white, blue accent,
-/// amber for the selected server). [apply] is called whenever the theme changes and the app rebuilds.
+/// MolidoVPN design system: deep teal-black canvas / mint-white in light, teal accent,
+/// emerald when connected, amber while connecting, red for failures.
+/// [apply] is called whenever the theme changes and the app rebuilds.
 class Palette {
   static bool isDark = true;
   static bool reduceMotion = false;
 
-  static Color bg = const Color(0xFF0A1024);
-  static Color surface = const Color(0xFF121A36);
-  static Color raised = const Color(0xFF18224A);
-  static Color text = const Color(0xFFE8ECFF);
-  static Color muted = const Color(0xFF8D9AC6);
-  static Color accent = const Color(0xFF6A8CFF);
-  static Color amber = const Color(0xFFF5B83D);
-  static Color mapDot = const Color(0x597896FF);
-  static Color fill = const Color(0x14FFFFFF);
-  static Color fillStrong = const Color(0x24FFFFFF);
-  static Color border = const Color(0xFF243060);
-  static Color sheet = const Color(0xFF121A36);
-  static Color cardTop = const Color(0xFF141D3D);
-  static Color cardBottom = const Color(0xFF111934);
+  /// Card corner radius; buttons and pills use [pillRadius].
+  static const double cardRadius = 24;
+  static const double pillRadius = 16;
+
+  static Color bg = const Color(0xFF07110F);
+  static Color surface = const Color(0xFF0E1C19);
+  static Color raised = const Color(0xFF142824);
+  static Color border = const Color(0xFF1C3530);
+  static Color text = const Color(0xFFEAF7F3);
+  static Color muted = const Color(0xFF8FB3AA);
+  static Color accent = const Color(0xFF2DD4BF);
+  static Color connected = const Color(0xFF34D399);
+  static Color connecting = const Color(0xFFFBBF24);
+  static Color danger = const Color(0xFFF87171);
+
+  /// Legacy name of the "connected / selected" color.
+  static Color amber = const Color(0xFF34D399);
+  static Color mapDot = const Color(0x332DD4BF);
+  static Color fill = const Color(0x0FFFFFFF);
+  static Color fillStrong = const Color(0x1AFFFFFF);
+  static Color sheet = const Color(0xFF0E1C19);
+  static Color cardTop = const Color(0xFF0E1C19);
+  static Color cardBottom = const Color(0xFF0E1C19);
   static Color shadow = const Color(0x00000000);
-  static double auroraStrength = 0.16;
+  static double auroraStrength = 0.0;
 
   static void apply(Brightness brightness, {required bool reduceMotion}) {
     Palette.reduceMotion = reduceMotion;
     isDark = brightness == Brightness.dark;
-    // Calm system-tool palette: green-grey canvas, soft green primary, brighter green when connected.
     if (isDark) {
-      bg = const Color(0xFF0A0F0C);
-      surface = const Color(0xFF111814);
-      raised = const Color(0xFF18221C);
-      text = const Color(0xFFE9F5EE);
-      muted = const Color(0xFF9CB3A6);
-      accent = const Color(0xFF3ECF8E);
-      amber = const Color(0xFF6EE7B7);
-      mapDot = const Color(0x333ECF8E);
+      bg = const Color(0xFF07110F);
+      surface = const Color(0xFF0E1C19);
+      raised = const Color(0xFF142824);
+      border = const Color(0xFF1C3530);
+      text = const Color(0xFFEAF7F3);
+      muted = const Color(0xFF8FB3AA);
+      accent = const Color(0xFF2DD4BF);
+      connected = const Color(0xFF34D399);
+      connecting = const Color(0xFFFBBF24);
+      danger = const Color(0xFFF87171);
       fill = const Color(0x0FFFFFFF);
       fillStrong = const Color(0x1AFFFFFF);
-      border = const Color(0xFF1F2B24);
-      sheet = const Color(0xFF111814);
-      cardTop = const Color(0xFF111814);
-      cardBottom = const Color(0xFF111814);
-      shadow = const Color(0x00000000);
-      auroraStrength = 0.0;
     } else {
-      bg = const Color(0xFFEEF4F0);
+      bg = const Color(0xFFF3FAF8);
       surface = const Color(0xFFFFFFFF);
-      raised = const Color(0xFFF3F8F5);
-      text = const Color(0xFF111A1F);
-      muted = const Color(0xFF4E6069);
-      accent = const Color(0xFF1B9E66);
-      amber = const Color(0xFF17A05E);
-      mapDot = const Color(0x2E1B9E66);
-      fill = const Color(0x0A111A1F);
-      fillStrong = const Color(0x14111A1F);
-      border = const Color(0xFFE0E6EA);
-      sheet = const Color(0xFFFFFFFF);
-      cardTop = const Color(0xFFFFFFFF);
-      cardBottom = const Color(0xFFFFFFFF);
-      shadow = const Color(0x00000000);
-      auroraStrength = 0.0;
+      raised = const Color(0xFFE6F4F0);
+      border = const Color(0xFFD3E7E1);
+      text = const Color(0xFF0B1F1B);
+      muted = const Color(0xFF4B6B64);
+      accent = const Color(0xFF0F9E8A);
+      connected = const Color(0xFF059669);
+      connecting = const Color(0xFFB45309);
+      danger = const Color(0xFFDC2626);
+      fill = const Color(0x0A0B1F1B);
+      fillStrong = const Color(0x140B1F1B);
     }
+    amber = connected;
+    mapDot = accent.withValues(alpha: 0.2);
+    sheet = surface;
+    cardTop = surface;
+    cardBottom = surface;
+    shadow = const Color(0x00000000);
+    auroraStrength = 0.0;
   }
 
   /// Shown only after a reported connection failure.
-  static Color get failure => isDark ? const Color(0xFFFFB4AB) : const Color(0xFFB3261E);
+  static Color get failure => danger;
+
+  /// Card outline: none in dark (surface contrast does the work), a hairline in light.
+  static BorderSide get cardSide => isDark ? BorderSide.none : BorderSide(color: border);
 
   /// Three colors per connection state: primary, secondary, highlight.
-  static List<Color> forState(VpnState state) {
-    if (isDark) {
-      return switch (state) {
-        VpnState.connected => const [Color(0xFF6EE7B7), Color(0xFF3ECF8E), Color(0xFF1F2B24)],
-        VpnState.connecting || VpnState.disconnecting => const [Color(0xFFFFC46B), Color(0xFF3ECF8E), Color(0xFF1F2B24)],
-        VpnState.disconnected => const [Color(0xFF3ECF8E), Color(0xFF6EE7B7), Color(0xFF1F2B24)],
+  static List<Color> forState(VpnState state) => switch (state) {
+        VpnState.connected => [connected, accent, border],
+        VpnState.connecting || VpnState.disconnecting => [connecting, accent, border],
+        VpnState.disconnected => [accent, connected, border],
       };
-    }
-    return switch (state) {
-      VpnState.connected => const [Color(0xFF17A05E), Color(0xFF1B9E66), Color(0xFFE0E6EA)],
-      VpnState.connecting || VpnState.disconnecting => const [Color(0xFFA96A08), Color(0xFF1B9E66), Color(0xFFE0E6EA)],
-      VpnState.disconnected => const [Color(0xFF1B9E66), Color(0xFF17A05E), Color(0xFFE0E6EA)],
-    };
-  }
 
   static Color forDelay(int? ms) {
     if (ms == null || ms <= 0) return muted;
-    if (ms < 350) return isDark ? const Color(0xFF4ADE95) : const Color(0xFF0E9F6E);
-    if (ms < 800) return isDark ? const Color(0xFFF5B83D) : const Color(0xFFC98300);
-    return isDark ? const Color(0xFFFF6B6B) : const Color(0xFFD93A3A);
+    if (ms < 350) return connected;
+    if (ms < 800) return connecting;
+    return danger;
   }
 }
 
@@ -106,10 +109,10 @@ String formatDuration(Duration d) {
 
 String timeAgo(DateTime time) {
   final d = DateTime.now().difference(time);
-  if (d.inMinutes < 1) return 'همین الان';
-  if (d.inHours < 1) return '${d.inMinutes} دقیقه پیش';
-  if (d.inDays < 1) return '${d.inHours} ساعت پیش';
-  return '${d.inDays} روز پیش';
+  if (d.inMinutes < 1) return tr('همین الان', 'just now');
+  if (d.inHours < 1) return tr('${d.inMinutes} دقیقه پیش', '${d.inMinutes} min ago');
+  if (d.inDays < 1) return tr('${d.inHours} ساعت پیش', '${d.inHours} h ago');
+  return tr('${d.inDays} روز پیش', '${d.inDays} days ago');
 }
 
 /// Smoothly cross-fades a list of colors whenever [colors] changes.

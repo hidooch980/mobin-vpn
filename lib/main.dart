@@ -11,6 +11,7 @@ import 'core/update_notifier.dart';
 import 'core/vpn_controller.dart';
 import 'ui/auth_screen.dart';
 import 'ui/console_home.dart';
+import 'ui/strings.dart';
 import 'ui/style.dart';
 
 /// Survives app rebuilds on theme changes, so screens can be reopened after the switch.
@@ -85,6 +86,7 @@ class _MobinAppState extends State<MobinApp> with WidgetsBindingObserver {
           _ => PlatformDispatcher.instance.platformBrightness,
         };
         Palette.apply(brightness, reduceMotion: settings.reduceMotion);
+        L10n.en = settings.language == 'en';
         final dark = brightness == Brightness.dark;
         return AnnotatedRegion<SystemUiOverlayStyle>(
           value: (dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark).copyWith(
@@ -93,18 +95,21 @@ class _MobinAppState extends State<MobinApp> with WidgetsBindingObserver {
           ),
           child: MaterialApp(
             // Palette values are read directly by widgets, so a theme switch rebuilds the whole tree.
-            key: ValueKey('$brightness-${settings.reduceMotion}'),
+            key: ValueKey('$brightness-${settings.reduceMotion}-${settings.language}'),
             navigatorKey: appNavigatorKey,
             title: 'MolidoVPN',
             debugShowCheckedModeBanner: false,
+            locale: L10n.locale,
+            supportedLocales: AppLocalizationDelegates.supportedLocales,
+            localizationsDelegates: AppLocalizationDelegates.all,
             theme: ThemeData(
               brightness: brightness,
               useMaterial3: true,
-              colorSchemeSeed: const Color(0xFF3E7F5C),
+              colorSchemeSeed: Palette.accent,
               scaffoldBackgroundColor: Palette.bg,
               fontFamily: Platform.isWindows ? 'Segoe UI' : null,
             ),
-            builder: (context, child) => Directionality(textDirection: TextDirection.rtl, child: child!),
+            builder: (context, child) => Directionality(textDirection: L10n.direction, child: child!),
             home: ListenableBuilder(
               listenable: widget.controller.account,
               builder: (context, _) {

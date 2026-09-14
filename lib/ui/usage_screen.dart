@@ -7,6 +7,7 @@ import '../core/usage_stats.dart';
 import '../core/vpn_controller.dart';
 import 'aurora_background.dart';
 import 'glass.dart';
+import 'strings.dart';
 import 'style.dart';
 
 String formatBytes(int bytes) {
@@ -16,7 +17,9 @@ String formatBytes(int bytes) {
   return '${(bytes / 1024 / 1024 / 1024).toStringAsFixed(2)} GB';
 }
 
-const _weekdays = ['دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه', 'شنبه', 'یکشنبه'];
+List<String> get _weekdays => L10n.en
+    ? const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    : const ['دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه', 'شنبه', 'یکشنبه'];
 
 class UsageScreen extends StatelessWidget {
   const UsageScreen({super.key, required this.controller});
@@ -48,16 +51,16 @@ class UsageScreen extends StatelessWidget {
                           radius: 16,
                           padding: const EdgeInsets.all(10),
                           onTap: () => Navigator.of(context).pop(),
-                          child: Icon(Icons.arrow_forward_rounded, color: Palette.text),
+                          child: Icon(backIcon, color: Palette.text),
                         ),
                         const SizedBox(width: 14),
-                        Text('آمار مصرف', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Palette.text)),
+                        Text(tr('آمار مصرف', 'Usage'), style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Palette.text)),
                       ]),
                       const SizedBox(height: 18),
                       Row(children: [
-                        Expanded(child: _TotalCard(title: 'امروز', usage: today, color: const Color(0xFF34D399))),
+                        Expanded(child: _TotalCard(title: tr('امروز', 'Today'), usage: today, color: Palette.connected)),
                         const SizedBox(width: 12),
-                        Expanded(child: _TotalCard(title: 'این ماه', usage: month, color: const Color(0xFF60A5FA))),
+                        Expanded(child: _TotalCard(title: tr('این ماه', 'This month'), usage: month, color: Palette.accent)),
                       ]),
                       const SizedBox(height: 14),
                       Glass(
@@ -66,7 +69,7 @@ class UsageScreen extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('۷ روز اخیر', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Palette.text)),
+                            Text(tr('۷ روز اخیر', 'Last 7 days'), style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Palette.text)),
                             const SizedBox(height: 16),
                             SizedBox(
                               height: 180,
@@ -88,8 +91,8 @@ class UsageScreen extends StatelessWidget {
                             await usage.reset();
                             controller.clearError();
                           },
-                          icon: const Icon(Icons.delete_sweep_rounded, color: Color(0xFFF87171)),
-                          label: const Text('پاک کردن آمار', style: TextStyle(color: Color(0xFFF87171))),
+                          icon: Icon(Icons.delete_sweep_rounded, color: Palette.danger),
+                          label: Text(tr('پاک کردن آمار', 'Clear statistics'), style: TextStyle(color: Palette.danger)),
                         ),
                       ),
                     ],
@@ -175,8 +178,8 @@ class _Bar extends StatelessWidget {
                         begin: Alignment.bottomCenter,
                         end: Alignment.topCenter,
                         colors: isToday
-                            ? const [Color(0xFF10B981), Color(0xFF22D3EE)]
-                            : [const Color(0xFF7C3AED).withValues(alpha: 0.7), const Color(0xFF3B82F6).withValues(alpha: 0.7)],
+                            ? [Palette.connected, Palette.accent]
+                            : [Palette.accent.withValues(alpha: 0.35), Palette.accent.withValues(alpha: 0.6)],
                       ),
                     ),
                   ),
@@ -185,7 +188,7 @@ class _Bar extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          Text(isToday ? 'امروز' : _weekdays[date.weekday - 1],
+          Text(isToday ? tr('امروز', 'Today') : _weekdays[date.weekday - 1],
               style: TextStyle(fontSize: 10.5, color: isToday ? Palette.text : Palette.muted)),
         ],
       ),

@@ -6,14 +6,19 @@ import '../core/engine.dart';
 import '../core/server.dart';
 import '../core/vpn_controller.dart';
 import 'flag_badge.dart';
+import 'strings.dart';
 import 'style.dart';
 import 'widgets.dart';
 
 /// Every server with manual ping test and one-tap connect to a specific server.
 class ServersScreen extends StatefulWidget {
-  const ServersScreen({super.key, required this.controller});
+  const ServersScreen({super.key, required this.controller, this.embedded = false, this.onConnect});
 
   final VpnController controller;
+
+  /// Shown as a bottom-navigation tab (no back button; connecting calls [onConnect] instead of popping).
+  final bool embedded;
+  final VoidCallback? onConnect;
 
   @override
   State<ServersScreen> createState() => _ServersScreenState();
@@ -32,6 +37,7 @@ class _ServersScreenState extends State<ServersScreen> {
         .where((s) =>
             q.isEmpty ||
             s.displayName.contains(q) ||
+            serverTitle(s).toLowerCase().contains(q) ||
             s.countryCode.toLowerCase().contains(q) ||
             s.protocolLabel.toLowerCase().contains(q))
         .toList();
@@ -55,11 +61,12 @@ class _ServersScreenState extends State<ServersScreen> {
         final list = _visible();
         final tested = list.where((s) => (c.delays[s.uri] ?? 0) > 0).length;
         return PageShell(
-          title: 'سرورها',
-          subtitle: '${list.length} سرور · $tested پاسخ داده',
+          title: tr('سرورها', 'Servers'),
+          subtitle: tr('${list.length} سرور · $tested پاسخ داده', '${list.length} servers · $tested responded'),
+          showBack: !widget.embedded,
           actions: [
             IconButton(
-              tooltip: 'مرتب‌سازی بر اساس پینگ',
+              tooltip: tr('مرتب‌سازی بر اساس پینگ', 'Sort by ping'),
               onPressed: () => setState(() => _byPing = !_byPing),
               icon: Icon(Icons.sort_rounded, color: _byPing ? Palette.accent : Palette.muted),
             ),
@@ -73,14 +80,14 @@ class _ServersScreenState extends State<ServersScreen> {
                     onChanged: (v) => setState(() => _query = v),
                     style: TextStyle(color: Palette.text),
                     decoration: InputDecoration(
-                      hintText: 'جستجو: کشور، پروتکل…',
+                      hintText: tr('جستجو: کشور، پروتکل…', 'Search: country, protocol…'),
                       hintStyle: TextStyle(color: Palette.muted),
                       prefixIcon: Icon(Icons.search_rounded, color: Palette.muted),
                       filled: true,
                       fillColor: Palette.surface,
                       contentPadding: const EdgeInsets.symmetric(vertical: 12),
                       enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Palette.border)),
+                          borderRadius: BorderRadius.circular(Palette.pillRadius), borderSide: Palette.cardSide),
                       focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Palette.accent)),
                     ),
@@ -103,7 +110,7 @@ class _ServersScreenState extends State<ServersScreen> {
                   icon: c.pinging
                       ? SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Palette.muted))
                       : const Icon(Icons.network_ping_rounded, size: 18),
-                  label: Text(c.pinging ? 'در حال تست' : 'تست پینگ'),
+                  label: Text(c.pinging ? tr('در حال تست', 'Testing') : tr('تست پینگ', 'Ping test')),
                 ),
               ]),
             ),
@@ -120,7 +127,11 @@ class _ServersScreenState extends State<ServersScreen> {
                     favorite: c.isFavorite(list[i]),
                     onStar: () => c.toggleFavorite(list[i]),
                     onTap: () {
-                      Navigator.of(context).pop();
+                      if (widget.embedded) {
+                        widget.onConnect?.call();
+                      } else {
+                        Navigator.of(context).pop();
+                      }
                       c.connectTo(list[i]);
                     },
                   ),
@@ -181,7 +192,7 @@ class _ServerTile extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(server.displayName,
+              Text(serverTitle(server),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Palette.text)),
@@ -190,18 +201,18 @@ class _ServerTile extends StatelessWidget {
                 ProtocolTag(server.protocolLabel),
                 if (active) ...[
                   const SizedBox(width: 8),
-                  Text('متصل', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Palette.amber)),
+                  Text(tr('متصل', 'Connected'), style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Palette.amber)),
                 ],
               ]),
             ]),
           ),
           IconButton(
             visualDensity: VisualDensity.compact,
-            tooltip: favorite ? 'حذف از علاقه‌مندی‌ها' : 'افزودن به علاقه‌مندی‌ها',
+            tooltip: favorite ? tr('حذف از علاقه‌مندی‌ها', 'Remove from favorites') : tr('افزودن به علاقه‌مندی‌ها', 'Add to favorites'),
             onPressed: onStar,
             icon: Icon(
               favorite ? Icons.star_rounded : Icons.star_border_rounded,
-              color: favorite ? const Color(0xFFFBBF24) : Palette.muted,
+              color: favorite ? Palette.connecting : Palette.muted,
             ),
           ),
           const SizedBox(width: 4),

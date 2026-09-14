@@ -3,45 +3,46 @@ import 'package:flutter/material.dart';
 import '../core/engine.dart';
 import 'aurora_background.dart';
 import 'glass.dart';
+import 'strings.dart';
 import 'style.dart';
 
 class HelpScreen extends StatelessWidget {
   const HelpScreen({super.key});
 
-  static const _sections = <(IconData, String, List<String>)>[
-    (Icons.touch_app_rounded, 'شروع سریع', [
-      'دکمه‌ی بزرگ وسط صفحه را بزنید. برنامه چند سرور را با اینترنت خودتان تست می‌کند و به سریع‌ترین وصل می‌شود.',
-      'بار اول اندروید اجازه‌ی VPN می‌خواهد؛ «تأیید» را بزنید.',
-      'برای قطع، دوباره همان دکمه را بزنید.',
+  static List<(IconData, String, List<String>)> get _sections => [
+    (Icons.touch_app_rounded, tr('شروع سریع', 'Quick start'), [
+      tr('دکمه‌ی بزرگ وسط صفحه را بزنید. برنامه چند سرور را با اینترنت خودتان تست می‌کند و به سریع‌ترین وصل می‌شود.', 'Tap the big button in the middle. The app tests several servers on your own internet and connects to the fastest.'),
+      tr('بار اول اندروید اجازه‌ی VPN می‌خواهد؛ «تأیید» را بزنید.', 'The first time, Android asks for VPN permission; tap OK.'),
+      tr('برای قطع، دوباره همان دکمه را بزنید.', 'Tap the same button again to disconnect.'),
     ]),
-    (Icons.public_rounded, 'انتخاب موقعیت', [
-      'کارت «موقعیت» پایین صفحه را لمس کنید.',
-      'هوشمند: سریع‌ترین سرور از همه‌ی کشورها.',
-      'علاقه‌مندی‌ها ⭐: فقط سرورهایی که در «همه‌ی سرورها» ستاره زده‌اید.',
+    (Icons.public_rounded, tr('انتخاب موقعیت', 'Choosing a location'), [
+      tr('کارت «موقعیت» پایین صفحه را لمس کنید.', 'Tap the location card under the connect button.'),
+      tr('هوشمند: سریع‌ترین سرور از همه‌ی کشورها.', 'Smart: the fastest server from all countries.'),
+      tr('علاقه‌مندی‌ها ⭐: فقط سرورهایی که در «همه‌ی سرورها» ستاره زده‌اید.', 'Favorites ⭐: only servers you starred in the Servers tab.'),
     ]),
-    (Icons.wifi_off_rounded, 'اگر وصل نشد', [
-      '۱. در تنظیمات «ضد فیلتر (TLS Fragment)» را روشن کنید.',
-      '۲. «آدرس تست پینگ» را روی Cloudflare بگذارید.',
-      '۳. از پایین صفحه‌ی اصلی لیست سرورها را به‌روزرسانی کنید.',
-      '۴. یک کشور دیگر یا حالت «با تست پینگ» را امتحان کنید.',
-      '۵. اگر باز هم نشد: تنظیمات ← گزارش خطا ← کپی، و برای پشتیبان بفرستید.',
+    (Icons.wifi_off_rounded, tr('اگر وصل نشد', 'If it does not connect'), [
+      tr('۱. در تنظیمات «ضد فیلتر (TLS Fragment)» را روشن کنید.', '1. Turn on Anti-filter (TLS Fragment) in Settings.'),
+      tr('۲. «آدرس تست پینگ» را روی Cloudflare بگذارید.', '2. Set Ping test URL to Cloudflare.'),
+      tr('۳. از پایین صفحه‌ی اصلی لیست سرورها را به‌روزرسانی کنید.', '3. Refresh the server list from Settings.'),
+      tr('۴. یک کشور دیگر یا حالت «با تست پینگ» را امتحان کنید.', '4. Try another country or another route (WARP, Psiphon, Tor).'),
+      tr('۵. اگر باز هم نشد: تنظیمات ← گزارش خطا ← کپی، و برای پشتیبان بفرستید.', '5. Still failing: Settings → Error report → Copy, and send it to support.'),
     ]),
-    (Icons.speed_rounded, 'اگر کند بود', [
-      'از «همه‌ی سرورها» دکمه‌ی «تست پینگ» را بزنید و سرور سبز (کمتر از ۳۵۰ms) را انتخاب کنید.',
-      'سایت‌های ایرانی به‌طور پیش‌فرض مستقیم باز می‌شوند تا سرعتشان کم نشود.',
-      'در گوشی‌های ضعیف «کاهش انیمیشن» را از تنظیمات ← ظاهر روشن کنید.',
+    (Icons.speed_rounded, tr('اگر کند بود', 'If it is slow'), [
+      tr('از «همه‌ی سرورها» دکمه‌ی «تست پینگ» را بزنید و سرور سبز (کمتر از ۳۵۰ms) را انتخاب کنید.', 'In the Servers tab tap Ping test and pick a green server (under 350 ms).'),
+      tr('سایت‌های ایرانی به‌طور پیش‌فرض مستقیم باز می‌شوند تا سرعتشان کم نشود.', 'Iranian sites open directly by default so they stay fast.'),
+      tr('در گوشی‌های ضعیف «کاهش انیمیشن» را از تنظیمات ← ظاهر روشن کنید.', 'On slow devices turn on Reduce motion in Settings.'),
     ]),
-    (Icons.widgets_rounded, 'ویجت و دکمه‌ی سریع (اندروید)', [
-      'ویجت: صفحه‌ی اصلی گوشی را نگه دارید ← ویجت‌ها ← MolidoVPN.',
-      'دکمه‌ی سریع: نوار اعلان را کامل پایین بکشید ← ویرایش (✏️) ← MolidoVPN را به کاشی‌ها بکشید.',
+    (Icons.widgets_rounded, tr('ویجت و دکمه‌ی سریع (اندروید)', 'Widget and quick tile (Android)'), [
+      tr('ویجت: صفحه‌ی اصلی گوشی را نگه دارید ← ویجت‌ها ← MolidoVPN.', 'Widget: long-press the home screen → Widgets → MolidoVPN.'),
+      tr('دکمه‌ی سریع: نوار اعلان را کامل پایین بکشید ← ویرایش (✏️) ← MolidoVPN را به کاشی‌ها بکشید.', 'Quick tile: pull down the notification shade → Edit (✏️) → drag MolidoVPN into the tiles.'),
     ]),
-    (Icons.desktop_windows_rounded, 'ویندوز', [
-      'حالت عادی مرورگرها و بیشتر برنامه‌ها را از VPN عبور می‌دهد.',
-      'برای بازی‌ها و همه‌ی برنامه‌ها «VPN کامل (TUN)» را روشن کنید؛ برنامه باید به‌عنوان Administrator اجرا شود.',
+    (Icons.desktop_windows_rounded, tr('ویندوز', 'Windows'), [
+      tr('حالت عادی مرورگرها و بیشتر برنامه‌ها را از VPN عبور می‌دهد.', 'Normal mode routes browsers and most apps through the VPN.'),
+      tr('برای بازی‌ها و همه‌ی برنامه‌ها «VPN کامل (TUN)» را روشن کنید؛ برنامه باید به‌عنوان Administrator اجرا شود.', 'For games and all apps turn on Full VPN (TUN); the app must run as Administrator.'),
     ]),
-    (Icons.shield_moon_rounded, 'امنیت', [
-      'سرورهای رایگان را افراد ناشناس اجرا می‌کنند. رمزها و اطلاعات بانکی را فقط در سایت‌های HTTPS وارد کنید.',
-      'بانک‌ها و سایت‌های ایرانی را با «سایت‌های ایرانی مستقیم» یا «برنامه‌های خارج از VPN» مستقیم وصل کنید.',
+    (Icons.shield_moon_rounded, tr('امنیت', 'Security'), [
+      tr('سرورهای رایگان را افراد ناشناس اجرا می‌کنند. رمزها و اطلاعات بانکی را فقط در سایت‌های HTTPS وارد کنید.', 'Free servers are run by unknown people. Enter passwords and banking details only on HTTPS sites.'),
+      tr('بانک‌ها و سایت‌های ایرانی را با «سایت‌های ایرانی مستقیم» یا «برنامه‌های خارج از VPN» مستقیم وصل کنید.', 'Connect banks and Iranian sites directly with Iranian sites direct or Apps outside VPN.'),
     ]),
   ];
 
@@ -62,10 +63,10 @@ class HelpScreen extends StatelessWidget {
                       radius: 16,
                       padding: const EdgeInsets.all(10),
                       onTap: () => Navigator.of(context).pop(),
-                      child: Icon(Icons.arrow_forward_rounded, color: Palette.text),
+                      child: Icon(backIcon, color: Palette.text),
                     ),
                     const SizedBox(width: 14),
-                    Text('راهنما', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Palette.text)),
+                    Text(tr('راهنما', 'Help'), style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Palette.text)),
                   ]),
                   const SizedBox(height: 16),
                   for (final (i, (icon, title, lines)) in _sections.indexed)

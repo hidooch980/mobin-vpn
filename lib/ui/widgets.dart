@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'strings.dart';
 import 'style.dart';
 
 /// Shared building blocks that follow the Android app's layout: canvas background, rounded 20 px cards,
@@ -8,13 +9,19 @@ import 'style.dart';
 /// Max content width on desktop.
 const double kContentWidth = 520;
 
+/// Selected bottom-navigation tab; survives the full app rebuild on theme/language changes.
+class AppNav {
+  static int tab = 0;
+}
+
 /// A plain page: back button + title bar on the canvas, centered content column.
 class PageShell extends StatelessWidget {
-  const PageShell({super.key, required this.title, this.subtitle, this.actions = const [], required this.child});
+  const PageShell({super.key, required this.title, this.subtitle, this.actions = const [], this.showBack = true, required this.child});
 
   final String title;
   final String? subtitle;
   final List<Widget> actions;
+  final bool showBack;
   final Widget child;
 
   @override
@@ -27,17 +34,19 @@ class PageShell extends StatelessWidget {
             constraints: const BoxConstraints(maxWidth: kContentWidth),
             child: Column(children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(8, 8, 12, 4),
+                padding: EdgeInsetsDirectional.fromSTEB(showBack ? 8 : 20, 12, 12, 4),
                 child: Row(children: [
-                  IconButton(
-                    tooltip: 'بازگشت',
-                    onPressed: () => Navigator.of(context).maybePop(),
-                    icon: Icon(Icons.arrow_forward_rounded, color: Palette.text),
-                  ),
-                  const SizedBox(width: 4),
+                  if (showBack) ...[
+                    IconButton(
+                      tooltip: tr('بازگشت', 'Back'),
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      icon: Icon(backIcon, color: Palette.text),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                      Text(title, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: Palette.text)),
+                      Text(title, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Palette.text)),
                       if (subtitle != null) Text(subtitle!, style: TextStyle(fontSize: 12, color: Palette.muted)),
                     ]),
                   ),
@@ -65,17 +74,9 @@ class SectionHeader extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(6, 22, 6, 10),
       child: Row(children: [
-        Container(
-          width: 3,
-          height: 14,
-          decoration: BoxDecoration(
-            color: Palette.accent,
-            borderRadius: BorderRadius.circular(2),
-            boxShadow: [BoxShadow(color: Palette.accent.withValues(alpha: 0.5), blurRadius: 4)],
-          ),
-        ),
-        const SizedBox(width: 9),
-        Expanded(child: Text(text, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Palette.muted))),
+        Expanded(
+            child: Text(text,
+                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, letterSpacing: 0.3, color: Palette.muted))),
         ?trailing,
       ]),
     );
@@ -93,10 +94,11 @@ class AppCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(20);
+    final radius = BorderRadius.circular(Palette.cardRadius);
     return Material(
       color: color ?? Palette.surface,
-      shape: RoundedRectangleBorder(borderRadius: radius, side: BorderSide(color: borderColor ?? Palette.border)),
+      shape: RoundedRectangleBorder(
+          borderRadius: radius, side: borderColor != null ? BorderSide(color: borderColor!, width: 1.5) : Palette.cardSide),
       clipBehavior: Clip.antiAlias,
       child: InkWell(onTap: onTap, child: Padding(padding: padding, child: child)),
     );
@@ -114,7 +116,7 @@ class CardGroup extends StatelessWidget {
     return AppCard(
       child: Column(children: [
         for (final (i, child) in children.indexed) ...[
-          if (i > 0) Divider(height: 1, thickness: 1, indent: 16, endIndent: 16, color: Palette.border),
+          if (i > 0) Divider(height: 1, thickness: 1, indent: 18, endIndent: 18, color: Palette.isDark ? Palette.raised : Palette.border),
           child,
         ],
       ]),
@@ -149,11 +151,19 @@ class SettingRow extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 13, 14, 13),
+        padding: const EdgeInsetsDirectional.fromSTEB(18, 14, 16, 14),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             if (icon != null) ...[
-              Icon(icon, size: 20, color: danger ? Palette.failure : Palette.accent),
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: (danger ? Palette.failure : Palette.accent).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, size: 19, color: danger ? Palette.failure : Palette.accent),
+              ),
               const SizedBox(width: 13),
             ],
             Expanded(
@@ -169,7 +179,7 @@ class SettingRow extends StatelessWidget {
             if (trailing != null) ...[const SizedBox(width: 10), trailing!],
           ]),
           if (below != null)
-            Padding(padding: EdgeInsetsDirectional.only(start: icon == null ? 0 : 33, top: 10), child: below),
+            Padding(padding: EdgeInsetsDirectional.only(start: icon == null ? 0 : 49, top: 10), child: below),
         ]),
       ),
     );
@@ -238,7 +248,7 @@ class NavSettingRow extends StatelessWidget {
               child: SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Palette.accent)),
             )
           else if (onTap != null)
-            Icon(Icons.chevron_left_rounded, color: Palette.muted),
+            Icon(chevronEnd, color: Palette.muted),
         ]),
       );
 }
@@ -277,12 +287,15 @@ class AppChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: selected ? Palette.accent.withValues(alpha: 0.16) : Palette.raised,
-      shape: StadiumBorder(side: BorderSide(color: selected ? Palette.accent : Palette.border)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(Palette.pillRadius),
+        side: selected ? BorderSide(color: Palette.accent) : BorderSide.none,
+      ),
       child: InkWell(
-        customBorder: const StadiumBorder(),
+        customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Palette.pillRadius)),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
           child: Text(label,
               style: TextStyle(
                 fontSize: 13,
@@ -309,9 +322,8 @@ class StatusChip extends StatelessWidget {
       duration: const Duration(milliseconds: 250),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(Palette.pillRadius),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Container(
@@ -339,13 +351,13 @@ class DelayPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final d = ms;
-    final text = d == null ? '—' : (d <= 0 ? 'قطع' : '$d ms');
+    final text = d == null ? '—' : (d <= 0 ? tr('قطع', 'fail') : '$d ms');
     final color = d == null ? Palette.muted : (d <= 0 ? Palette.failure : Palette.forDelay(d));
     return Container(
       constraints: const BoxConstraints(minWidth: 58),
       alignment: Alignment.center,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.13), borderRadius: BorderRadius.circular(999)),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.13), borderRadius: BorderRadius.circular(Palette.pillRadius)),
       child: Text(text, textDirection: TextDirection.ltr, style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 12.5)),
     );
   }
@@ -360,7 +372,7 @@ class ProtocolTag extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-        decoration: BoxDecoration(color: Palette.raised, borderRadius: BorderRadius.circular(6), border: Border.all(color: Palette.border)),
+        decoration: BoxDecoration(color: Palette.raised, borderRadius: BorderRadius.circular(8)),
         child: Text(label, textDirection: TextDirection.ltr, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Palette.muted)),
       );
 }

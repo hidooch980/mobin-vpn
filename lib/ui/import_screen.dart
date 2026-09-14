@@ -9,6 +9,7 @@ import '../core/server.dart';
 import '../core/vpn_controller.dart';
 import 'aurora_background.dart';
 import 'glass.dart';
+import 'strings.dart';
 import 'style.dart';
 
 /// "My configs": add share links by pasting or scanning a QR code; they appear as their own location.
@@ -24,7 +25,7 @@ class ImportScreen extends StatelessWidget {
     if (text == null || text.trim().isEmpty) return;
     final added = await controller.addManualConfigs(text);
     if (context.mounted) {
-      _toast(context, added == 0 ? 'کانفیگ معتبری پیدا نشد' : '$added کانفیگ اضافه شد');
+      _toast(context, added == 0 ? tr('کانفیگ معتبری پیدا نشد', 'No valid config found') : tr('$added کانفیگ اضافه شد', '$added configs added'));
     }
   }
 
@@ -49,13 +50,13 @@ class ImportScreen extends StatelessWidget {
                           radius: 16,
                           padding: const EdgeInsets.all(10),
                           onTap: () => Navigator.of(context).pop(),
-                          child: Icon(Icons.arrow_forward_rounded, color: Palette.text),
+                          child: Icon(backIcon, color: Palette.text),
                         ),
                         const SizedBox(width: 14),
                         Expanded(
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text('کانفیگ‌های من', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Palette.text)),
-                            Text('VLESS، VMess، Trojan، SS، Hysteria2، TUIC، AnyTLS، WireGuard، SOCKS، HTTP',
+                            Text(tr('کانفیگ‌های من', 'My configs'), style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Palette.text)),
+                            Text(tr('VLESS، VMess، Trojan، SS، Hysteria2، TUIC، AnyTLS، WireGuard، SOCKS، HTTP', 'VLESS, VMess, Trojan, SS, Hysteria2, TUIC, AnyTLS, WireGuard, SOCKS, HTTP'),
                                 style: TextStyle(fontSize: 11.5, color: Palette.muted)),
                           ]),
                         ),
@@ -65,8 +66,8 @@ class ImportScreen extends StatelessWidget {
                         Expanded(
                           child: _BigButton(
                             icon: Icons.content_paste_rounded,
-                            label: 'چسباندن از کلیپ‌بورد',
-                            colors: const [Color(0xFF7C3AED), Color(0xFF2563EB)],
+                            label: tr('چسباندن از کلیپ‌بورد', 'Paste from clipboard'),
+                            colors: [Palette.accent, Palette.connected],
                             onTap: () async {
                               final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
                               if (context.mounted) await _add(context, text);
@@ -78,8 +79,8 @@ class ImportScreen extends StatelessWidget {
                           Expanded(
                             child: _BigButton(
                               icon: Icons.qr_code_scanner_rounded,
-                              label: 'اسکن QR',
-                              colors: const [Color(0xFF10B981), Color(0xFF06B6D4)],
+                              label: tr('اسکن QR', 'Scan QR'),
+                              colors: [Palette.connected, Palette.accent],
                               onTap: () async {
                                 final value = await Navigator.of(context)
                                     .push<String>(MaterialPageRoute(builder: (_) => const _ScannerPage()));
@@ -91,14 +92,15 @@ class ImportScreen extends StatelessWidget {
                       ]),
                       const SizedBox(height: 10),
                       Text(
-                        'لینک اشتراک (subscription) هم پشتیبانی می‌شود: متن base64 یا چند لینک در چند خط را بچسبانید.',
+                        tr('لینک اشتراک (subscription) هم پشتیبانی می‌شود: متن base64 یا چند لینک در چند خط را بچسبانید.',
+                            'Subscriptions work too: paste base64 text or several links on separate lines.'),
                         style: TextStyle(fontSize: 12, color: Palette.muted, height: 1.6),
                       ),
                       const SizedBox(height: 18),
                       if (mine.isEmpty)
                         Padding(
                           padding: EdgeInsets.symmetric(vertical: 40),
-                          child: Center(child: Text('هنوز کانفیگی اضافه نکرده‌اید', style: TextStyle(color: Palette.muted))),
+                          child: Center(child: Text(tr('هنوز کانفیگی اضافه نکرده‌اید', 'You have not added any configs yet'), style: TextStyle(color: Palette.muted))),
                         ),
                       for (final s in mine) _ConfigTile(server: s, controller: controller),
                     ],
@@ -127,18 +129,17 @@ class _BigButton extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(Palette.cardRadius),
         child: Ink(
           padding: const EdgeInsets.symmetric(vertical: 20),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(Palette.cardRadius),
             gradient: LinearGradient(colors: colors),
-            boxShadow: [BoxShadow(color: colors.first.withValues(alpha: 0.4), blurRadius: 24)],
           ),
           child: Column(children: [
-            Icon(icon, color: Colors.white, size: 30),
+            Icon(icon, color: Palette.bg, size: 30),
             const SizedBox(height: 8),
-            Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+            Text(label, style: TextStyle(color: Palette.bg, fontWeight: FontWeight.w800)),
           ]),
         ),
       ),
@@ -173,16 +174,16 @@ class _ConfigTile extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(server.remark.isEmpty ? 'بدون نام' : server.remark,
+              Text(server.remark.isEmpty ? tr('بدون نام', 'Unnamed') : server.remark,
                   maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Palette.text, fontWeight: FontWeight.w700)),
               if (host.isNotEmpty)
                 Text(host, maxLines: 1, textDirection: TextDirection.ltr, style: TextStyle(fontSize: 11, color: Palette.muted)),
             ]),
           ),
           IconButton(
-            tooltip: 'حذف',
+            tooltip: tr('حذف', 'Delete'),
             onPressed: () => controller.removeManualConfig(server.uri),
-            icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFF87171)),
+            icon: Icon(Icons.delete_outline_rounded, color: Palette.danger),
           ),
         ]),
       ),
@@ -204,7 +205,7 @@ class _ScannerPageState extends State<_ScannerPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(backgroundColor: Colors.black, title: const Text('اسکن QR کانفیگ')),
+      appBar: AppBar(backgroundColor: Colors.black, title: Text(tr('اسکن QR کانفیگ', 'Scan config QR'))),
       body: Stack(children: [
         MobileScanner(
           onDetect: (capture) {
@@ -219,7 +220,7 @@ class _ScannerPageState extends State<_ScannerPage> {
             width: 250,
             height: 250,
             decoration: BoxDecoration(
-              border: Border.all(color: const Color(0xFF34D399), width: 3),
+              border: Border.all(color: Palette.accent, width: 3),
               borderRadius: BorderRadius.circular(28),
             ),
           ),

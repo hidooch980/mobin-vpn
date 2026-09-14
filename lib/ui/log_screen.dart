@@ -9,6 +9,7 @@ import '../core/engine.dart';
 import '../core/vpn_controller.dart';
 import 'aurora_background.dart';
 import 'glass.dart';
+import 'strings.dart';
 import 'style.dart';
 
 /// Diagnostic report the user can copy and send when something does not work.
@@ -57,14 +58,14 @@ class _LogScreenState extends State<LogScreen> {
                         radius: 16,
                         padding: const EdgeInsets.all(10),
                         onTap: () => Navigator.of(context).pop(),
-                        child: Icon(Icons.arrow_forward_rounded, color: Palette.text),
+                        child: Icon(backIcon, color: Palette.text),
                       ),
                       const SizedBox(width: 14),
                       Expanded(
-                        child: Text('گزارش خطا', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Palette.text)),
+                        child: Text(tr('گزارش خطا', 'Error report'), style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Palette.text)),
                       ),
                       IconButton(
-                        tooltip: 'پاک کردن',
+                        tooltip: tr('پاک کردن', 'Clear'),
                         onPressed: () => setState(AppLog.clear),
                         icon: Icon(Icons.delete_sweep_rounded, color: Palette.muted),
                       ),
@@ -96,18 +97,20 @@ class _LogScreenState extends State<LogScreen> {
                             ? null
                             : () {
                                 Clipboard.setData(ClipboardData(text: text));
-                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                                  content: Text('گزارش کپی شد؛ آن را در پیام‌رسان برای پشتیبان بفرستید'),
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                  content: Text(tr('گزارش کپی شد؛ آن را در پیام‌رسان برای پشتیبان بفرستید',
+                                      'Report copied; send it to support in a messenger')),
                                   behavior: SnackBarBehavior.floating,
                                 ));
                               },
                         style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFF7C3AED),
+                          backgroundColor: Palette.accent,
+                          foregroundColor: Palette.bg,
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Palette.pillRadius)),
                         ),
                         icon: const Icon(Icons.copy_rounded),
-                        label: const Text('کپی گزارش', style: TextStyle(fontWeight: FontWeight.w800)),
+                        label: Text(tr('کپی گزارش', 'Copy report'), style: const TextStyle(fontWeight: FontWeight.w800)),
                       ),
                     ),
                   ),
