@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../core/engine.dart';
 import '../core/network_info.dart';
+import '../core/settings.dart';
 import '../core/vpn_controller.dart';
 import 'flag_badge.dart';
 import 'location_sheet.dart';
@@ -221,6 +222,22 @@ class _HomeTab extends StatelessWidget {
                       _LocationCard(controller: c),
                       const SizedBox(height: 12),
                       _ModeChips(controller: c),
+                      const SizedBox(height: 12),
+                      AppCard(
+                        padding: EdgeInsets.zero,
+                        child: ChoiceSettingRow<String>(
+                          icon: Icons.dns_outlined,
+                          title: 'DNS',
+                          subtitle: tr('خودکار یا DNS گیمینگ ایرانی؛ از اتصال بعدی اعمال می‌شود.',
+                              'Auto or Iranian gaming DNS; applies from the next connection.'),
+                          options: {
+                            'auto': tr('خودکار', 'Auto'),
+                            for (final e in AppSettings.gamingDnsPresets.entries) e.key: e.value.$1,
+                          },
+                          value: c.settings.dnsPreset,
+                          onChanged: (v) => c.settings.update((x) => x.dnsPreset = v),
+                        ),
+                      ),
                       const SizedBox(height: 14),
                       _Tiles(controller: c),
                       SectionHeader(tr('شبکه', 'Network')),
