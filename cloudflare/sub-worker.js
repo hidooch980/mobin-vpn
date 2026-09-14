@@ -74,6 +74,8 @@ const CORS = {
 const NODE_RE = /^([0-9a-f]{16}|mode:[a-z0-9_-]{1,20})$/;
 const NETS = new Set(['wifi', 'cellular', 'other']);
 const APPS = new Set(['android', 'windows']);
+// Iranian operator bucket, stored inside the net column as "<net>|<op>" so the table keeps its key.
+const OPS = new Set(['mci', 'irancell', 'tci', 'rightel', 'shatel', 'other']);
 const LIMIT_PER_MIN = 60;
 const hits = new Map(); // in-memory only (per isolate): client-ip -> {minute, n}
 
@@ -106,6 +108,8 @@ async function reportRoute(request, env) {
   if (r.v !== 1 || typeof r.node !== 'string' || !NODE_RE.test(r.node)) return bad();
   if (typeof r.ok !== 'boolean' || !NETS.has(r.net) || !APPS.has(r.app)) return bad();
   if (typeof r.ver !== 'string' || r.ver.length > 32) return bad();
+  if (r.op !== undefined && r.op !== null && !OPS.has(r.op)) return bad();
+  const netKey = r.op ? `${r.net}|${r.op}` : r.net;
   const ms = r.ms;
   if (!(ms === null || ms === undefined || (Number.isInteger(ms) && ms >= 1 && ms <= 60000))) return bad();
 
@@ -118,7 +122,7 @@ async function reportRoute(request, env) {
      ON CONFLICT(day, node, app, net) DO UPDATE SET ok = ok + excluded.ok, fail = fail + excluded.fail,
        ms_sum = ms_sum + excluded.ms_sum, ms_n = ms_n + excluded.ms_n`
   )
-    .bind(day, r.node, r.app, r.net, r.ok ? 1 : 0, r.ok ? 0 : 1, hasMs ? ms : 0, hasMs)
+    .bind(day, r.node, r.app, netKey, r.ok ? 1 : 0, r.ok ? 0 : 1, hasMs ? ms : 0, hasMs)
     .run();
   return new Response(null, { status: 204, headers: CORS });
 }
@@ -134,21 +138,25 @@ function summarize(s) {
 
 async function scoresRoute(request, env, ctx) {
   const cache = caches.default;
-  const key = new Request(new URL('/scores', request.url).toString());
+  // ?op=mci|irancell|… limits the scores to reports from that operator.
+  const opParam = new URL(request.url).searchParams.get('op');
+  const op = OPS.has(opParam) ? opParam : '';
+  const key = new Request(new URL(`/scores?op=${op}`, request.url).toString());
   const hit = await cache.match(key);
   if (hit) return hit;
 
   const since = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
   const { results } = await env.DB.prepare(
     `SELECT node, net, SUM(ok) ok, SUM(fail) fail, SUM(ms_sum) ms_sum, SUM(ms_n) ms_n
-     FROM reports WHERE day >= ?1 GROUP BY node, net`
+     FROM reports WHERE day >= ?1 AND (?2 = '' OR net LIKE '%|' || ?2) GROUP BY node, net`
   )
-    .bind(since)
+    .bind(since, op)
     .all();
   const acc = {};
   for (const row of results) {
     const a = (acc[row.node] ||= { all: { ok: 0, fail: 0, ms_sum: 0, ms_n: 0 } });
-    for (const k of [row.net === 'cellular' || row.net === 'wifi' ? row.net : null, 'all']) {
+    const baseNet = String(row.net).split('|')[0];
+    for (const k of [baseNet === 'cellular' || baseNet === 'wifi' ? baseNet : null, 'all']) {
       if (!k) continue;
       const s = (a[k] ||= { ok: 0, fail: 0, ms_sum: 0, ms_n: 0 });
       s.ok += row.ok; s.fail += row.fail; s.ms_sum += row.ms_sum; s.ms_n += row.ms_n;
