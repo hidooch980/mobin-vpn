@@ -205,7 +205,44 @@ const SUB_MIN = 50;
 const SUB_MAX = 100;
 const strongTransport = (line) => iosFriendly(line.split('#')[0]);
 
-async function subRoute(url) {
+// Iran-measured quality from the anonymous reports (apps + local Iran tests), last 7 days.
+async function reportScores(env) {
+  try {
+    const since = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
+    const { results } = await env.DB.prepare(
+      'SELECT node, SUM(ok) ok, SUM(fail) fail FROM reports WHERE day >= ?1 GROUP BY node'
+    )
+      .bind(since)
+      .all();
+    return new Map(results.map((r) => [r.node, r]));
+  } catch {
+    return new Map();
+  }
+}
+
+async function nodeFingerprint(line) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(line.split('#')[0].trim()));
+  return [...new Uint8Array(digest)].slice(0, 8).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// 0 = worked in Iran, 1 = no data, 2 = only failures in Iran. Stable within a tier.
+async function rankByReports(lines, scores) {
+  if (!scores.size) return lines;
+  const tiers = await Promise.all(
+    lines.map(async (line) => {
+      const s = scores.get(await nodeFingerprint(line));
+      if (!s) return [1, 0];
+      if (s.ok > 0) return [0, -(s.ok + 1) / (s.ok + s.fail + 2)];
+      return [2, 0];
+    })
+  );
+  return lines
+    .map((line, i) => ({ line, t: tiers[i], i }))
+    .sort((a, b) => a.t[0] - b.t[0] || a.t[1] - b.t[1] || a.i - b.i)
+    .map((x) => x.line);
+}
+
+async function subRoute(url, env) {
   const n = Number(url.pathname.split('/')[2]);
   if (!Number.isInteger(n) || n < 1 || n > SUB_LINKS) return new Response('use /sub/1 … /sub/5', { status: 404 });
   const get = (u) =>
@@ -242,8 +279,12 @@ async function subRoute(url) {
 
   // Deal the non-CDN pool round-robin so every link gets a similar mix, then top each link up with
   // CDN nodes (shared across links — they are the most reliable in Iran) to reach at least SUB_MIN.
+  const scores = await reportScores(env);
+  const ranked = await rankByReports([...strong, ...rest], scores);
+  const cdnRanked = await rankByReports(cdn, scores);
+  cdn.splice(0, cdn.length, ...cdnRanked);
   const buckets = Array.from({ length: SUB_LINKS }, () => []);
-  [...strong, ...rest].forEach((line, i) => {
+  ranked.forEach((line, i) => {
     const b = buckets[i % SUB_LINKS];
     if (b.length < SUB_MAX - 20) b.push(line);
   });
@@ -253,7 +294,7 @@ async function subRoute(url) {
   const lines = [...cdnShare, ...mine];
   while (lines.length < SUB_MIN && cdnOthers.length) lines.push(cdnOthers.shift());
   if (!lines.length) return new Response('server list unavailable, try again shortly', { status: 502 });
-  return listResponse(lines.slice(0, SUB_MAX), `MolidoVPN ${n}`);
+  return listResponse((await rankByReports(lines, scores)).slice(0, SUB_MAX), `MolidoVPN ${n}`);
 }
 
 function listResponse(lines, title) {
@@ -272,7 +313,7 @@ function listResponse(lines, title) {
   });
 }
 
-async function iosRoute(url) {
+async function iosRoute(url, env) {
   const get = (u) =>
     fetch(u, { cf: { cacheTtl: 300, cacheEverything: true } })
       .then((r) => (r.ok ? r.text() : ''))
@@ -289,7 +330,7 @@ async function iosRoute(url) {
   const out = [];
   const add = (line, name) => {
     line = line.trim();
-    if (!line.includes('://') || line.startsWith('#') || out.length >= IOS_MAX) return;
+    if (!line.includes('://') || line.startsWith('#')) return;
     const core = line.split('#')[0];
     if (seen.has(core) || !iosFriendly(core)) return;
     seen.add(core);
@@ -300,7 +341,11 @@ async function iosRoute(url) {
   for (const l of decodeList(lite).split('\n')) add(l);
   for (const l of decodeList(full).split('\n')) add(l);
 
-  const lines = [...out];
+  // Collect everything iPhone-friendly, put Iran-proven servers first, drop Iran-failed ones when
+  // enough others exist, then cap for the iOS memory limit.
+  const scores = await reportScores(env);
+  const rankedOut = await rankByReports(out, scores);
+  const lines = rankedOut.slice(0, IOS_MAX);
   if (url.pathname.startsWith('/hiddify')) lines.unshift('warp://auto#MolidoVPN%20WARP', 'warp://p2@auto#MolidoVPN%20WARP%20in%20WARP');
   if (!lines.length) return new Response('server list unavailable, try again shortly', { status: 502 });
 
@@ -333,9 +378,9 @@ export default {
     if (url.pathname === '/scores') return scoresRoute(request, env, ctx);
     if (url.pathname.startsWith('/remote/')) return remoteRoute(url);
     if (url.pathname.startsWith('/app/')) return appRoute(url);
-    if (url.pathname.startsWith('/sub/')) return subRoute(url);
+    if (url.pathname.startsWith('/sub/')) return subRoute(url, env);
     if (url.pathname.startsWith('/lite') || url.pathname.startsWith('/ios') || url.pathname.startsWith('/hiddify'))
-      return iosRoute(url);
+      return iosRoute(url, env);
     const sources = [FULL, MIRROR('sub_base64.txt')];
 
     for (const source of sources) {
