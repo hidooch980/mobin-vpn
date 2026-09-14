@@ -42,7 +42,11 @@ class EngineOptions {
     this.tunnelDns,
     this.tunMtu = 0,
     this.iranRuleSets = false,
+    this.multiPath = false,
   });
+
+  /// Windows: the "proxy" outbound is a sing-box urltest group (main server, backups, WARP) instead of a selector.
+  final bool multiPath;
 
   /// Route Iranian IPs/domains (geoip-ir / geosite-ir rule-sets) directly; only used together with [bypassIran].
   final bool iranRuleSets;
@@ -79,10 +83,30 @@ class EngineOptions {
         tunnelDns: tunnelDns,
         tunMtu: tunMtu,
         iranRuleSets: iranRuleSets,
+        multiPath: multiPath,
+      );
+
+  /// The same options with multi-path off (free routes keep the plain outbound).
+  EngineOptions get withoutMultiPath => EngineOptions(
+        testUrl: testUrl,
+        timeout: timeout,
+        proxyOnly: proxyOnly,
+        systemProxy: systemProxy,
+        tunMode: tunMode,
+        killSwitch: killSwitch,
+        localPort: localPort,
+        bypassIran: bypassIran,
+        dns: dns,
+        fragment: fragment,
+        excludedApps: excludedApps,
+        warp: warp,
+        tunnelDns: tunnelDns,
+        tunMtu: tunMtu,
+        iranRuleSets: iranRuleSets,
       );
 
   /// Settings that change the generated core config.
-  String get configKey => '$dns|$tunnelDns|$bypassIran|$iranRuleSets|$fragment|${warp?.privateKey}';
+  String get configKey => '$dns|$tunnelDns|$bypassIran|$iranRuleSets|$fragment|$multiPath|${warp?.privateKey}';
 }
 
 /// Platform VPN core. Delays are measured from the user's own connection.

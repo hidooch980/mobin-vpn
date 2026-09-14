@@ -496,9 +496,11 @@ class _Status extends StatelessWidget {
     final sub = switch (c.state) {
       VpnState.connected => c.current == null
           ? ''
-          : (c.switchedToBackup
-              ? '${serverTitle(c.current!)} · ${tr('به سرور پشتیبان منتقل شد', 'switched to backup server')}'
-              : serverTitle(c.current!)),
+          : (c.activeMember != null
+              ? '${serverTitle(c.current!)} · ${tr('مسیر فعال', 'active path')}: ${c.activeMember}'
+              : c.switchedToBackup
+                  ? '${serverTitle(c.current!)} · ${tr('به سرور پشتیبان منتقل شد', 'switched to backup server')}'
+                  : serverTitle(c.current!)),
       VpnState.connecting => c.phase ?? '',
       _ => failed ? c.error! : tr('برای اتصال دکمه را بزنید', 'Tap the button to connect'),
     };

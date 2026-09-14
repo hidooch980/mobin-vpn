@@ -12,6 +12,8 @@ import 'free_routes.dart';
 import 'network_info.dart';
 import 'server.dart';
 import 'singbox_core.dart';
+import 'singbox_outbound.dart';
+import 'warp.dart';
 import 'win_free_routes.dart';
 import 'win_system_proxy.dart';
 
@@ -77,10 +79,22 @@ class WindowsEngine implements VpnEngine {
         await _core.verifyThroughProxy(port, options.testUrl, attempts: 1, timeout: const Duration(seconds: 4));
   }
 
+  bool _multiPath = false, _plainRetry = false;
+  Map<String, String> _memberNames = const {};
+
+  /// Multi-path: display name of the group member sing-box currently uses, or null (off / unknown).
+  Future<String?> activeMember() async {
+    final api = _api;
+    if (!_multiPath || api == null || _core.process == null) return null;
+    final tag = await _core.currentMember(api);
+    return tag == null ? null : (_memberNames[tag] ?? tag);
+  }
+
   /// Moves the running core to the next backup server; returns it, or null when none is left.
+  /// Multi-path groups pick their member themselves (a urltest cannot be switched through the API).
   Future<Server?> failover() async {
     final api = _api;
-    if (api == null || _core.process == null || _activeIndex >= _activeStandby.length) return null;
+    if (_multiPath || api == null || _core.process == null || _activeIndex >= _activeStandby.length) return null;
     final next = _activeIndex + 1;
     if (!await _core.selectOutbound(api, 'proxy-$next')) return null;
     _activeIndex = next;
@@ -188,11 +202,23 @@ class WindowsEngine implements VpnEngine {
     }
     _activeStandby = backups;
     _activeIndex = 0;
-    final proc = await _core.start(_core.connectConfig(outbound, port, api, options,
+    // Multi-path: a direct WARP endpoint joins the urltest group when the identity exists.
+    final multiPath = options.multiPath && !free;
+    final warpMember = multiPath && !_plainRetry && WarpRegistry.account != null
+        ? parseOutbound('warp://${WarpAccount.endpoints.first}')
+        : null;
+    _multiPath = multiPath;
+    _memberNames = {
+      'proxy-0': server.displayName,
+      for (final (i, b) in backups.indexed) 'proxy-${i + 1}': b.displayName,
+      SingboxCore.multiPathWarpTag: 'WARP',
+    };
+    final proc = await _core.start(_core.connectConfig(outbound, port, api, multiPath == options.multiPath ? options : options.withoutMultiPath,
         tun: options.tunMode,
         mtu: mtu,
         directProcesses: free ? WinFreeRoutes.processNames : const [],
-        standby: backupOutbounds));
+        standby: backupOutbounds,
+        warpMember: warpMember));
     // stdout closes when the process exits: handle a crash while connected.
     unawaited(proc.stdout.drain<void>().whenComplete(() async {
       if (!identical(_core.process, proc)) return;
@@ -211,14 +237,16 @@ class WindowsEngine implements VpnEngine {
     if (!await _core.waitApi(api)) {
       AppLog.add('windows: core did not start for ${server.displayName} (see sing-box lines above)');
       await disconnect();
-      if (backups.isNotEmpty) {
-        // A backup config may be what the core rejected: try once more with the main server alone.
+      if (backups.isNotEmpty || warpMember != null) {
+        // A backup (or WARP member) config may be what the core rejected: try once more with the main server alone.
         final saved = standby;
         standby = const [];
+        _plainRetry = true;
         try {
           return await connect(server, options);
         } finally {
           standby = saved;
+          _plainRetry = false;
         }
       }
       return false;
@@ -257,6 +285,7 @@ class WindowsEngine implements VpnEngine {
     _api = null;
     _activeStandby = const [];
     _activeIndex = 0;
+    _multiPath = false;
     await _releaseProxy();
     await _core.stop();
     await _free.stop();

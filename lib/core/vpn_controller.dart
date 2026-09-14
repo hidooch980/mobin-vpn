@@ -118,6 +118,7 @@ class VpnController extends ChangeNotifier {
         tunnelDns: settings.tunnelDns,
         tunMtu: settings.tunMtu,
         iranRuleSets: settings.bypassIran && settings.iranRuleSets,
+        multiPath: settings.multiPath,
       );
 
   Future<void> init() async {
@@ -254,9 +255,23 @@ class VpnController extends ChangeNotifier {
   /// True after the anti-freeze watchdog moved the running tunnel to a backup server (shown on the home screen).
   bool switchedToBackup = false;
 
+  /// Multi-path (Windows): name of the group member currently carrying traffic; null when off or unknown.
+  String? activeMember;
+
+  Future<void> _refreshActiveMember() async {
+    final eng = engine;
+    if (eng is! WindowsEngine) return;
+    final member = state == VpnState.connected ? await eng.activeMember() : null;
+    if (member != activeMember) {
+      activeMember = member;
+      notifyListeners();
+    }
+  }
+
   Future<void> _watchdog() async {
     _watchTick++;
     final eng = engine;
+    if (state == VpnState.connected || activeMember != null) unawaited(_refreshActiveMember());
     final quick = eng is WindowsEngine; // Windows: light 4 s check every 5 s with in-core failover
     final fresh = connectedAt != null && DateTime.now().difference(connectedAt!) < const Duration(seconds: 40);
     if (!quick && !fresh && _watchTick % 3 != 0) return; // every 5 s while fresh, then every 15 s
@@ -971,6 +986,7 @@ class VpnController extends ChangeNotifier {
     currentDelay = null;
     connectedAt = null;
     switchedToBackup = false;
+    activeMember = null;
     traffic = const TrafficStat();
     phase = null;
     progressDone = progressTotal = 0;

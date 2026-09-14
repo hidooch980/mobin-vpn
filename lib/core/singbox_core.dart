@@ -5,6 +5,7 @@ import 'dart:io';
 import 'app_log.dart';
 import 'engine.dart';
 import 'server.dart';
+import 'settings.dart';
 import 'singbox_outbound.dart';
 
 /// A sing-box (1.12) binary driven as a child process: config generation, validation, parallel delay tests
@@ -253,7 +254,9 @@ class SingboxCore {
           {bool tun = false,
           int mtu = 1420,
           List<String> directProcesses = const [],
-          List<Json> standby = const []}) =>
+          List<Json> standby = const [],
+          Json? warpMember,
+          List<Json> extraOutbounds = const []}) =>
       {
         ..._baseConfig('warn'),
         'dns': {
@@ -289,7 +292,25 @@ class SingboxCore {
             },
         ],
         'outbounds': [
-          if (standby.isEmpty)
+          if (o.multiPath) ...[
+            // Multi-path: sing-box keeps testing every member and uses the fastest working one.
+            {
+              'type': 'urltest',
+              'tag': 'proxy',
+              'outbounds': [
+                for (var i = 0; i <= standby.length; i++) 'proxy-$i',
+                if (warpMember != null) multiPathWarpTag,
+              ],
+              'url': AppSettings.defaultTestUrl,
+              'interval': '30s',
+              'tolerance': 100,
+              'idle_timeout': '30m',
+              'interrupt_exist_connections': true,
+            },
+            tagged(outbound, 'proxy-0', o),
+            for (final (i, backup) in standby.indexed) tagged(backup, 'proxy-${i + 1}', o),
+            if (warpMember != null) {...warpMember, 'tag': multiPathWarpTag},
+          ] else if (standby.isEmpty)
             tagged(outbound, 'proxy', o)
           else ...[
             // Anti-freeze: "proxy" is a selector over the main server and pre-tested backups;
@@ -306,6 +327,7 @@ class SingboxCore {
           ],
           {'type': 'direct', 'tag': 'direct'},
           if (o.warp case final warp?) warp.singBoxOutbound('warp', 'proxy'),
+          ...extraOutbounds,
         ],
         'route': {
           'rules': [
@@ -339,6 +361,27 @@ class SingboxCore {
     process = proc;
     _logStderr(proc, 'core');
     return proc;
+  }
+
+  /// Tag of the direct WARP member of the multi-path urltest group.
+  static const multiPathWarpTag = 'proxy-warp';
+
+  /// Member currently used by the group [group] (Clash API "now"), or null when unknown.
+  Future<String?> currentMember(int api, {String group = 'proxy'}) async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
+    try {
+      final res = await (await client.getUrl(Uri.parse('http://127.0.0.1:$api/proxies/$group')))
+          .close()
+          .timeout(const Duration(seconds: 3));
+      final body = await res.transform(utf8.decoder).join();
+      if (res.statusCode != 200) return null;
+      final now = (jsonDecode(body) as Map)['now'];
+      return now is String && now.isNotEmpty ? now : null;
+    } catch (_) {
+      return null;
+    } finally {
+      client.close(force: true);
+    }
   }
 
   /// Switches the "proxy" selector to [tag] (e.g. "proxy-1") without restarting the core.

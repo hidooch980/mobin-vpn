@@ -301,6 +301,15 @@ class SettingsScreen extends StatelessWidget {
                 value: s.fragment,
                 onChanged: (v) => s.update((x) => x.fragment = v),
               ),
+              if (Platform.isWindows)
+                SwitchSettingRow(
+                  icon: Icons.alt_route_rounded,
+                  title: tr('اتصال چندمسیره', 'Multi-path connection'),
+                  subtitle: tr('سرور اصلی، سرورهای پشتیبان و WARP هم‌زمان آماده‌اند و سریع‌ترینِ سالم هر ۳۰ ثانیه انتخاب می‌شود',
+                      'Main server, backups and WARP stay ready; the fastest working one is picked every 30 s'),
+                  value: s.multiPath,
+                  onChanged: (v) => s.update((x) => x.multiPath = v),
+                ),
               if (Platform.isAndroid)
                 ChoiceSettingRow<String>(
                   icon: Icons.dns_outlined,
