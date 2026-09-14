@@ -354,6 +354,27 @@ class SingboxCore {
         },
       };
 
+  /// Smart chain helper: a local mixed (HTTP+SOCKS) proxy on [port] whose traffic all leaves through [warp]
+  /// (a WireGuard outbound without tag). Used as Psiphon's upstream proxy.
+  Json warpSocksConfig(Json warp, int port, int api) => {
+        ..._baseConfig('warn'),
+        'inbounds': [
+          {'type': 'mixed', 'tag': 'in', 'listen': '127.0.0.1', 'listen_port': port},
+        ],
+        'outbounds': [
+          {...warp, 'tag': 'warp'},
+          {'type': 'direct', 'tag': 'direct'},
+        ],
+        'route': {
+          'final': 'warp',
+          if (detectInterface) 'auto_detect_interface': true,
+          'default_domain_resolver': 'local',
+        },
+        'experimental': {
+          'clash_api': {'external_controller': '127.0.0.1:$api'},
+        },
+      };
+
   Future<Process> start(Json config) async {
     await stop();
     final file = await _writeConfig('active', config);

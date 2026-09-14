@@ -25,6 +25,14 @@ class WindowsEngine implements VpnEngine {
   final _traffic = StreamController<TrafficStat>.broadcast();
   late SingboxCore _core;
   late WinFreeRoutes _free;
+
+  /// Second sing-box process: local SOCKS → WARP, upstream of "Psiphon + WARP".
+  late SingboxCore _warpHelper;
+
+  /// WARP endpoint of the last working WARP connection ("host:port"); chains and multi-path dial it.
+  String _warpEndpoint = WarpAccount.endpoints.first;
+
+  static const _chainWarpTag = 'chain-warp';
   int? _proxyPort;
 
   /// Status line while Psiphon / Tor is starting (set by the controller).
@@ -59,7 +67,28 @@ class WindowsEngine implements VpnEngine {
   String? get httpProxy => _proxyPort == null ? null : '127.0.0.1:$_proxyPort';
 
   @override
-  bool supports(Server server) => server.uri.startsWith('warp://') || FreeRoutes.isFree(server) || _core.outbound(server) != null;
+  bool supports(Server server) =>
+      server.uri.startsWith('warp://') ||
+      FreeRoutes.isFree(server) ||
+      WinFreeRoutes.isChain(server) ||
+      _core.outbound(server) != null;
+
+  /// Starts the WARP helper proxy and returns its port once traffic passes, else null.
+  Future<int?> _startWarpHelper(EngineOptions options) async {
+    final warp = parseOutbound('warp://$_warpEndpoint');
+    if (warp == null) return null;
+    onPhase?.call('راه‌اندازی WARP برای Psiphon…');
+    final port = await SingboxCore.freePort();
+    final api = await SingboxCore.freePort();
+    await _warpHelper.start(_warpHelper.warpSocksConfig(warp, port, api));
+    if (await _warpHelper.waitApi(api) &&
+        await _warpHelper.verifyThroughProxy(port, options.testUrl, attempts: 1)) {
+      return port;
+    }
+    AppLog.add('windows: WARP helper for Psiphon did not pass traffic ($_warpEndpoint)');
+    await _warpHelper.stop();
+    return null;
+  }
 
   @override
   Future<bool> requestPermission() async => true;
@@ -110,6 +139,11 @@ class WindowsEngine implements VpnEngine {
       binary: '${File(Platform.resolvedExecutable).parent.path}\\sing-box.exe',
       workDir: Directory('${base.path}\\core')..createSync(recursive: true),
       label: 'windows',
+    );
+    _warpHelper = SingboxCore(
+      binary: '${File(Platform.resolvedExecutable).parent.path}\\sing-box.exe',
+      workDir: Directory('${base.path}\\core\\warp-helper')..createSync(recursive: true),
+      label: 'warp-helper',
     );
     _free = WinFreeRoutes(
       appDir: File(Platform.resolvedExecutable).parent.path,
@@ -163,16 +197,36 @@ class WindowsEngine implements VpnEngine {
     if (options.tunMode && !isAdmin) throw const AdminRequiredError();
     await disconnect();
     final free = FreeRoutes.isFree(server);
+    final chain = WinFreeRoutes.isChain(server);
     Map<String, dynamic>? outbound;
+    var extraOutbounds = const <Map<String, dynamic>>[];
     if (free) {
+      // Smart chain: "Psiphon + WARP" first starts a local WARP proxy as Psiphon's upstream.
+      String? upstream;
+      if (server.uri == WinFreeRoutes.psiphonOverWarp.uri) {
+        final helper = await _startWarpHelper(options);
+        if (helper == null) return false;
+        upstream = 'socks5://127.0.0.1:$helper';
+      }
       // Psiphon / Tor run locally; sing-box just forwards to their SOCKS port.
-      final socks = await _free.start(FreeRoutes.routeOf(server), isCancelled: isCancelled, onPhase: onPhase);
+      final socks = await _free.start(FreeRoutes.routeOf(server),
+          isCancelled: isCancelled, onPhase: onPhase, upstreamProxy: upstream);
       if (socks == null) {
         await _free.stop();
+        await _warpHelper.stop();
         return false;
       }
       outbound = {'type': 'socks', 'server': '127.0.0.1', 'server_port': socks, 'version': '5'};
       onPhase?.call('راه‌اندازی تونل ${server.displayName}…');
+    } else if (chain) {
+      // Smart chain: the V2Ray server is dialed inside WARP (its IP is never contacted from this network).
+      final inner = _core.outbound(WinFreeRoutes.innerOf(server));
+      final warp = parseOutbound('warp://$_warpEndpoint');
+      if (inner == null || warp == null) return false;
+      outbound = {...inner, 'detour': _chainWarpTag};
+      extraOutbounds = [
+        {...warp, 'tag': _chainWarpTag},
+      ];
     } else {
       outbound = _core.outbound(server);
     }
@@ -182,7 +236,7 @@ class WindowsEngine implements VpnEngine {
     if (failures > 0) outbound = evasive(outbound, failures);
     // Cloudflare CDN server: dial a clean edge IP found on this network (SNI/Host unchanged).
     final original = outbound;
-    outbound = CleanIp.apply(outbound);
+    if (!chain) outbound = CleanIp.apply(outbound);
     final cleanIp = identical(outbound, original) ? null : outbound['server'] as String?;
     if (cleanIp != null) AppLog.add('windows: ${server.displayName} via clean Cloudflare IP $cleanIp');
     final port = options.localPort > 0 ? options.localPort : await SingboxCore.freePort();
@@ -191,7 +245,7 @@ class WindowsEngine implements VpnEngine {
     if (options.tunMode) AppLog.add('windows: tun mtu $mtu');
     final backups = <Server>[];
     final backupOutbounds = <Map<String, dynamic>>[];
-    if (!free) {
+    if (!free && !chain) {
       for (final s in standby) {
         if (s.uri == server.uri || FreeRoutes.isFree(s) || s.uri.startsWith('warp://')) continue;
         final o = _core.outbound(s);
@@ -203,10 +257,9 @@ class WindowsEngine implements VpnEngine {
     _activeStandby = backups;
     _activeIndex = 0;
     // Multi-path: a direct WARP endpoint joins the urltest group when the identity exists.
-    final multiPath = options.multiPath && !free;
-    final warpMember = multiPath && !_plainRetry && WarpRegistry.account != null
-        ? parseOutbound('warp://${WarpAccount.endpoints.first}')
-        : null;
+    final multiPath = options.multiPath && !free && !chain;
+    final warpMember =
+        multiPath && !_plainRetry && WarpRegistry.account != null ? parseOutbound('warp://$_warpEndpoint') : null;
     _multiPath = multiPath;
     _memberNames = {
       'proxy-0': server.displayName,
@@ -218,13 +271,15 @@ class WindowsEngine implements VpnEngine {
         mtu: mtu,
         directProcesses: free ? WinFreeRoutes.processNames : const [],
         standby: backupOutbounds,
-        warpMember: warpMember));
+        warpMember: warpMember,
+        extraOutbounds: extraOutbounds));
     // stdout closes when the process exits: handle a crash while connected.
     unawaited(proc.stdout.drain<void>().whenComplete(() async {
       if (!identical(_core.process, proc)) return;
       _core.process = null;
       _proxyPort = null;
       await _free.stop();
+      await _warpHelper.stop();
       if (options.killSwitch && !options.tunMode && options.systemProxy) {
         // Kill switch: point browsers at a dead proxy so nothing leaks until reconnect or disconnect.
         WinSystemProxy.enable('127.0.0.1:9');
@@ -260,6 +315,7 @@ class WindowsEngine implements VpnEngine {
       return false;
     }
     _failures.remove(server.uri);
+    if (server.uri.startsWith('warp://')) _warpEndpoint = server.uri.substring('warp://'.length);
     _proxyPort = port;
     // Fetch or refresh the Iranian rule-sets for the next connection (daily, through the tunnel if needed).
     if (options.bypassIran && options.iranRuleSets) unawaited(_core.updateIranRuleSets(proxy: '127.0.0.1:$port'));
@@ -289,5 +345,6 @@ class WindowsEngine implements VpnEngine {
     await _releaseProxy();
     await _core.stop();
     await _free.stop();
+    await _warpHelper.stop();
   }
 }

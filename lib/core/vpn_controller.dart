@@ -22,6 +22,7 @@ import 'update_notifier.dart';
 import 'updater.dart';
 import 'usage_stats.dart';
 import 'warp.dart';
+import 'win_free_routes.dart';
 import 'windows_engine.dart';
 
 class CountryGroup {
@@ -362,6 +363,9 @@ class VpnController extends ChangeNotifier {
 
   bool _isWarp(Server s) => s.countryCode == warpCode;
 
+  /// WARP routes and the smart-chain routes built on WARP.
+  bool _needsWarp(Server s) => _isWarp(s) || WinFreeRoutes.needsWarp(s);
+
   /// Applies the route setting to a candidate pool.
   List<Server> _byTransport(List<Server> pool) => switch (settings.transport) {
         'warp' => warpServers,
@@ -374,7 +378,12 @@ class VpnController extends ChangeNotifier {
             ...warpServers.take(4),
             ...warpServersV6.take(2),
             if (transportAvailable('psiphon')) FreeRoutes.psiphon,
-            if (Platform.isWindows) FreeRoutes.tor,
+            // Smart chain (Windows) before Tor: two V2Ray servers dialed inside WARP, then Psiphon over WARP.
+            if (Platform.isWindows) ...[
+              for (final s in pool.where((x) => !_isWarp(x) && !UdpProbe.udpOnly(x)).take(2)) WinFreeRoutes.viaWarp(s),
+              WinFreeRoutes.psiphonOverWarp,
+              FreeRoutes.tor,
+            ],
           ],
       };
 
@@ -803,12 +812,12 @@ class VpnController extends ChangeNotifier {
         }
       }
       final List<Server> pool = only != null ? [only] : _byTransport(await _candidates());
-      if (pool.any(_isWarp) && WarpRegistry.account == null) {
+      if (pool.any(_needsWarp) && WarpRegistry.account == null) {
         phase = 'ساخت هویت رایگان Cloudflare WARP…';
         notifyListeners();
         if (!await ensureWarp()) {
           AppLog.add('warp: registration failed');
-          pool.removeWhere(_isWarp);
+          pool.removeWhere(_needsWarp);
           if (pool.isEmpty) {
             throw const _UserError('ثبت WARP ناموفق بود؛ اینترنت را بررسی کنید یا مسیر دیگری انتخاب کنید.');
           }
@@ -821,7 +830,7 @@ class VpnController extends ChangeNotifier {
           UdpProbe.blocked &&
           pool.any((s) => !UdpProbe.udpOnly(s))) {
         final before = pool.length;
-        pool.removeWhere(UdpProbe.udpOnly);
+        pool.removeWhere((s) => UdpProbe.udpOnly(s) || WinFreeRoutes.needsWarp(s));
         AppLog.add('connect: UDP blocked here, skipped ${before - pool.length} UDP-only routes');
       }
 

@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_log.dart';
+import 'server.dart';
 import 'singbox_core.dart';
 
 /// Windows: runs the bundled Psiphon (psiphon-tunnel-core.exe) or Tor (tor.exe + lyrebird.exe) as a child
@@ -22,6 +23,29 @@ class WinFreeRoutes {
 
   /// Their own traffic must leave directly, not through the TUN (it would loop).
   static const processNames = ['psiphon-tunnel-core.exe', 'tor.exe', 'lyrebird.exe'];
+
+  // ---------------------------------------------------------------- smart chain (through WARP)
+
+  static const _chainPrefix = 'viawarp:';
+
+  /// Psiphon whose own connections leave through a local WARP SOCKS proxy (UpstreamProxyUrl).
+  static final psiphonOverWarp =
+      Server(uri: 'psiphon://warp', remark: 'Psiphon + WARP', countryCode: 'PSIPHON', protocol: Protocol.socks);
+
+  /// [s] dialed inside WARP: the V2Ray outbound gets a detour to a WARP WireGuard outbound.
+  static Server viaWarp(Server s) =>
+      Server(uri: '$_chainPrefix${s.uri}', remark: '${s.remark} + WARP', countryCode: s.countryCode, protocol: s.protocol);
+
+  static bool isChain(Server s) => s.uri.startsWith(_chainPrefix);
+
+  static Server innerOf(Server s) => Server(
+      uri: s.uri.substring(_chainPrefix.length),
+      remark: s.remark.replaceFirst(' + WARP', ''),
+      countryCode: s.countryCode,
+      protocol: s.protocol);
+
+  /// Chain routes that need the registered WARP identity (and working UDP).
+  static bool needsWarp(Server s) => isChain(s) || s.uri == psiphonOverWarp.uri;
 
   Process? _proc;
 
@@ -63,18 +87,20 @@ class WinFreeRoutes {
   }
 
   /// Starts [route] ('psiphon' or 'tor') and returns its local SOCKS port once it carries traffic, else null.
-  Future<int?> start(String route, {required bool Function() isCancelled, void Function(String phase)? onPhase}) async {
+  /// [upstreamProxy] (Psiphon only), e.g. "socks5://127.0.0.1:port": Psiphon dials its servers through it.
+  Future<int?> start(String route,
+      {required bool Function() isCancelled, void Function(String phase)? onPhase, String? upstreamProxy}) async {
     await stop();
     if (!binaryExists(route)) {
       AppLog.add('$route: binary not found next to the app');
       return null;
     }
-    return route == 'tor' ? _startTor(isCancelled, onPhase) : _startPsiphon(isCancelled, onPhase);
+    return route == 'tor' ? _startTor(isCancelled, onPhase) : _startPsiphon(isCancelled, onPhase, upstreamProxy);
   }
 
   // ---------------------------------------------------------------- Psiphon
 
-  Future<int?> _startPsiphon(bool Function() isCancelled, void Function(String)? onPhase) async {
+  Future<int?> _startPsiphon(bool Function() isCancelled, void Function(String)? onPhase, String? upstreamProxy) async {
     final dir = Directory('${dataDir.path}\\psiphon')..createSync(recursive: true);
     var socksPort = await SingboxCore.freePort();
     final httpPort = await SingboxCore.freePort();
@@ -101,6 +127,7 @@ class WinFreeRoutes {
       'DNSResolverPreferredAlternateServers': ['208.67.222.222:5353', '9.9.9.9:9953', '208.67.220.220:5353'],
       'DNSResolverPreferAlternateServerProbability': 1.0,
       'DNSResolverAttemptsPerPreferredServer': 2,
+      'UpstreamProxyUrl': ?upstreamProxy,
     }));
     // Hex server entries shipped with the app (same list as Android's assets/server_entries.txt).
     final entries = '$appDir\\psiphon\\server_entries.txt';
