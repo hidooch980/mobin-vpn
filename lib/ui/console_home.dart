@@ -560,30 +560,27 @@ class _ModeChips extends StatelessWidget {
 
     void setRoute(String value) => c.settings.update((s) => s.transport = value);
 
-    Widget chip(IconData icon, String label, bool selected, VoidCallback onTap) => Padding(
-          padding: const EdgeInsetsDirectional.only(end: 8),
-          child: _ModeChip(icon: icon, label: label, selected: selected, onTap: locked ? null : onTap),
-        );
+    Widget chip(IconData icon, String label, bool selected, VoidCallback onTap) =>
+        _ModeChip(icon: icon, label: label, selected: selected, onTap: locked ? null : onTap);
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(children: [
+    // Wrap, not a horizontal scroller: every tunnel/core stays visible at any window width.
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Padding(
+        padding: const EdgeInsetsDirectional.only(start: 4, bottom: 8),
+        child: Text(tr('تونل / هسته', 'Tunnel / core'),
+            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Palette.muted)),
+      ),
+      Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
         chip(Icons.auto_awesome_rounded, tr('خودکار', 'Auto'), transport == 'auto' && c.selectedCountry == null, () {
           if (transport != 'auto') c.settings.update((s) => s.transport = 'auto');
           c.selectCountry(null);
         }),
-        Container(
-          width: 1,
-          height: 22,
-          margin: const EdgeInsetsDirectional.only(end: 8),
-          color: Palette.border,
-        ),
         chip(Icons.dns_rounded, 'V2Ray', transport == 'v2ray', () => setRoute('v2ray')),
         chip(Icons.cloud_rounded, 'WARP', transport == 'warp', () => setRoute('warp')),
         chip(Icons.hub_rounded, 'Psiphon', transport == 'psiphon', () => setRoute('psiphon')),
         chip(Icons.lan_rounded, 'Tor', transport == 'tor', () => setRoute('tor')),
       ]),
-    );
+    ]);
   }
 }
 
