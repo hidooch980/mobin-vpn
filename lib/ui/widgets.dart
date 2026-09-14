@@ -9,7 +9,7 @@ import 'style.dart';
 /// Max content width on desktop.
 const double kContentWidth = 520;
 
-/// Selected bottom-navigation tab; survives the full app rebuild on theme/language changes.
+/// Page to reopen after the full app rebuild on theme/language changes (2 = Settings).
 class AppNav {
   static int tab = 0;
 }
@@ -71,12 +71,28 @@ class SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final en = L10n.en;
+    final color = !en && Palette.isDark ? Color.lerp(Palette.muted, Palette.accent, 0.45)! : Palette.muted;
     return Padding(
       padding: const EdgeInsets.fromLTRB(6, 22, 6, 10),
       child: Row(children: [
+        Container(
+          width: 3,
+          height: 13,
+          decoration: BoxDecoration(
+            color: Palette.accent,
+            borderRadius: BorderRadius.circular(1.5),
+            boxShadow: [BoxShadow(color: Palette.accent.withValues(alpha: 0.75), blurRadius: 6)],
+          ),
+        ),
+        const SizedBox(width: 9),
         Expanded(
             child: Text(text,
-                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, letterSpacing: 0.3, color: Palette.muted))),
+                style: TextStyle(
+                    fontSize: en ? 11.5 : 15.5,
+                    fontWeight: en ? FontWeight.w500 : FontWeight.w700,
+                    letterSpacing: Palette.spacing(0.14, 11.5),
+                    color: color))),
         ?trailing,
       ]),
     );
@@ -201,7 +217,15 @@ class SwitchSettingRow extends StatelessWidget {
         title: title,
         subtitle: subtitle,
         onTap: () => onChanged(!value),
-        trailing: Switch(value: value, onChanged: onChanged, activeThumbColor: Palette.accent),
+        trailing: Switch(
+          value: value,
+          onChanged: onChanged,
+          activeThumbColor: Palette.accent,
+          activeTrackColor: Palette.accent.withValues(alpha: 0.32),
+          inactiveThumbColor: Palette.muted,
+          inactiveTrackColor: Palette.raised,
+          trackOutlineColor: WidgetStatePropertyAll(Palette.border),
+        ),
       );
 }
 

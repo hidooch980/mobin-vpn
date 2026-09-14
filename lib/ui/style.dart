@@ -25,6 +25,12 @@ class Palette {
   static Color connecting = const Color(0xFFFBBF24);
   static Color danger = const Color(0xFFF87171);
 
+  /// Android AppAppearance extras: tertiary text, upload accent, readable accent text, failure headline.
+  static Color faint = const Color(0xFF6F9189);
+  static Color violet = const Color(0xFF9B8CFF);
+  static Color accentText = const Color(0xFF2DD4BF);
+  static Color errorText = const Color(0xFFFCA5A5);
+
   /// Legacy name of the "connected / selected" color.
   static Color amber = const Color(0xFF34D399);
   static Color mapDot = const Color(0x332DD4BF);
@@ -52,6 +58,10 @@ class Palette {
       danger = const Color(0xFFF87171);
       fill = const Color(0x0FFFFFFF);
       fillStrong = const Color(0x1AFFFFFF);
+      faint = const Color(0xFF6F9189);
+      violet = const Color(0xFF9B8CFF);
+      accentText = const Color(0xFF2DD4BF);
+      errorText = const Color(0xFFFCA5A5);
     } else {
       bg = const Color(0xFFF3FAF8);
       surface = const Color(0xFFFFFFFF);
@@ -65,6 +75,10 @@ class Palette {
       danger = const Color(0xFFDC2626);
       fill = const Color(0x0A0B1F1B);
       fillStrong = const Color(0x140B1F1B);
+      faint = const Color(0xFF587A72);
+      violet = const Color(0xFF6B5BD6);
+      accentText = const Color(0xFF0B7A6B);
+      errorText = const Color(0xFFB91C1C);
     }
     amber = connected;
     mapDot = accent.withValues(alpha: 0.2);
@@ -74,6 +88,13 @@ class Palette {
     shadow = const Color(0x00000000);
     auroraStrength = 0.0;
   }
+
+  /// Android letter-spacing (em) as Flutter logical pixels; Persian renders with 0.
+  static double spacing(double em, double fontSize) => L10n.en ? em * fontSize : 0;
+
+  /// Monospace face for addresses and timers.
+  static const String monoFamily = 'Consolas';
+  static const List<String> monoFallback = ['Cascadia Mono', 'Courier New', 'monospace'];
 
   /// Shown only after a reported connection failure.
   static Color get failure => danger;

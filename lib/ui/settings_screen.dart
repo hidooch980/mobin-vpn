@@ -47,7 +47,7 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return PageShell(
       title: tr('تنظیمات', 'Settings'),
-      showBack: false,
+      showBack: true,
       child: ListenableBuilder(
         listenable: Listenable.merge([controller, s]),
         builder: (context, _) => ListView(

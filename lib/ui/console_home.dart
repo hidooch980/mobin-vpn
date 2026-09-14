@@ -16,7 +16,8 @@ import 'strings.dart';
 import 'style.dart';
 import 'widgets.dart';
 
-/// App shell: bottom navigation with Home / Servers / Settings.
+/// Single scrolling home, laid out like the Android app: header, connect squircle, status,
+/// exit card, mode chips, DNS chip, servers row and stats. Settings and Servers open as full pages.
 class ConsoleHome extends StatefulWidget {
   const ConsoleHome({super.key, required this.controller});
 
@@ -31,7 +32,6 @@ class _ConsoleHomeState extends State<ConsoleHome> {
   final _latency = <int>[];
   VpnState? _lastState;
   Timer? _probe, _netTimer;
-  int _tab = AppNav.tab;
 
   VpnController get c => widget.controller;
 
@@ -41,8 +41,21 @@ class _ConsoleHomeState extends State<ConsoleHome> {
     c.addListener(_onController);
     unawaited(network.refresh());
     _netTimer = Timer.periodic(const Duration(minutes: 2), (_) => network.refresh(proxy: c.engine.httpProxy));
+    if (AppNav.tab == 2) {
+      // A theme/language switch rebuilt the app from Settings: reopen it.
+      AppNav.tab = 0;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openSettings();
+      });
+    }
     unawaited(_askReportsConsent());
   }
+
+  void _openSettings() =>
+      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => SettingsScreen(controller: c)));
+
+  void _openServers() =>
+      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ServersScreen(controller: c)));
 
   /// Asked once: opt in to anonymous server quality reports.
   Future<void> _askReportsConsent() async {
@@ -106,181 +119,105 @@ class _ConsoleHomeState extends State<ConsoleHome> {
     super.dispose();
   }
 
-  void _select(int i) => setState(() => _tab = AppNav.tab = i);
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Palette.bg,
-      body: IndexedStack(index: _tab, children: [
-        _HomeTab(controller: c, network: network, latency: _latency),
-        ServersScreen(controller: c, embedded: true, onConnect: () => _select(0)),
-        SettingsScreen(controller: c),
-      ]),
-      bottomNavigationBar: _BottomBar(index: _tab, onSelect: _select),
-    );
-  }
-}
-
-class _BottomBar extends StatelessWidget {
-  const _BottomBar({required this.index, required this.onSelect});
-
-  final int index;
-  final ValueChanged<int> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    final items = [
-      (Icons.home_outlined, Icons.home_rounded, tr('خانه', 'Home')),
-      (Icons.dns_outlined, Icons.dns_rounded, tr('سرورها', 'Servers')),
-      (Icons.settings_outlined, Icons.settings_rounded, tr('تنظیمات', 'Settings')),
-    ];
-    return Container(
-      decoration: BoxDecoration(
-        color: Palette.surface,
-        border: Palette.isDark ? null : Border(top: BorderSide(color: Palette.border)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Center(
-          heightFactor: 1,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: kContentWidth),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-              child: Row(children: [
-                for (final (i, (icon, activeIcon, label)) in items.indexed)
-                  Expanded(
-                    child: _BarItem(
-                      icon: i == index ? activeIcon : icon,
-                      label: label,
-                      selected: i == index,
-                      onTap: () => onSelect(i),
-                    ),
-                  ),
-              ]),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _BarItem extends StatelessWidget {
-  const _BarItem({required this.icon, required this.label, required this.selected, required this.onTap});
-
-  final IconData icon;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = selected ? Palette.accent : Palette.muted;
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: label,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(Palette.pillRadius),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            AnimatedContainer(
-              duration: Duration(milliseconds: Palette.reduceMotion ? 0 : 220),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
-              decoration: BoxDecoration(
-                color: selected ? Palette.accent.withValues(alpha: 0.16) : Colors.transparent,
-                borderRadius: BorderRadius.circular(Palette.pillRadius),
+      body: ListenableBuilder(
+        listenable: Listenable.merge([c, network, c.settings]),
+        builder: (context, _) {
+          final lastMs = _latency.isEmpty ? null : _latency.last;
+          return SafeArea(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: kContentWidth),
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                  children: [
+                    _Header(controller: c, onSettings: _openSettings),
+                    if (c.update != null) _UpdateLine(controller: c),
+                    const SizedBox(height: 14),
+                    Center(child: _Squircle(controller: c)),
+                    _Status(controller: c, latency: lastMs),
+                    const SizedBox(height: 12),
+                    _ExitCard(controller: c, network: network, latency: _latency),
+                    const SizedBox(height: 12),
+                    _ModeChips(controller: c),
+                    const SizedBox(height: 8),
+                    _DnsChip(controller: c),
+                    const SizedBox(height: 12),
+                    CardGroup(children: [
+                      NavSettingRow(
+                        icon: Icons.dns_outlined,
+                        title: tr('سرورها', 'Servers'),
+                        value: digits(c.servers.length),
+                        onTap: _openServers,
+                      ),
+                    ]),
+                    const SizedBox(height: 12),
+                    _Tiles(controller: c),
+                    SectionHeader(tr('شبکه', 'Network')),
+                    _Facts(controller: c, network: network, latency: _latency),
+                  ],
+                ),
               ),
-              child: Icon(icon, size: 23, color: color),
             ),
-            const SizedBox(height: 4),
-            Text(label,
-                style: TextStyle(fontSize: 12, fontWeight: selected ? FontWeight.w700 : FontWeight.w500, color: color)),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Logo + name + status pill, gear at the end.
+class _Header extends StatelessWidget {
+  const _Header({required this.controller, required this.onSettings});
+
+  final VpnController controller;
+  final VoidCallback onSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color, glow) = _stateLook(controller);
+    return Row(children: [
+      const _Logo(),
+      const SizedBox(width: 10),
+      Text('MolidoVPN',
+          textDirection: TextDirection.ltr,
+          style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: Palette.text)),
+      const SizedBox(width: 10),
+      Flexible(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(color: Palette.raised, borderRadius: BorderRadius.circular(Palette.pillRadius)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: glow ? color : Palette.muted,
+                boxShadow: glow ? [BoxShadow(color: color.withValues(alpha: 0.7), blurRadius: 6)] : null,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: glow ? color : Palette.text)),
+            ),
           ]),
         ),
       ),
-    );
-  }
-}
-
-class _HomeTab extends StatelessWidget {
-  const _HomeTab({required this.controller, required this.network, required this.latency});
-
-  final VpnController controller;
-  final NetworkInfo network;
-  final List<int> latency;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = controller;
-    return ListenableBuilder(
-      listenable: Listenable.merge([c, network, c.settings]),
-      builder: (context, _) {
-        final lastMs = latency.isEmpty ? null : latency.last;
-        return SafeArea(
-          bottom: false,
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: kContentWidth),
-              child: Column(children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
-                  child: Row(children: [
-                    const _Logo(),
-                    const SizedBox(width: 10),
-                    Text('MolidoVPN',
-                        textDirection: TextDirection.ltr,
-                        style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: Palette.text)),
-                    const Spacer(),
-                    _HeaderChip(controller: c),
-                  ]),
-                ),
-                if (c.update != null) _UpdateLine(controller: c),
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                    children: [
-                      const SizedBox(height: 18),
-                      Center(child: _Squircle(controller: c)),
-                      const SizedBox(height: 18),
-                      _Status(controller: c, latency: lastMs),
-                      const SizedBox(height: 14),
-                      _LocationCard(controller: c),
-                      const SizedBox(height: 12),
-                      _ModeChips(controller: c),
-                      const SizedBox(height: 12),
-                      AppCard(
-                        padding: EdgeInsets.zero,
-                        child: ChoiceSettingRow<String>(
-                          icon: Icons.dns_outlined,
-                          title: 'DNS',
-                          subtitle: tr('خودکار یا DNS گیمینگ ایرانی؛ از اتصال بعدی اعمال می‌شود.',
-                              'Auto or Iranian gaming DNS; applies from the next connection.'),
-                          options: {
-                            'auto': tr('خودکار', 'Auto'),
-                            for (final e in AppSettings.gamingDnsPresets.entries) e.key: e.value.$1,
-                          },
-                          value: c.settings.dnsPreset,
-                          onChanged: (v) => c.settings.update((x) => x.dnsPreset = v),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      _Tiles(controller: c),
-                      SectionHeader(tr('شبکه', 'Network')),
-                      _Facts(controller: c, network: network, latency: latency),
-                    ],
-                  ),
-                ),
-              ]),
-            ),
-          ),
-        );
-      },
-    );
+      const Spacer(),
+      IconButton(
+        tooltip: tr('تنظیمات', 'Settings'),
+        onPressed: onSettings,
+        icon: Icon(Icons.settings_rounded, color: Palette.text),
+      ),
+    ]);
   }
 }
 
@@ -310,23 +247,11 @@ class _Logo extends StatelessWidget {
   final failed = c.state == VpnState.disconnected && c.error != null;
   return switch (c.state) {
     VpnState.connected => (tr('متصل', 'Connected'), Palette.connected, true),
-    VpnState.connecting => (tr('در حال اتصال', 'Connecting'), Palette.connecting, true),
+    VpnState.connecting => (tr('در حال اتصال...', 'Connecting...'), Palette.connecting, true),
     VpnState.disconnecting => (tr('در حال قطع', 'Disconnecting'), Palette.connecting, true),
     VpnState.disconnected =>
-      failed ? (tr('اتصال ناموفق', 'Failed'), Palette.danger, false) : (tr('قطع', 'Off'), Palette.muted, false),
+      failed ? (tr('اتصال ناموفق', 'Failed'), Palette.danger, true) : (tr('متصل نیست', 'Not connected'), Palette.muted, false),
   };
-}
-
-class _HeaderChip extends StatelessWidget {
-  const _HeaderChip({required this.controller});
-
-  final VpnController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final (label, color, glow) = _stateLook(controller);
-    return StatusChip(label: label, color: color, glow: glow);
-  }
 }
 
 class _UpdateLine extends StatelessWidget {
@@ -338,7 +263,7 @@ class _UpdateLine extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = controller;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      padding: const EdgeInsets.only(top: 8),
       child: AppCard(
         onTap: c.installUpdate,
         color: Palette.accent.withValues(alpha: 0.12),
@@ -362,7 +287,8 @@ class _UpdateLine extends StatelessWidget {
   }
 }
 
-/// Hero connect control: a rounded square with a gradient ring; glows while connecting.
+/// Android OrbitDialView: 190 px squircle, 64 corner, 4 px sweep-gradient ring, glow that breathes while
+/// connecting, power glyph with a caption, or the session timer while connected.
 class _Squircle extends StatefulWidget {
   const _Squircle({required this.controller});
 
@@ -375,12 +301,25 @@ class _Squircle extends StatefulWidget {
 class _SquircleState extends State<_Squircle> with SingleTickerProviderStateMixin {
   static const double _size = 190, _radius = 64, _ring = 4;
   bool _down = false;
-  late final _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 1100));
+  late final _loop = AnimationController(vsync: this, duration: const Duration(milliseconds: 1150));
+  Timer? _clock;
 
   @override
   void dispose() {
-    _pulse.dispose();
+    _clock?.cancel();
+    _loop.dispose();
     super.dispose();
+  }
+
+  void _syncClock(bool connected) {
+    if (connected && _clock == null) {
+      _clock = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() {});
+      });
+    } else if (!connected && _clock != null) {
+      _clock!.cancel();
+      _clock = null;
+    }
   }
 
   @override
@@ -389,27 +328,35 @@ class _SquircleState extends State<_Squircle> with SingleTickerProviderStateMixi
     final busy = c.state == VpnState.connecting || c.state == VpnState.disconnecting;
     final connected = c.state == VpnState.connected;
     final failed = c.state == VpnState.disconnected && c.error != null;
+    final idle = c.state == VpnState.disconnected && !failed;
     final animate = busy && !Palette.reduceMotion;
-    if (animate && !_pulse.isAnimating) _pulse.repeat(reverse: true);
-    if (!animate && _pulse.isAnimating) _pulse.stop();
+    if (animate && !_loop.isAnimating) _loop.repeat();
+    if (!animate && _loop.isAnimating) _loop.stop();
+    _syncClock(connected);
 
-    final ring = failed
-        ? [Palette.danger, Palette.danger.withValues(alpha: 0.6)]
+    final (Color start, Color end) = failed
+        ? (Palette.danger, Color.lerp(Palette.danger, Palette.connecting, 0.35)!)
         : busy
-            ? [Palette.connecting, Palette.accent]
-            : [Palette.accent, Palette.connected];
-    final glowColor = failed ? Palette.danger : (busy ? Palette.connecting : (connected ? Palette.connected : Palette.accent));
-    final label = switch (c.state) {
-      VpnState.connected => tr('قطع اتصال', 'Disconnect'),
-      VpnState.connecting => tr('لغو اتصال', 'Cancel'),
-      VpnState.disconnecting => tr('در حال قطع', 'Stopping'),
-      _ => tr('اتصال', 'Connect'),
+            ? (Palette.connecting, Palette.accent)
+            : (Palette.accent, Palette.connected);
+    final ringAlpha = idle ? 0.6 : 1.0;
+    final iconColor = connected
+        ? Palette.connected
+        : (busy ? Palette.connecting : (failed ? Palette.danger : Palette.accent));
+    final caption = switch (c.state) {
+      VpnState.connecting => c.progress != null
+          ? tr('در حال اتصال ${digits((c.progress! * 100).round())}٪', 'CONNECTING ${(c.progress! * 100).round()}%')
+          : tr('در حال اتصال...', 'CONNECTING'),
+      VpnState.disconnecting => tr('در حال قطع...', 'STOPPING'),
+      VpnState.connected => tr('متصل شد', 'Connected'),
+      _ => failed ? tr('تلاش مجدد', 'RETRY') : tr('برای اتصال لمس کنید', 'TAP TO CONNECT'),
     };
-    final fg = connected ? Palette.bg : (failed ? Palette.danger : (busy ? Palette.connecting : Palette.accent));
+    final captionColor = failed ? Palette.errorText : (busy ? Palette.connecting : Palette.muted);
+    final timer = connected && c.connectedAt != null ? formatDuration(DateTime.now().difference(c.connectedAt!)) : null;
 
     return Semantics(
       button: true,
-      label: label,
+      label: connected ? tr('قطع اتصال', 'Disconnect') : (busy ? tr('در حال اتصال', 'Connecting') : tr('اتصال', 'Connect')),
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         child: GestureDetector(
@@ -421,54 +368,83 @@ class _SquircleState extends State<_Squircle> with SingleTickerProviderStateMixi
             c.toggle();
           },
           child: AnimatedScale(
-            scale: _down ? 0.96 : 1,
-            duration: Duration(milliseconds: _down ? 90 : 180),
+            scale: _down ? 0.965 : 1,
+            duration: Duration(milliseconds: _down ? 110 : 190),
             curve: Curves.easeOutCubic,
             child: SizedBox.square(
-              dimension: _size + 40,
+              dimension: _size + 56,
               child: Center(
                 child: AnimatedBuilder(
-                  animation: _pulse,
+                  animation: _loop,
                   builder: (context, child) {
-                    final t = animate ? Curves.easeInOut.transform(_pulse.value) : (busy ? 0.6 : 0.0);
-                    final base = connected ? 0.35 : 0.14;
+                    final f = animate ? _loop.value : 0.0;
+                    final pulse = animate ? (f < 0.5 ? f * 2 : (1 - f) * 2) : (busy ? 0.5 : 0.0);
+                    final (Color glow, double alpha, double blur) = busy
+                        ? (Palette.connecting, 0.28 + 0.40 * pulse, 16 + 14 * pulse)
+                        : connected
+                            ? (Palette.connected, 0.30, 22.0)
+                            : failed
+                                ? (Palette.danger, 0.24, 14.0)
+                                : (Palette.accent, 0.16, 14.0);
                     return Container(
                       width: _size,
                       height: _size,
+                      padding: const EdgeInsets.all(_ring),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(_radius),
-                        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: ring),
-                        boxShadow: [
-                          BoxShadow(
-                            color: glowColor.withValues(alpha: busy ? 0.18 + 0.32 * t : base),
-                            blurRadius: busy ? 22 + 22 * t : 30,
-                            spreadRadius: busy ? 1 + 6 * t : 1,
-                          ),
-                        ],
+                        gradient: SweepGradient(
+                          colors: [
+                            start.withValues(alpha: ringAlpha),
+                            end.withValues(alpha: ringAlpha),
+                            start.withValues(alpha: ringAlpha),
+                          ],
+                          stops: const [0, 0.5, 1],
+                          transform: GradientRotation(f * 2 * math.pi),
+                        ),
+                        boxShadow: [BoxShadow(color: glow.withValues(alpha: alpha), blurRadius: blur * 2, spreadRadius: 1)],
                       ),
-                      padding: const EdgeInsets.all(_ring),
                       child: child,
                     );
                   },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 260),
+                  child: Container(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(_radius - _ring),
-                      color: connected ? null : Palette.surface,
-                      gradient: connected
-                          ? LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [Palette.accent, Palette.connected],
-                            )
-                          : null,
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Palette.raised, Palette.surface],
+                      ),
                     ),
                     child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      Icon(Icons.power_settings_new_rounded, size: 64, color: fg),
-                      const SizedBox(height: 8),
-                      Text(label,
-                          style: TextStyle(
-                              fontSize: 15, fontWeight: FontWeight.w700, color: connected ? Palette.bg : Palette.text)),
+                      Icon(Icons.power_settings_new_rounded, size: 56, color: iconColor),
+                      const SizedBox(height: 10),
+                      if (timer != null) ...[
+                        Text(timer,
+                            textDirection: TextDirection.ltr,
+                            style: TextStyle(
+                                fontSize: 22,
+                                fontFamily: Palette.monoFamily,
+                                fontFamilyFallback: Palette.monoFallback,
+                                letterSpacing: Palette.spacing(0.12, 22),
+                                color: Palette.text)),
+                        Text(tr('زمان اتصال', 'SESSION'),
+                            style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w500,
+                                letterSpacing: Palette.spacing(0.12, 9.5),
+                                color: Palette.muted)),
+                      ] else
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Text(caption,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: Palette.spacing(0.12, 12),
+                                  color: captionColor)),
+                        ),
                     ]),
                   ),
                 ),
@@ -481,6 +457,7 @@ class _SquircleState extends State<_Squircle> with SingleTickerProviderStateMixi
   }
 }
 
+/// Title + two-line detail + "<mode> · latency <ms>".
 class _Status extends StatelessWidget {
   const _Status({required this.controller, required this.latency});
 
@@ -492,8 +469,9 @@ class _Status extends StatelessWidget {
     final c = controller;
     final (title, color, _) = _stateLook(c);
     final failed = c.state == VpnState.disconnected && c.error != null;
+    final idle = c.state == VpnState.disconnected && !failed;
     final connected = c.state == VpnState.connected;
-    final sub = switch (c.state) {
+    final detail = switch (c.state) {
       VpnState.connected => c.current == null
           ? ''
           : (c.activeMember != null
@@ -502,104 +480,189 @@ class _Status extends StatelessWidget {
                   ? '${serverTitle(c.current!)} · ${tr('به سرور پشتیبان منتقل شد', 'switched to backup server')}'
                   : serverTitle(c.current!)),
       VpnState.connecting => c.phase ?? '',
-      _ => failed ? c.error! : tr('برای اتصال دکمه را بزنید', 'Tap the button to connect'),
+      _ => failed ? c.error! : '',
     };
-    final ms = latency ?? c.currentDelay;
+    final ms = connected ? (latency ?? c.currentDelay) : null;
+    final mode = connected && c.current != null ? c.current!.protocolLabel : _routeShort(c.settings.transport);
+    final chipColor = Palette.muted.withValues(alpha: 0.95);
     return Column(children: [
-      Text(
-          connected
-              ? tr('متصل هستید', 'You are protected')
-              : (c.state == VpnState.disconnected && !failed ? tr('متصل نیست', 'Not connected') : title),
-          style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w800,
-              color: connected ? Palette.connected : (failed ? Palette.danger : Palette.text))),
-      const SizedBox(height: 4),
-      SizedBox(
-        height: 40,
-        child: GestureDetector(
+      if (!idle) ...[
+        const SizedBox(height: 4),
+        Text(connected ? tr('متصل هستید', 'You are protected') : title,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                fontSize: L10n.en ? 21.0 : 25.0,
+                fontWeight: FontWeight.w700,
+                color: connected ? Palette.connected : (failed ? Palette.errorText : color))),
+        const SizedBox(height: 3),
+        GestureDetector(
           onTap: failed ? c.clearError : null,
-          child: Text(sub,
+          child: Text(detail,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13.5, height: 1.5, color: failed ? color : Palette.muted)),
+              style: TextStyle(fontSize: 13.5, height: 1.5, color: failed ? Palette.danger : Palette.muted)),
         ),
-      ),
+      ],
       if (c.state == VpnState.connecting && c.progress != null)
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 4),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(value: c.progress, minHeight: 4, color: Palette.accent, backgroundColor: Palette.raised),
+            child: LinearProgressIndicator(value: c.progress, minHeight: 3, color: Palette.connecting, backgroundColor: Palette.raised),
           ),
         ),
-      if (connected && c.current != null)
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Text(ms == null ? tr('در حال سنجش…', 'Measuring…') : '$ms ms',
-              textDirection: TextDirection.ltr, style: TextStyle(fontSize: 12.5, color: Palette.forDelay(ms))),
-          Text('  ·  ', style: TextStyle(fontSize: 12, color: Palette.muted.withValues(alpha: 0.5))),
-          Text(c.current!.protocolLabel, textDirection: TextDirection.ltr, style: TextStyle(fontSize: 12.5, color: Palette.muted)),
-        ]),
+      const SizedBox(height: 7),
+      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Text(mode, style: TextStyle(fontSize: 12, color: chipColor)),
+        Text('  ·  ', style: TextStyle(fontSize: 12, color: Palette.muted.withValues(alpha: 0.5))),
+        Text(ms == null ? tr('تاخیر —', 'Latency —') : tr('تاخیر ${digits(ms)} ms', 'Latency $ms ms'),
+            style: TextStyle(fontSize: 12, color: ms == null ? chipColor : Palette.forDelay(ms))),
+      ]),
     ]);
   }
 }
 
-bool _serverless(String transport) => transport == 'warp' || transport == 'psiphon' || transport == 'tor';
-
-String _routeLabel(String transport) => switch (transport) {
-      'v2ray' => tr('سرورهای V2Ray', 'V2Ray servers'),
-      'warp' => tr('Cloudflare WARP (رایگان)', 'Cloudflare WARP (free)'),
-      'psiphon' => tr('Psiphon (رایگان)', 'Psiphon (free)'),
-      'tor' => tr('Tor (رایگان)', 'Tor (free)'),
+String _routeShort(String transport) => switch (transport) {
+      'v2ray' => 'V2Ray',
+      'warp' => 'WARP',
+      'psiphon' => 'Psiphon',
+      'tor' => 'Tor',
       _ => tr('خودکار', 'Auto'),
     };
 
-/// Current exit: flag, location name and mode. Opens the location picker.
-class _LocationCard extends StatelessWidget {
-  const _LocationCard({required this.controller});
+/// Android ExitNodeCard: flag tile, caption, big monospace IP, country line, sparkline. Opens the location picker.
+class _ExitCard extends StatelessWidget {
+  const _ExitCard({required this.controller, required this.network, required this.latency});
 
   final VpnController controller;
+  final NetworkInfo network;
+  final List<int> latency;
 
   @override
   Widget build(BuildContext context) {
     final c = controller;
     final locked = c.state != VpnState.disconnected;
-    final transport = c.settings.transport;
-    final current = c.current;
-    final code = current?.countryCode ??
-        (_serverless(transport) ? (transport == 'warp' ? VpnController.warpCode : null) : c.selectedCountry);
-    final title = current != null ? serverTitle(current) : (_serverless(transport) ? _routeLabel(transport) : locationLabel(c));
-    final subtitle = current != null
-        ? '${tr('سرور خروجی', 'Exit server')} · ${current.protocolLabel}'
-        : '${tr('مسیر', 'Route')}: ${_routeLabel(transport)}';
-    return AppCard(
-      onTap: locked ? null : () => showLocationSheet(context, c),
-      padding: const EdgeInsetsDirectional.fromSTEB(16, 14, 14, 14),
-      child: Row(children: [
-        FlagBadge(code: code, size: 46),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w700, color: Palette.text)),
-            const SizedBox(height: 3),
-            Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: Palette.muted)),
-          ]),
+    final tunnelled = c.state == VpnState.connected;
+    final ip = network.ip;
+    final code = network.countryCode;
+    final country = code == null ? '' : code.toUpperCase();
+    final measuring = ip == null && c.state != VpnState.disconnected;
+    final location = measuring
+        ? tr('در حال خواندن از داخل تونل', 'reading from inside the tunnel')
+        : country.isNotEmpty && tunnelled
+            ? '$country · ${tr('از تونل', 'tunnelled')}'
+            : country.isNotEmpty
+                ? country
+                : (tunnelled ? tr('از تونل', 'tunnelled') : tr('بدون تونل', 'not tunnelled'));
+    final radius = BorderRadius.circular(22);
+    final fill = Color.lerp(Palette.surface, Palette.text, 0.03)!;
+    return Semantics(
+      button: !locked,
+      label: tr('انتخاب سرور یا کشور', 'Choose server or country'),
+      child: Material(
+        color: fill,
+        shape: RoundedRectangleBorder(
+          borderRadius: radius,
+          side: BorderSide(color: Palette.text.withValues(alpha: 0.09)),
         ),
-        Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(color: Palette.raised, borderRadius: BorderRadius.circular(12)),
-          child: Icon(Icons.unfold_more_rounded, size: 20, color: locked ? Palette.border : Palette.muted),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: locked ? null : () => showLocationSheet(context, c),
+          child: Padding(
+            padding: const EdgeInsetsDirectional.fromSTEB(13, 11, 15, 11),
+            child: Row(children: [
+              Container(
+                width: 42,
+                height: 42,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Color.lerp(Palette.surface, Palette.bg, 0.5),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Palette.text.withValues(alpha: 0.10)),
+                ),
+                child: FlagBadge(code: tunnelled ? (c.current?.countryCode ?? code) : code, size: 30),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(tunnelled ? tr('نود خروجی', 'EXIT NODE') : tr('آی‌پی شما', 'YOUR IP'),
+                      style: TextStyle(
+                          fontSize: L10n.en ? 9.5 : 10.5,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: Palette.spacing(0.14, 9.5),
+                          color: Palette.faint.withValues(alpha: 0.95))),
+                  const SizedBox(height: 2),
+                  Text(
+                    measuring ? tr('در حال سنجش…', 'measuring…') : (ip ?? tr('آی‌پی در دسترس نیست', 'IP unavailable')),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textDirection: TextDirection.ltr,
+                    style: TextStyle(
+                      fontSize: ip == null ? 13.0 : (ip.length > 20 ? 12.5 : 17.0),
+                      fontWeight: FontWeight.w500,
+                      fontFamily: Palette.monoFamily,
+                      fontFamilyFallback: Palette.monoFallback,
+                      color: Palette.text,
+                    ),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(location,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 11.5, color: Palette.faint.withValues(alpha: 0.9))),
+                ]),
+              ),
+              SizedBox(width: 52, height: 24, child: CustomPaint(painter: _Sparkline(List.of(latency), Palette.accent))),
+            ]),
+          ),
         ),
-      ]),
+      ),
     );
   }
 }
 
-/// Auto chip followed by route chips (V2Ray, WARP, Psiphon, Tor).
+/// Smooth line over recent latency samples; a calm sine wave until there are enough samples.
+class _Sparkline extends CustomPainter {
+  _Sparkline(this.values, this.color);
+
+  final List<int> values;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path();
+    if (values.length < 2) {
+      for (var i = 0; i <= 26; i++) {
+        final x = size.width * i / 26;
+        final y = size.height / 2 + math.sin(i / 26 * 3 * math.pi) * size.height * 0.28;
+        i == 0 ? path.moveTo(x, y) : path.lineTo(x, y);
+      }
+    } else {
+      final peak = values.reduce(math.max).toDouble();
+      final low = values.reduce(math.min).toDouble();
+      final span = math.max(1.0, peak - low);
+      for (var i = 0; i < values.length; i++) {
+        final x = size.width * i / (values.length - 1);
+        final y = size.height - 2 - ((values[i] - low) / span) * (size.height - 4);
+        i == 0 ? path.moveTo(x, y) : path.lineTo(x, y);
+      }
+    }
+    canvas.drawPath(
+        path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.6
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_Sparkline old) => true;
+}
+
+/// Mode rail: three equal-width chips per row (Auto, V2Ray, WARP / Psiphon, Tor).
 class _ModeChips extends StatelessWidget {
   const _ModeChips({required this.controller});
 
@@ -613,58 +676,136 @@ class _ModeChips extends StatelessWidget {
 
     void setRoute(String value) => c.settings.update((s) => s.transport = value);
 
-    Widget chip(IconData icon, String label, bool selected, VoidCallback onTap) =>
-        _ModeChip(icon: icon, label: label, selected: selected, onTap: locked ? null : onTap);
-
-    // Wrap, not a horizontal scroller: every tunnel/core stays visible at any window width.
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Padding(
-        padding: const EdgeInsetsDirectional.only(start: 4, bottom: 8),
-        child: Text(tr('تونل / هسته', 'Tunnel / core'),
-            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Palette.muted)),
+    final chips = <Widget>[
+      _ModeChip(
+        label: tr('خودکار', 'Auto'),
+        selected: transport == 'auto',
+        onTap: locked
+            ? null
+            : () {
+                if (transport != 'auto') setRoute('auto');
+                c.selectCountry(null);
+              },
       ),
-      Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
-        chip(Icons.auto_awesome_rounded, tr('خودکار', 'Auto'), transport == 'auto' && c.selectedCountry == null, () {
-          if (transport != 'auto') c.settings.update((s) => s.transport = 'auto');
-          c.selectCountry(null);
-        }),
-        chip(Icons.dns_rounded, 'V2Ray', transport == 'v2ray', () => setRoute('v2ray')),
-        chip(Icons.cloud_rounded, 'WARP', transport == 'warp', () => setRoute('warp')),
-        chip(Icons.hub_rounded, 'Psiphon', transport == 'psiphon', () => setRoute('psiphon')),
-        chip(Icons.lan_rounded, 'Tor', transport == 'tor', () => setRoute('tor')),
+      _ModeChip(label: 'V2Ray', selected: transport == 'v2ray', onTap: locked ? null : () => setRoute('v2ray')),
+      _ModeChip(label: 'WARP', selected: transport == 'warp', onTap: locked ? null : () => setRoute('warp')),
+      _ModeChip(label: 'Psiphon', selected: transport == 'psiphon', onTap: locked ? null : () => setRoute('psiphon')),
+      _ModeChip(label: 'Tor', selected: transport == 'tor', onTap: locked ? null : () => setRoute('tor')),
+    ];
+    const perRow = 3;
+    return Opacity(
+      opacity: locked ? 0.5 : 1,
+      child: Column(children: [
+        for (var r = 0; r < chips.length; r += perRow) ...[
+          if (r > 0) const SizedBox(height: 8),
+          Row(children: [
+            for (var i = r; i < r + perRow; i++) ...[
+              if (i > r) const SizedBox(width: 8),
+              Expanded(child: i < chips.length ? chips[i] : const SizedBox.shrink()),
+            ],
+          ]),
+        ],
       ]),
-    ]);
+    );
   }
 }
 
 class _ModeChip extends StatelessWidget {
-  const _ModeChip({required this.icon, required this.label, required this.selected, required this.onTap});
+  const _ModeChip({required this.label, required this.selected, required this.onTap});
 
-  final IconData icon;
   final String label;
   final bool selected;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? Palette.accent : (onTap == null ? Palette.muted : Palette.text);
     final shape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(Palette.pillRadius),
-      side: selected ? BorderSide(color: Palette.accent) : (Palette.isDark ? BorderSide.none : BorderSide(color: Palette.border)),
+      side: BorderSide(color: selected ? Palette.accent : Palette.raised, width: selected ? 1.4 : 1),
     );
-    return Material(
-      color: selected ? Palette.accent.withValues(alpha: 0.16) : Palette.surface,
-      shape: shape,
-      child: InkWell(
-        customBorder: shape,
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(icon, size: 17, color: color),
-            const SizedBox(width: 7),
-            Text(label, style: TextStyle(fontSize: 13.5, fontWeight: selected ? FontWeight.w700 : FontWeight.w500, color: color)),
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: Material(
+        color: selected ? Palette.bg : Palette.raised,
+        shape: shape,
+        child: InkWell(
+          customBorder: shape,
+          onTap: onTap,
+          child: SizedBox(
+            height: 38,
+            child: Center(
+              child: Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      color: selected ? Palette.accentText : Palette.muted)),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Compact "DNS: …" chip under the mode rail; opens the DNS picker.
+class _DnsChip extends StatelessWidget {
+  const _DnsChip({required this.controller});
+
+  final VpnController controller;
+
+  static String summary(String preset) =>
+      AppSettings.gamingDnsPresets[preset]?.$1 ?? tr('خودکار', 'Auto');
+
+  Future<void> _pick(BuildContext context) async {
+    final s = controller.settings;
+    final options = <String, String>{
+      'auto': tr('خودکار', 'Auto'),
+      for (final e in AppSettings.gamingDnsPresets.entries) e.key: e.value.$1,
+    };
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Palette.sheet,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Palette.cardRadius))),
+      builder: (context) => SafeArea(
+        child: ListView(shrinkWrap: true, padding: const EdgeInsets.fromLTRB(16, 0, 16, 16), children: [
+          SectionHeader(tr('DNS (از اتصال بعدی اعمال می‌شود)', 'DNS (applies from the next connection)')),
+          CardGroup(children: [
+            for (final e in options.entries)
+              SettingRow(
+                title: e.value,
+                onTap: () => Navigator.pop(context, e.key),
+                trailing: e.key == s.dnsPreset ? Icon(Icons.check_rounded, color: Palette.accent) : null,
+              ),
           ]),
+        ]),
+      ),
+    );
+    if (picked != null && picked != s.dnsPreset) await s.update((x) => x.dnsPreset = picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final locked = controller.state != VpnState.disconnected;
+    final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(Palette.pillRadius));
+    return Opacity(
+      opacity: locked ? 0.5 : 1,
+      child: Material(
+        color: Palette.raised,
+        shape: shape,
+        child: InkWell(
+          customBorder: shape,
+          onTap: locked ? null : () => _pick(context),
+          child: SizedBox(
+            height: 34,
+            child: Center(
+              child: Text('DNS: ${summary(controller.settings.dnsPreset)}',
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: Palette.muted)),
+            ),
+          ),
         ),
       ),
     );
