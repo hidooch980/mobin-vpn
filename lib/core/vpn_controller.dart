@@ -146,6 +146,8 @@ class VpnController extends ChangeNotifier {
       notifyListeners();
     });
     final prefs = await SharedPreferences.getInstance();
+    final warpIrMs = prefs.getInt(_warpIrKey);
+    if (warpIrMs != null) _warpIrUntil = DateTime.fromMillisecondsSinceEpoch(warpIrMs);
     selectedCountry = prefs.getString(_countryKey);
     // The removed gaming mode was stored as 'GAME': fall back to automatic.
     if (selectedCountry == 'GAME') {
@@ -364,6 +366,39 @@ class VpnController extends ChangeNotifier {
 
   bool _isWarp(Server s) => s.countryCode == warpCode;
 
+  /// The connected route exits in Iran (WARP exits in the user's own country): some services will not work.
+  bool exitInIran = false;
+
+  /// Persian warning for [exitInIran]; the UI shows its own English text.
+  static const exitIranMessage = 'خروجی ایران است؛ بعضی سرویس‌ها (مثل Gemini) کار نمی‌کنند';
+
+  static const _warpIrKey = 'warp_exit_ir_until';
+  DateTime? _warpIrUntil;
+
+  /// WARP was seen exiting in Iran on this network within the last 24 hours.
+  bool get _warpExitsIr => _warpIrUntil?.isAfter(DateTime.now()) ?? false;
+
+  /// Iranian users: V2Ray first, then Psiphon, then WARP / chains, then Tor.
+  bool get _iranOrder => NetworkInfo.ownCountry == 'IR' || _warpExitsIr;
+
+  /// Whether exit checks make sense: skipped when the user's own network is known to be outside Iran.
+  bool get _checkExit => NetworkInfo.ownCountry == null || NetworkInfo.ownCountry == 'IR';
+
+  /// Cloudflare trace through the live tunnel: true when the exit country is Iran. Unknown counts as not Iran.
+  Future<bool> _exitIsIran(Server server) async {
+    final proxy = engine.httpProxy;
+    if (proxy == null || !_checkExit) return false;
+    final loc = await NetworkInfo.traceCountry(proxy);
+    AppLog.add('exit check: ${server.displayName} loc=${loc ?? '?'}');
+    if (loc != 'IR') return false;
+    if (_isWarp(server)) {
+      _warpIrUntil = DateTime.now().add(const Duration(hours: 24));
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_warpIrKey, _warpIrUntil!.millisecondsSinceEpoch);
+    }
+    return true;
+  }
+
   /// WARP routes and the smart-chain routes built on WARP.
   bool _needsWarp(Server s) => _isWarp(s) || WinFreeRoutes.needsWarp(s);
 
@@ -373,6 +408,19 @@ class VpnController extends ChangeNotifier {
         'psiphon' when transportAvailable('psiphon') => [FreeRoutes.psiphon],
         'tor' when transportAvailable('tor') => [FreeRoutes.tor],
         'v2ray' => pool.where((s) => !_isWarp(s)).toList(),
+        // From Iran WARP exits in Iran: V2Ray, then Psiphon, then WARP and the chains (their exit is the V2Ray
+        // server / Psiphon), then Tor.
+        _ when _iranOrder => [
+            ...pool.where((s) => !_isWarp(s)),
+            if (transportAvailable('psiphon')) FreeRoutes.psiphon,
+            ...warpServers.take(4),
+            ...warpServersV6.take(2),
+            if (Platform.isWindows) ...[
+              for (final s in pool.where((x) => !_isWarp(x) && !UdpProbe.udpOnly(x)).take(2)) WinFreeRoutes.viaWarp(s),
+              WinFreeRoutes.psiphonOverWarp,
+              FreeRoutes.tor,
+            ],
+          ],
         // Automatic: V2Ray servers, then free WARP, then Psiphon (and Tor on Windows) as the last resort.
         _ => [
             ...pool.where((s) => !_isWarp(s)),
@@ -891,6 +939,42 @@ class VpnController extends ChangeNotifier {
     progressDone = progressTotal = 0;
     notifyListeners();
     var options = _options;
+    exitInIran = false;
+    // Automatic mode: a route that exits in Iran is set aside (not reported as bad); the first is kept if all do.
+    final autoExit = only == null && settings.transport == 'auto';
+    Server? irFallback;
+    Future<bool> exitOk(Server server) async {
+      if (!await _exitIsIran(server)) return true;
+      if (!autoExit) {
+        exitInIran = true;
+        return true;
+      }
+      AppLog.add('connect: ${server.displayName} exits in Iran, trying the next route');
+      irFallback ??= server;
+      await engine.disconnect();
+      return false;
+    }
+
+    Future<bool> useIrFallback() async {
+      final server = irFallback;
+      if (server == null) return false;
+      _checkCancel();
+      phase = 'اتصال به ${server.displayName}';
+      notifyListeners();
+      if (!await _engineConnect(server, options)) return false;
+      _checkCancel();
+      AppLog.add('connect: every route exits in Iran, keeping ${server.displayName}');
+      current = server;
+      currentDelay = null;
+      connectedAt = DateTime.now();
+      exitInIran = true;
+      state = VpnState.connected;
+      phase = null;
+      notifyListeners();
+      _report(server, true);
+      return true;
+    }
+
     final eng = engine;
     if (eng is AndroidEngine) {
       eng.isCancelled = () => _cancel;
@@ -959,7 +1043,8 @@ class VpnController extends ChangeNotifier {
         phase = 'اتصال سریع به ${server.displayName}';
         notifyListeners();
         AppLog.add('connect: fast path to last server ${server.displayName}');
-        if (await _directConnect(server, options)) {
+        final fastOk = await _directConnect(server, options);
+        if (fastOk && await exitOk(server)) {
           _checkCancel();
           current = server;
           currentDelay = null;
@@ -970,7 +1055,7 @@ class VpnController extends ChangeNotifier {
           _report(server, true);
           return;
         }
-        if (!_cancel) _report(server, false);
+        if (!_cancel && !fastOk) _report(server, false);
         AppLog.add('connect: fast path failed, testing servers');
         pool.removeAt(0);
         _checkCancel();
@@ -986,6 +1071,11 @@ class VpnController extends ChangeNotifier {
           state = VpnState.connected;
           phase = null;
           notifyListeners();
+          // Manual route (e.g. WARP): only warn when the exit is in Iran, never disconnect.
+          if (await _exitIsIran(only) && state == VpnState.connected) {
+            exitInIran = true;
+            notifyListeners();
+          }
           _report(only, true);
           await _rememberWinner(only.uri);
           return;
@@ -1001,7 +1091,8 @@ class VpnController extends ChangeNotifier {
           _checkCancel();
           phase = 'اتصال مستقیم به ${server.displayName}';
           notifyListeners();
-          if (await _directConnect(server, options)) {
+          final directOk = await _directConnect(server, options);
+          if (directOk && await exitOk(server)) {
             _checkCancel();
             AppLog.add('connect: direct to ${server.displayName} (${server.protocolLabel})');
             current = server;
@@ -1014,13 +1105,14 @@ class VpnController extends ChangeNotifier {
             await _rememberWinner(server.uri);
             return;
           }
-          if (!_cancel) _report(server, false);
-          AppLog.add('connect: direct ${server.displayName} failed');
+          if (!_cancel && !directOk) _report(server, false);
+          AppLog.add('connect: direct ${server.displayName} ${directOk ? 'exits in Iran' : 'failed'}');
         }
         // None worked: test the remaining servers and connect to the fastest responsive one.
         AppLog.add('connect: direct attempts failed, testing the other servers');
         pool.removeWhere(tried.contains);
         if (pool.isEmpty) {
+          if (await useIrFallback()) return;
           // Psiphon / Tor alone (or last): their own reason instead of the server-list advice.
           final eng = engine;
           final freeError = eng is WindowsEngine && tried.isNotEmpty && FreeRoutes.isFree(tried.last)
@@ -1089,6 +1181,7 @@ class VpnController extends ChangeNotifier {
           await engine.disconnect();
           throw _Cancelled();
         }
+        if (!await exitOk(server)) continue;
         current = server;
         currentDelay = measured[i];
         connectedAt = DateTime.now();
@@ -1099,6 +1192,7 @@ class VpnController extends ChangeNotifier {
         await _rememberWinner(server.uri);
         return;
       }
+      if (await useIrFallback()) return;
       throw const _UserError(
           'اتصال برقرار نشد. «ضد فیلتر» را روشن کنید یا کشور دیگری را امتحان کنید. جزئیات در تنظیمات ← گزارش خطا.');
     } on _Cancelled {
@@ -1144,6 +1238,7 @@ class VpnController extends ChangeNotifier {
     connectedAt = null;
     switchedToBackup = false;
     activeMember = null;
+    exitInIran = false;
     traffic = const TrafficStat();
     phase = null;
     progressDone = progressTotal = 0;

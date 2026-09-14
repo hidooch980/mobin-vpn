@@ -71,6 +71,32 @@ class NetworkInfo extends ChangeNotifier {
 
   static String? _ownProvider;
 
+  /// Country of the user's own network (a lookup outside the VPN), e.g. "IR"; null until known.
+  static String? ownCountry;
+
+  /// Exit country as Cloudflare sees it, from /cdn-cgi/trace through [proxy] ("host:port"). null on failure.
+  static Future<String?> traceCountry(String proxy, {Duration timeout = const Duration(seconds: 5)}) async {
+    final client = HttpClient()
+      ..connectionTimeout = timeout
+      ..findProxy = (_) => 'PROXY $proxy';
+    try {
+      Future<String> fetch() async {
+        final res = await (await client.getUrl(Uri.parse('https://www.cloudflare.com/cdn-cgi/trace'))).close();
+        return res.transform(utf8.decoder).join();
+      }
+
+      final body = await fetch().timeout(timeout);
+      for (final line in const LineSplitter().convert(body)) {
+        if (line.startsWith('loc=')) return line.substring(4).trim().toUpperCase();
+      }
+      return null;
+    } catch (_) {
+      return null;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
   /// Coarse ISP bucket of the user's own network for reports/scores: mci, irancell, tci, rightel, shatel or other.
   /// null until a lookup outside the VPN has run.
   static String? get operatorBucket {
@@ -138,6 +164,9 @@ class NetworkInfo extends ChangeNotifier {
       // Only a lookup outside the tunnel describes the user's own ISP.
       if (proxy == null && (isp != null || carrier != null)) {
         _ownProvider = '${isp ?? ''} ${type == 'mobile' ? carrier ?? '' : ''}'.toLowerCase();
+      }
+      if (proxy == null && countryCode != null && !(isp ?? '').toLowerCase().contains('cloudflare')) {
+        ownCountry = countryCode!.toUpperCase();
       }
     } catch (e) {
       AppLog.add('network info: $e');
