@@ -29,6 +29,9 @@ class CleanIp {
     '162.158.0.0/15', '104.16.0.0/13', '104.24.0.0/14', '172.64.0.0/13', '131.0.72.0/22',
   ];
 
+  /// Cloudflare anycast IPv6 blocks sampled when the PC has global IPv6: 2606:4700:3030::/48 … 2606:4700:3037::/48.
+  static const _v6Prefixes = 8, _sampleV6 = 24;
+
   static final _hostIsCf = <String, bool>{};
   static final _random = math.Random();
 
@@ -108,7 +111,9 @@ class CleanIp {
     }
     final ips = entry['ips'];
     if (ips is! List || ips.isEmpty) return null;
-    final best = ips.first;
+    // IPv6 winners are only usable while this PC still has global IPv6.
+    final best = ips.firstWhere((e) => e is List && e.isNotEmpty && (NetworkInfo.globalIpv6 || !'${e[0]}'.contains(':')),
+        orElse: () => null);
     if (best is! List || best.length < 2) return null;
     final base = entry['base'];
     final ms = best[1];
@@ -169,6 +174,13 @@ class CleanIp {
     }
   }
 
+  /// Random host in one of the Cloudflare /48 blocks 2606:4700:3030..3037.
+  static String _randomIpV6() {
+    final hextets = [for (var i = 0; i < 5; i++) _random.nextInt(0x10000).toRadixString(16)];
+    if (hextets.last == '0') hextets[4] = '1';
+    return '2606:4700:${(0x3030 + _random.nextInt(_v6Prefixes)).toRadixString(16)}:${hextets.join(':')}';
+  }
+
   static String _randomIp() {
     final r = ranges[_random.nextInt(ranges.length)];
     final slash = r.indexOf('/');
@@ -223,7 +235,12 @@ class CleanIp {
       if (!stale && entry is Map && (entry['ips'] as List?)?.isNotEmpty == true) return; // new network key but fresh cache
 
       final sni = hosts[cfHost]!;
-      final candidates = {for (var i = 0; i < _sample; i++) _randomIp()}.toList();
+      final ipv6 = await NetworkInfo.detectIpv6();
+      final candidates = {
+        for (var i = 0; i < _sample; i++) _randomIp(),
+        if (ipv6)
+          for (var i = 0; i < _sampleV6; i++) _randomIpV6(),
+      }.toList();
       // Keep previously good IPs in the race so a stable winner is not lost to sampling.
       if (entry is Map && entry['ips'] is List) {
         for (final e in entry['ips'] as List) {
@@ -252,7 +269,7 @@ class CleanIp {
       }
       await _save();
       AppLog.add('clean ip: ${good.length}/${candidates.length} Cloudflare IPs answered '
-          '(best ${good.isEmpty ? '-' : '${good.first[1]} ms'}, normal $base ms) on $key');
+          '(best ${good.isEmpty ? '-' : '${good.first[0]} ${good.first[1]} ms'}, normal $base ms, ipv6 $ipv6) on $key');
     } catch (e) {
       AppLog.add('clean ip: scan failed ($e)');
     } finally {

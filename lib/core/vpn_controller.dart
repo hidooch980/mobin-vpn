@@ -150,6 +150,7 @@ class VpnController extends ChangeNotifier {
       selectedCountry = null;
       await prefs.remove(_countryKey);
     }
+    if (Platform.isWindows) await NetworkInfo.detectIpv6();
     try {
       await engine.init();
       AppLog.add('engine ready (${Platform.operatingSystem} ${Platform.operatingSystemVersion})');
@@ -344,6 +345,19 @@ class VpnController extends ChangeNotifier {
             countryCode: warpCode,
             protocol: Protocol.wireguard,
           ),
+        ...warpServersV6,
+      ];
+
+  /// IPv6 WARP endpoints: Windows only, and only while the PC has global IPv6.
+  static List<Server> get warpServersV6 => [
+        if (Platform.isWindows && NetworkInfo.globalIpv6)
+          for (final (i, endpoint) in WarpAccount.endpointsV6.indexed)
+            Server(
+              uri: 'warp://$endpoint',
+              remark: 'Cloudflare WARP IPv6 ${(i + 1).toString().padLeft(2, '0')} · WG',
+              countryCode: warpCode,
+              protocol: Protocol.wireguard,
+            ),
       ];
 
   bool _isWarp(Server s) => s.countryCode == warpCode;
@@ -358,6 +372,7 @@ class VpnController extends ChangeNotifier {
         _ => [
             ...pool.where((s) => !_isWarp(s)),
             ...warpServers.take(4),
+            ...warpServersV6.take(2),
             if (transportAvailable('psiphon')) FreeRoutes.psiphon,
             if (Platform.isWindows) FreeRoutes.tor,
           ],
@@ -628,6 +643,13 @@ class VpnController extends ChangeNotifier {
     // Scans must measure the user's own network: not while connecting, and not through a TUN tunnel.
     final direct = state == VpnState.disconnected || (state == VpnState.connected && !settings.tunMode);
     if (!direct) return;
+    unawaited(NetworkInfo.detectIpv6().then((had) {
+      // Newly (un)available IPv6 changes the WARP endpoint list.
+      if (had != servers.any((s) => s.uri.startsWith('warp://['))) {
+        final data = _data;
+        if (data != null) _apply(data);
+      }
+    }));
     unawaited(CleanIp.tick(servers.where((s) => !_isWarp(s) && !FreeRoutes.isFree(s)).toList()));
     unawaited(UdpProbe.probe());
   }

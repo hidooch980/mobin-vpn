@@ -18,6 +18,11 @@ class WarpAccount {
     '188.114.98.1:894', '188.114.99.1:7559', '162.159.192.10:8854', '162.159.193.1:2408',
   ];
 
+  /// IPv6 WARP ingress (used only when the PC has global IPv6); brackets keep the port parseable.
+  static const endpointsV6 = [
+    '[2606:4700:d0::a29f:c001]:2408', '[2606:4700:d1::a29f:c001]:2408', '[2606:4700:d0::a29f:c001]:500',
+  ];
+
   const WarpAccount({
     required this.privateKey,
     required this.peerPublicKey,

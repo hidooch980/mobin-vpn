@@ -104,6 +104,23 @@ class NetworkInfo extends ChangeNotifier {
     }
   }
 
+  /// Whether the PC had a global unicast IPv6 address (2000::/3) at the last [detectIpv6]; false until then.
+  static bool globalIpv6 = false;
+
+  /// Checks the adapters for a global IPv6 address (the VPN's own TUN adapter is ignored). Never throws.
+  static Future<bool> detectIpv6() async {
+    try {
+      final interfaces = await NetworkInterface.list(includeLinkLocal: false, type: InternetAddressType.IPv6);
+      globalIpv6 = interfaces.any((i) =>
+          !i.name.toLowerCase().contains('mobinvpn') &&
+          i.addresses.any((a) =>
+              a.type == InternetAddressType.IPv6 && !a.isLoopback && (a.rawAddress[0] & 0xE0) == 0x20));
+    } catch (_) {
+      globalIpv6 = false;
+    }
+    return globalIpv6;
+  }
+
   /// TUN MTU: [manual] when set (> 0), else 1340 on cellular / tethering and 1420 otherwise.
   static Future<int> tunMtu(int manual) async => manual > 0 ? manual : (await cellularLike() ? 1340 : 1420);
 
