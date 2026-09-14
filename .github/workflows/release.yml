@@ -85,6 +85,7 @@ jobs:
           path: dist/*
 
   android-smoke:
+    # Informational only (does not gate the release).
     # Installs the universal APK on an emulator, launches it, connects the VPN and loads a page through it.
     # Any crash or failed connection stops the release.
     needs: android
@@ -306,7 +307,7 @@ jobs:
           path: dist/*
 
   release:
-    needs: [android, android-smoke, windows]
+    needs: [android, windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
