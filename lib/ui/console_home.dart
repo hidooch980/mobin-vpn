@@ -457,7 +457,7 @@ class _SquircleState extends State<_Squircle> with SingleTickerProviderStateMixi
   }
 }
 
-/// Title + two-line detail + "<mode> · latency <ms>".
+/// Title + two-line detail + "`mode` · latency `ms`".
 class _Status extends StatelessWidget {
   const _Status({required this.controller, required this.latency});
 
