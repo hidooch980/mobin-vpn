@@ -239,6 +239,10 @@ class SingboxCore {
 
   /// Config for a live connection: local mixed proxy on [port], optional TUN (Windows), optional WARP chain.
   /// [directProcesses]: executables whose own traffic must bypass the tunnel (local Psiphon/Tor, avoids a loop).
+  /// TUN without a gaming DNS: proxied domains get fake IPs (no DNS round trip through the server).
+  /// Gaming DNS keeps its direct UDP server; proxy servers are still resolved by "local" (default_domain_resolver).
+  static bool useFakeIp(EngineOptions o, {required bool tun}) => tun && o.tunnelDns == null;
+
   Json connectConfig(Json outbound, int port, int api, EngineOptions o,
           {bool tun = false, int mtu = 1420, List<String> directProcesses = const []}) =>
       {
@@ -248,7 +252,16 @@ class SingboxCore {
             {'type': 'local', 'tag': 'local'},
             if (dnsServer(o) case final remote?) remote
             else if (tun) {'type': 'https', 'tag': 'remote', 'server': '1.1.1.1', 'detour': 'proxy'},
+            if (useFakeIp(o, tun: tun))
+              {'type': 'fakeip', 'tag': 'fakeip', 'inet4_range': '198.18.0.0/15', 'inet6_range': 'fc00::/18'},
           ],
+          if (useFakeIp(o, tun: tun))
+            'rules': [
+              // Direct (Iranian) domains need their real address.
+              if (o.bypassIran) {'domain_suffix': ['ir'], 'server': 'local'},
+              if (_useIranRuleSets(o)) {'rule_set': ['geosite-ir'], 'server': 'local'},
+              {'query_type': ['A', 'AAAA'], 'server': 'fakeip'},
+            ],
           'final': tun || o.tunnelDns != null ? 'remote' : 'local',
           'strategy': 'prefer_ipv4',
         },
@@ -289,7 +302,11 @@ class SingboxCore {
           if (detectInterface) 'auto_detect_interface': true,
           'default_domain_resolver': 'local',
         },
-        'experimental': {'clash_api': {'external_controller': '127.0.0.1:$api'}},
+        'experimental': {
+          'clash_api': {'external_controller': '127.0.0.1:$api'},
+          // Keeps the fake IP mapping (and DNS cache) across restarts of the core.
+          if (useFakeIp(o, tun: tun)) 'cache_file': {'enabled': true, 'store_fakeip': true},
+        },
       };
 
   Future<Process> start(Json config) async {
