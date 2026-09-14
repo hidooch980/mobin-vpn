@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'app_log.dart';
 import 'engine.dart';
@@ -172,6 +173,74 @@ class SingboxCore {
       return results;
     } finally {
       client.close(force: true);
+      Process.killPid(proc.pid);
+    }
+  }
+
+  /// Real HTTP probe of many servers: one throwaway sing-box with a local mixed inbound per server (routed to
+  /// that server only); each probe fetches [AppSettings.defaultTestUrl] through its inbound and only an HTTP 204
+  /// counts. Returns the time in ms per server (same order), -1 when it failed or the config is invalid.
+  Future<List<int>> probeAll(List<Server> servers, EngineOptions options,
+      {void Function(int done)? onProgress, bool Function()? isCancelled, int concurrency = 12}) async {
+    final results = List<int>.filled(servers.length, -1);
+    final outbounds = [
+      for (var i = 0; i < servers.length; i++) tagged(outbound(servers[i]) ?? const {}, 'p$i', options),
+    ];
+    final usable = [for (var i = 0; i < servers.length; i++) if (outbound(servers[i]) != null) i];
+    final valid = await _validSubset(usable, outbounds);
+    final skipped = servers.length - valid.length;
+    AppLog.add('$label: probe ${servers.length} servers, ${valid.length} valid configs');
+    onProgress?.call(skipped);
+    if (valid.isEmpty) return results;
+
+    final api = await freePort();
+    final ports = <int>[for (var k = 0; k < valid.length; k++) await freePort()];
+    final file = await _writeConfig('probe', {
+      ..._baseConfig('error'),
+      'inbounds': [
+        for (var k = 0; k < valid.length; k++)
+          {'type': 'mixed', 'tag': 'in$k', 'listen': '127.0.0.1', 'listen_port': ports[k]},
+      ],
+      'outbounds': [for (final i in valid) outbounds[i], {'type': 'direct', 'tag': 'direct'}],
+      'route': {
+        'rules': [
+          for (var k = 0; k < valid.length; k++) {'inbound': ['in$k'], 'outbound': 'p${valid[k]}'},
+        ],
+        'final': 'direct',
+        if (detectInterface) 'auto_detect_interface': true,
+        'default_domain_resolver': 'local',
+      },
+      'experimental': {'clash_api': {'external_controller': '127.0.0.1:$api'}},
+    });
+    final proc = await _spawn(['run', '-c', file.path]);
+    unawaited(proc.stdout.drain<void>());
+    _logStderr(proc, 'probe');
+    try {
+      if (!await waitApi(api)) {
+        AppLog.add('$label: probe core API did not start');
+        return results;
+      }
+      final times = await runPool(valid.length, concurrency, (k) async {
+        if (isCancelled?.call() ?? false) return -1;
+        final client = HttpClient()
+          ..findProxy = ((_) => 'PROXY 127.0.0.1:${ports[k]}')
+          ..connectionTimeout = options.timeout;
+        final watch = Stopwatch()..start();
+        try {
+          final res = await (await client.getUrl(Uri.parse(AppSettings.defaultTestUrl))).close().timeout(options.timeout);
+          await res.drain<void>();
+          return res.statusCode == 204 ? math.max(1, watch.elapsedMilliseconds) : -1;
+        } catch (_) {
+          return -1;
+        } finally {
+          client.close(force: true);
+        }
+      }, onProgress: (n) => onProgress?.call(skipped + n));
+      for (var k = 0; k < valid.length; k++) {
+        results[valid[k]] = times[k];
+      }
+      return results;
+    } finally {
       Process.killPid(proc.pid);
     }
   }

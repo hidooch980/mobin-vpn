@@ -212,6 +212,11 @@ class WindowsEngine implements VpnEngine {
     return result;
   }
 
+  /// "Test servers from my internet": real HTTP 204 probes, 12 at a time (no WARP hop).
+  Future<List<int>> probeAll(List<Server> servers, EngineOptions options,
+          {void Function(int done)? onProgress, bool Function()? isCancelled}) =>
+      _core.probeAll(servers, options.forPing, onProgress: onProgress, isCancelled: isCancelled, concurrency: 12);
+
   /// Background re-ping while idle: few parallel tests so the PC and UI stay responsive.
   Future<List<int>> prewarm(List<Server> servers, EngineOptions options, {bool Function()? isCancelled}) =>
       _core.pingAll(servers, options.forPing, isCancelled: isCancelled, concurrency: 4);

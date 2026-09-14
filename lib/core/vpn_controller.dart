@@ -544,6 +544,40 @@ class VpnController extends ChangeNotifier {
     }
   }
 
+  /// "Test servers from my internet": probes every server (except WARP) from the user's own connection and
+  /// returns (working, total) per protocol label. With anonymous reports on, each result is reported
+  /// (with the ISP bucket) so the shared Iran ranking learns from this network. Results also update [delays].
+  Future<Map<String, (int, int)>> testAllServers(
+      {void Function(int done, int total)? onProgress, bool Function()? isCancelled}) async {
+    final list = servers.where((s) => !_isWarp(s)).toList();
+    final eng = engine;
+    final options = _options;
+    void progress(int done) => onProgress?.call(done, list.length);
+    final result = eng is WindowsEngine
+        ? await eng.probeAll(list, options, onProgress: progress, isCancelled: isCancelled)
+        : await engine.pingAll(list, options, onProgress: progress, isCancelled: isCancelled);
+    final cancelled = isCancelled?.call() ?? false;
+    final byProtocol = <String, (int, int)>{};
+    for (var i = 0; i < list.length; i++) {
+      if (!cancelled) delays[list[i].uri] = result[i];
+      final label = list[i].protocolLabel;
+      final (ok, total) = byProtocol[label] ?? (0, 0);
+      byProtocol[label] = (ok + (result[i] > 0 ? 1 : 0), total + 1);
+    }
+    AppLog.add('server test: ${result.where((d) => d > 0).length}/${list.length} working'
+        '${cancelled ? ' (cancelled)' : ''}');
+    notifyListeners();
+    if (settings.anonymousReports && !cancelled) {
+      final proxy = engine.httpProxy;
+      unawaited(runPool(list.length, 4, (i) async {
+        final node = await ServerReports.fingerprint(list[i].uri);
+        await ServerReports.send(node: node, ok: result[i] > 0, ms: result[i] > 0 ? result[i] : null, proxy: proxy);
+        return 0;
+      }));
+    }
+    return byProtocol;
+  }
+
   /// Server picked in the list (v2rayNG style: tap selects, the connect button connects to it).
   Server? chosen;
 

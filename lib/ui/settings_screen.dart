@@ -423,6 +423,33 @@ class SettingsScreen extends StatelessWidget {
                 onTap: () => _push(context, UsageScreen(controller: controller)),
               ),
               NavSettingRow(
+                icon: Icons.fact_check_outlined,
+                title: tr('تست سرورها از اینترنت من', 'Test servers from my internet'),
+                subtitle: s.anonymousReports
+                    ? tr('همه‌ی سرورها با درخواست واقعی تست و نتیجه به‌صورت ناشناس برای رتبه‌بندی ایران فرستاده می‌شود',
+                        'Tests all servers with a real request and anonymously reports results for the Iran ranking')
+                    : tr('همه‌ی سرورها با درخواست واقعی تست می‌شوند (برای کمک به رتبه‌بندی، گزارش ناشناس را روشن کنید)',
+                        'Tests all servers with a real request (turn on anonymous reports to help the ranking)'),
+                onTap: () {
+                  final busy = controller.state == VpnState.connecting || controller.state == VpnState.disconnecting;
+                  final tunnelled = Platform.isWindows && s.tunMode && controller.state == VpnState.connected;
+                  if (busy || tunnelled || controller.servers.isEmpty) {
+                    _toast(
+                        context,
+                        tunnelled
+                            ? tr('در حالت VPN کامل اول قطع کنید تا اینترنت خودتان سنجیده شود',
+                                'In full VPN mode disconnect first so your own internet is measured')
+                            : tr('الان ممکن نیست؛ کمی بعد دوباره امتحان کنید', 'Not possible right now; try again shortly'));
+                    return;
+                  }
+                  showDialog<void>(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (_) => _ServerTestDialog(controller: controller),
+                  );
+                },
+              ),
+              NavSettingRow(
                 icon: Icons.menu_book_outlined,
                 title: tr('راهنما', 'Help'),
                 subtitle: tr('اگر وصل نشد یا کند بود، اینجا را بخوانید', 'Read this if it does not connect or is slow'),
@@ -604,6 +631,98 @@ Future<String?> _prompt(BuildContext context, String title, String initial, {Tex
       ),
     ),
   );
+}
+
+class _ServerTestDialog extends StatefulWidget {
+  const _ServerTestDialog({required this.controller});
+
+  final VpnController controller;
+
+  @override
+  State<_ServerTestDialog> createState() => _ServerTestDialogState();
+}
+
+class _ServerTestDialogState extends State<_ServerTestDialog> {
+  int _done = 0, _total = 0;
+  bool _cancelled = false;
+  Map<String, (int, int)>? _result;
+
+  @override
+  void initState() {
+    super.initState();
+    _run();
+  }
+
+  Future<void> _run() async {
+    final result = await widget.controller.testAllServers(
+      onProgress: (done, total) {
+        if (!mounted) return;
+        setState(() {
+          _done = done;
+          _total = total;
+        });
+      },
+      isCancelled: () => _cancelled,
+    );
+    if (mounted) setState(() => _result = result);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final result = _result;
+    final working = result?.values.fold<int>(0, (a, e) => a + e.$1) ?? 0;
+    final all = result?.values.fold<int>(0, (a, e) => a + e.$2) ?? 0;
+    return Directionality(
+      textDirection: L10n.direction,
+      child: AlertDialog(
+        backgroundColor: Palette.sheet,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Palette.cardRadius)),
+        title: Text(tr('تست سرورها از اینترنت من', 'Test servers from my internet'),
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Palette.text)),
+        content: SizedBox(
+          width: 320,
+          child: result == null
+              ? Column(mainAxisSize: MainAxisSize.min, children: [
+                  LinearProgressIndicator(value: _total == 0 ? null : _done / _total),
+                  const SizedBox(height: 12),
+                  Text(tr('${digits(_done)} از ${digits(_total)} سرور', '$_done of $_total servers'),
+                      style: TextStyle(color: Palette.muted)),
+                ])
+              : SingleChildScrollView(
+                  child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Text(
+                        tr('${digits(working)} از ${digits(all)} سرور کار می‌کنند', '$working of $all servers work'),
+                        style: TextStyle(fontWeight: FontWeight.w700, color: Palette.text)),
+                    const SizedBox(height: 8),
+                    for (final e in result.entries)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 3),
+                        child: Row(children: [
+                          Expanded(child: Text(e.key, style: TextStyle(color: Palette.text))),
+                          Text(tr('${digits(e.value.$1)} / ${digits(e.value.$2)}', '${e.value.$1} / ${e.value.$2}'),
+                              style: TextStyle(color: e.value.$1 > 0 ? Palette.connected : Palette.muted)),
+                        ]),
+                      ),
+                    if (widget.controller.settings.anonymousReports && !_cancelled) ...[
+                      const SizedBox(height: 8),
+                      Text(tr('نتیجه‌ها به‌صورت ناشناس فرستاده شد. ممنون!', 'Results were reported anonymously. Thanks!'),
+                          style: TextStyle(fontSize: 12.5, color: Palette.muted)),
+                    ],
+                  ]),
+                ),
+        ),
+        actions: [
+          if (result == null)
+            TextButton(
+              onPressed: _cancelled ? null : () => setState(() => _cancelled = true),
+              child: Text(tr('توقف', 'Stop')),
+            )
+          else
+            TextButton(onPressed: () => Navigator.pop(context), child: Text(tr('بستن', 'Close'))),
+        ],
+      ),
+    );
+  }
 }
 
 class _ProtocolRow extends StatelessWidget {
