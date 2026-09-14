@@ -90,6 +90,10 @@ class WindowsEngine implements VpnEngine {
           {void Function(int done)? onProgress, bool Function()? isCancelled, void Function(int index, int delay)? onResult}) =>
       _core.pingAll(servers, options.forPing, onProgress: onProgress, isCancelled: isCancelled, onResult: onResult);
 
+  /// Background re-ping while idle: few parallel tests so the PC and UI stay responsive.
+  Future<List<int>> prewarm(List<Server> servers, EngineOptions options, {bool Function()? isCancelled}) =>
+      _core.pingAll(servers, options.forPing, isCancelled: isCancelled, concurrency: 4);
+
   @override
   Future<bool> connect(Server server, EngineOptions options) async {
     if (options.tunMode && !isAdmin) throw const AdminRequiredError();

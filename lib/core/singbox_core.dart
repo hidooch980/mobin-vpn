@@ -128,7 +128,10 @@ class SingboxCore {
 
   /// Tests many servers at once in one throwaway sing-box process.
   Future<List<int>> pingAll(List<Server> servers, EngineOptions options,
-      {void Function(int done)? onProgress, bool Function()? isCancelled, void Function(int index, int delay)? onResult}) async {
+      {void Function(int done)? onProgress,
+      bool Function()? isCancelled,
+      void Function(int index, int delay)? onResult,
+      int concurrency = 16}) async {
     final results = List<int>.filled(servers.length, -1);
     final outbounds = [
       for (var i = 0; i < servers.length; i++) tagged(outbound(servers[i]) ?? const {}, 'p$i', options),
@@ -156,7 +159,7 @@ class SingboxCore {
         AppLog.add('$label: ping core API did not start');
         return results;
       }
-      final delays = await runPool(valid.length, 16, (k) async {
+      final delays = await runPool(valid.length, concurrency, (k) async {
         if (isCancelled?.call() ?? false) return -1;
         final delay = await _delay(client, api, 'p${valid[k]}', options);
         onResult?.call(valid[k], delay);

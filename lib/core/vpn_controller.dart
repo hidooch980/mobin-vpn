@@ -173,6 +173,9 @@ class VpnController extends ChangeNotifier {
     // Long-running sessions (e.g. Windows left open) still hear about new releases and get fresh servers.
     Timer.periodic(const Duration(hours: 6), (_) => checkUpdate());
     Timer.periodic(const Duration(minutes: 30), (_) => refresh());
+    // Pre-warm: keep delays of the top servers fresh while idle, so Connect starts with the fastest ones.
+    Timer(const Duration(minutes: 1), () => _prewarm());
+    Timer.periodic(const Duration(minutes: 20), (_) => _prewarm());
     if (Account.configured) Timer.periodic(const Duration(minutes: 1), (_) => _reportUsage());
   }
 
@@ -521,6 +524,51 @@ class VpnController extends ChangeNotifier {
     if (_cancel) throw _Cancelled();
   }
 
+  /// When the last idle re-ping finished; its delays order the next connect.
+  DateTime? _prewarmAt;
+  bool _prewarming = false;
+
+  Future<void> _prewarm() async {
+    final eng = engine;
+    if (eng is! WindowsEngine || _prewarming || pinging || loading || _connectRun != null) return;
+    if (state != VpnState.disconnected || servers.isEmpty) return;
+    _prewarming = true;
+    try {
+      final pool = (await _candidates()).where((s) => !_isWarp(s) && !FreeRoutes.isFree(s)).take(30).toList();
+      if (pool.isEmpty || state != VpnState.disconnected) return;
+      final result = await eng.prewarm(pool, _options, isCancelled: () => state != VpnState.disconnected);
+      if (state != VpnState.disconnected) return; // a connect started meanwhile: results may be partial
+      for (var i = 0; i < pool.length; i++) {
+        delays[pool[i].uri] = result[i];
+      }
+      _prewarmAt = DateTime.now();
+      AppLog.add('prewarm: ${result.where((d) => d > 0).length}/${pool.length} servers responded');
+      notifyListeners();
+    } catch (e) {
+      AppLog.add('prewarm: $e');
+    } finally {
+      _prewarming = false;
+    }
+  }
+
+  /// Fresh idle ping results: responsive servers first (fastest first), untested next, failed last.
+  List<Server> _byFreshDelay(List<Server> pool) {
+    final at = _prewarmAt;
+    if (at == null || DateTime.now().difference(at) > const Duration(minutes: 25)) return pool;
+    int rank(Server s) {
+      final d = delays[s.uri];
+      if (d == null) return 100000;
+      return d > 0 ? d : 200000;
+    }
+
+    final indexed = pool.indexed.toList()
+      ..sort((a, b) {
+        final byDelay = rank(a.$2).compareTo(rank(b.$2));
+        return byDelay != 0 ? byDelay : a.$1.compareTo(b.$1);
+      });
+    return [for (final e in indexed) e.$2];
+  }
+
   /// Round-robin across countries so a pool compares many locations, not only the first one.
   static List<Server> _roundRobin(List<CountryGroup> groups, int size) {
     final pool = <Server>[];
@@ -547,9 +595,9 @@ class VpnController extends ChangeNotifier {
       return healthy.isEmpty ? favorites : healthy;
     }
     if (country != null) {
-      pool = servers.where((s) => s.countryCode == country).take(_countryPoolSize).toList();
+      pool = _byFreshDelay(servers.where((s) => s.countryCode == country).take(_countryPoolSize).toList());
     } else {
-      pool = _roundRobin(countries, size);
+      pool = _byFreshDelay(_roundRobin(countries, size));
     }
     final last = (await SharedPreferences.getInstance()).getString(await _networkServerKey());
     final lastServer = servers.where((s) => s.uri == last).firstOrNull;
