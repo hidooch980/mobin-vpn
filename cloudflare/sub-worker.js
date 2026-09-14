@@ -167,6 +167,76 @@ async function scoresRoute(request, env, ctx) {
   return res;
 }
 
+// iPhone list (/lite, /ios; /hiddify also adds WARP). Built for Iranian networks and iOS clients:
+// CDN-fronted SHARD nodes first (VLESS/Trojan over WebSocket+TLS behind Cloudflare — what works best
+// in Iran), then TLS/Reality/QUIC nodes from the tested list. Plain Shadowsocks and non-TLS VMess are
+// dropped: they are the first to be blocked and waste the client's connect attempts.
+const IOS_MAX = 80;
+const decodeList = (body) => {
+  const t = body.trim();
+  if (t.includes('://')) return t;
+  try {
+    return atob(t.replace(/\s/g, ''));
+  } catch {
+    return '';
+  }
+};
+const iosFriendly = (line) => {
+  const scheme = line.slice(0, line.indexOf('://')).toLowerCase();
+  if (scheme === 'hysteria2' || scheme === 'hy2' || scheme === 'tuic') return true;
+  if (scheme !== 'vless' && scheme !== 'trojan') return false;
+  const q = new URLSearchParams(line.split('#')[0].split('?')[1] || '');
+  const sec = (q.get('security') || (scheme === 'trojan' ? 'tls' : '')).toLowerCase();
+  return sec === 'tls' || sec === 'reality';
+};
+
+async function iosRoute(url) {
+  const get = (u) =>
+    fetch(u, { cf: { cacheTtl: 300, cacheEverything: true } })
+      .then((r) => (r.ok ? r.text() : ''))
+      .catch(() => '');
+  const [shard, full, lite] = await Promise.all([
+    get('https://raw.githubusercontent.com/hidooch980/molidovpn-android/main/remote/shard-nodes.txt').then(
+      (t) => t || get('https://cdn.jsdelivr.net/gh/hidooch980/molidovpn-android@main/remote/shard-nodes.txt')
+    ),
+    get(FULL).then((t) => t || get(MIRROR('sub_base64.txt'))),
+    get(LITE).then((t) => t || get(MIRROR('lite_base64.txt'))),
+  ]);
+
+  const seen = new Set();
+  const out = [];
+  const add = (line, name) => {
+    line = line.trim();
+    if (!line.includes('://') || line.startsWith('#') || out.length >= IOS_MAX) return;
+    const core = line.split('#')[0];
+    if (seen.has(core) || !iosFriendly(core)) return;
+    seen.add(core);
+    out.push(name ? `${core}#${encodeURIComponent(name)}` : line);
+  };
+  let cdn = 0;
+  for (const l of shard.split('\n')) if (l.includes('://')) add(l, `MolidoVPN CDN ${++cdn}`);
+  for (const l of decodeList(lite).split('\n')) add(l);
+  for (const l of decodeList(full).split('\n')) add(l);
+
+  const lines = [...out];
+  if (url.pathname.startsWith('/hiddify')) lines.unshift('warp://auto#MolidoVPN%20WARP', 'warp://p2@auto#MolidoVPN%20WARP%20in%20WARP');
+  if (!lines.length) return new Response('server list unavailable, try again shortly', { status: 502 });
+
+  const bytes = new TextEncoder().encode(lines.join('\n'));
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return new Response(btoa(bin), {
+    headers: {
+      'content-type': 'text/plain; charset=utf-8',
+      'profile-title': 'base64:' + btoa('MolidoVPN'),
+      'profile-update-interval': '1',
+      'profile-web-page-url': 'https://hidooch980.github.io/mobin-vpn/',
+      'cache-control': 'public, max-age=300',
+      'access-control-allow-origin': '*',
+    },
+  });
+}
+
 export default {
   async scheduled(event, env, ctx) {
     const cutoff = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
@@ -181,8 +251,9 @@ export default {
     if (url.pathname === '/scores') return scoresRoute(request, env, ctx);
     if (url.pathname.startsWith('/remote/')) return remoteRoute(url);
     if (url.pathname.startsWith('/app/')) return appRoute(url);
-    const lite = url.pathname.startsWith('/lite');
-    const sources = lite ? [LITE, MIRROR('lite_base64.txt')] : [FULL, MIRROR('sub_base64.txt')];
+    if (url.pathname.startsWith('/lite') || url.pathname.startsWith('/ios') || url.pathname.startsWith('/hiddify'))
+      return iosRoute(url);
+    const sources = [FULL, MIRROR('sub_base64.txt')];
 
     for (const source of sources) {
       const res = await fetch(source, { cf: { cacheTtl: 300, cacheEverything: true } }).catch(() => null);

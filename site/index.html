@@ -92,10 +92,32 @@ footer a{color:var(--muted)}
       <h2>۳. وصل شوید</h2>
       <ol>
         <li>در برنامه، پروفایل <b>MolidoVPN</b> را انتخاب کنید.</li>
+        <li>در Hiddify حالت <b>«خودکار / Auto»</b> را بگذارید تا خودش سرور سالم را انتخاب کند و اگر قطع شد عوض کند.</li>
         <li>دکمه‌ی اتصال را بزنید و اجازه‌ی VPN را «Allow» کنید.</li>
-        <li>اگر وصل نشد، «تست پینگ» بزنید و سرور سبز را انتخاب کنید.</li>
+        <li>اگر وصل نشد: «به‌روزرسانی پروفایل» و بعد «تست پینگ»؛ سرورهای <b>MolidoVPN CDN</b> معمولاً بهترین‌اند.</li>
       </ol>
     </div>
+
+    <div class="card">
+      <h2>🛟 هیچ‌وقت بی‌VPN نمانید — مسیرهای پشتیبان</h2>
+      <p>مثل برنامه‌ی اندروید، روی آیفون هم چند تونل جدا داشته باشید. اگر یکی مسدود شد، بعدی را روشن کنید:</p>
+      <ol>
+        <li><b>Hiddify + WARP</b> — در پروفایل Hiddify، سرورهای «MolidoVPN WARP» هم هست (تونل Cloudflare WARP، بدون سرور).</li>
+        <li><b>Psiphon</b> — رایگان، خودش سرور پیدا می‌کند؛ وقتی همه‌چیز مسدود است معمولاً وصل می‌شود.</li>
+        <li><b>1.1.1.1 (Cloudflare WARP)</b> — رایگان، یک دکمه؛ برای اینترنت عادی و بازی.</li>
+        <li><b>Orbot (Tor)</b> — رایگان، کندتر ولی مقاوم‌ترین در برابر فیلتر؛ با پل Snowflake.</li>
+        <li><b>Karing</b> — رایگان، هسته sing-box؛ همان لینک MolidoVPN را در آن هم اضافه کنید.</li>
+      </ol>
+    </div>
+    <div class="row">
+      <a class="btn outline" href="https://apps.apple.com/app/psiphon/id1276263909" rel="noopener">Psiphon</a>
+      <a class="btn outline" href="https://apps.apple.com/app/1-1-1-1-faster-internet/id1423538627" rel="noopener">1.1.1.1</a>
+    </div>
+    <div class="row">
+      <a class="btn outline" href="https://apps.apple.com/app/orbot/id1609461599" rel="noopener">Orbot</a>
+      <a class="btn outline" href="https://apps.apple.com/app/karing/id6472431552" rel="noopener">Karing</a>
+    </div>
+    <a class="btn primary" id="add-karing" href="#">افزودن به Karing</a>
   </section>
 
   <!-- Android -->
@@ -153,7 +175,7 @@ footer a{color:var(--muted)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 const FULL = 'https://molido-sub.hidooch980.workers.dev/';
-const LITE = 'https://molido-sub.hidooch980.workers.dev/lite'; // small list: iOS VPN memory limit
+const LITE = 'https://molido-sub.hidooch980.workers.dev/ios'; // iPhone list: CDN + TLS/Reality/QUIC nodes only, max 80
 const NAME = 'MolidoVPN';
 
 const ua = navigator.userAgent;
@@ -174,8 +196,11 @@ function show(id) {
 tabs.forEach(b => b.addEventListener('click', () => show(b.dataset.tab)));
 show(start);
 
-document.getElementById('add-hiddify').href = `hiddify://import/${LITE}#${NAME}`;
+// Hiddify understands warp:// entries, so it gets the list with WARP tunnels added.
+const HIDDIFY = 'https://molido-sub.hidooch980.workers.dev/hiddify';
+document.getElementById('add-hiddify').href = `hiddify://import/${HIDDIFY}#${NAME}`;
 document.getElementById('add-streisand').href = `streisand://import/${LITE}#${NAME}`;
+document.getElementById('add-karing').href = `karing://install-config?url=${encodeURIComponent(LITE)}&name=${NAME}`;
 
 function toast(text) {
   const t = document.getElementById('toast');
