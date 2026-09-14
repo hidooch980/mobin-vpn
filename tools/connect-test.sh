@@ -25,13 +25,14 @@ if ! adb shell ip addr show tun0 2>/dev/null | grep -q "inet "; then
 fi
 
 sleep 10
+# The emulator image has no curl; toybox nc makes a plain HTTP request (DNS + TCP both go through the tunnel).
 for i in 1 2 3 4 5 6; do
-  code=$(adb shell "curl -s -o /dev/null -m 20 -w '%{http_code}' https://www.gstatic.com/generate_204" 2>/dev/null | tr -d '\r')
-  if [ "$code" = "204" ]; then
+  code=$(adb shell "printf 'GET /generate_204 HTTP/1.1\r\nHost: connectivitycheck.gstatic.com\r\nConnection: close\r\n\r\n' | toybox nc -w 20 connectivitycheck.gstatic.com 80 | head -1" 2>/dev/null | tr -d '\r')
+  echo "attempt $i: $code"
+  if echo "$code" | grep -q " 204"; then
     echo "page loaded through the tunnel ✅"
     exit 0
   fi
-  echo "attempt $i: http=$code"
   sleep 10
 done
 adb logcat -d | grep -iE "msnguard|aether|shard" | tail -60
