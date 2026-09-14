@@ -56,7 +56,7 @@ class ServerReports {
         'net': await _netType(),
         'app': Platform.isWindows ? 'windows' : Platform.operatingSystem,
         'ver': await _appVersion(),
-        if (NetworkInfo.operatorBucket case final op?) 'op': op,
+        'op': ?NetworkInfo.operatorBucket,
       });
       final req = await client.postUrl(Uri.parse('$_base/report')).timeout(const Duration(seconds: 10));
       req.headers.contentType = ContentType.json;
