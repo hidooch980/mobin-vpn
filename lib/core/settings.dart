@@ -11,6 +11,36 @@ class AppSettings extends ChangeNotifier {
     'https://cp.cloudflare.com/generate_204': 'Cloudflare',
     'https://www.apple.com/library/test/success.html': 'Apple',
   };
+  /// DNS presets for the sing-box core: id -> (label, address, direct). Gaming presets only work inside Iran.
+  static const dnsPresets = <String, (String, String, bool)>{
+    'cloudflare': ('Cloudflare', '1.1.1.1', false),
+    'google': ('Google', '8.8.8.8', false),
+    'quad9': ('Quad9', '9.9.9.9', false),
+    'adguard': ('AdGuard ضدتبلیغ', '94.140.14.14', false),
+  };
+  static const gamingDnsPresets = <String, (String, String, bool)>{
+    'radar': ('Radar Game', '10.202.10.10', true),
+    'electro': ('Electro', '78.157.42.100', true),
+    'shecan': ('Shecan', '178.22.122.100', true),
+    '403': ('403.online', '10.202.10.202', true),
+  };
+
+  /// A valid custom DNS: dotted IPv4 or an https:// DoH URL.
+  static bool validDns(String value) {
+    final v = value.trim();
+    final ip = RegExp(r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$').firstMatch(v);
+    if (ip != null) return [for (var i = 1; i <= 4; i++) int.parse(ip.group(i)!)].every((n) => n <= 255);
+    final uri = Uri.tryParse(v);
+    return uri != null && uri.scheme == 'https' && uri.host.isNotEmpty;
+  }
+
+  /// Resolved (address, direct) for the selected DNS; null = automatic.
+  (String, bool)? get tunnelDns {
+    if (dnsPreset == 'custom') return validDns(customDns) ? (customDns.trim(), false) : null;
+    final p = dnsPresets[dnsPreset] ?? gamingDnsPresets[dnsPreset];
+    return p == null ? null : (p.$2, p.$3);
+  }
+
   static const dnsServers = {'1.1.1.1': 'Cloudflare', '8.8.8.8': 'Google', '9.9.9.9': 'Quad9'};
 
   // Appearance
@@ -33,6 +63,8 @@ class AppSettings extends ChangeNotifier {
   // Routing / DNS / anti-censorship
   bool bypassIran = true;
   String dns = '1.1.1.1';
+  String dnsPreset = 'auto'; // auto | a dnsPresets/gamingDnsPresets id | custom
+  String customDns = '';
   bool fragment = false;
   Set<String> excludedApps = {}; // Android package names that skip the VPN
 
@@ -67,6 +99,8 @@ class AppSettings extends ChangeNotifier {
     localPort = p.getInt('s_localPort') ?? localPort;
     bypassIran = p.getBool('s_bypassIran') ?? bypassIran;
     dns = p.getString('s_dns') ?? dns;
+    dnsPreset = p.getString('s_dnsPreset') ?? dnsPreset;
+    customDns = p.getString('s_customDns') ?? customDns;
     fragment = p.getBool('s_fragment') ?? fragment;
     excludedApps = (p.getStringList('s_excludedApps') ?? const []).toSet();
     warp = p.getBool('s_warp') ?? warp;
@@ -104,6 +138,8 @@ class AppSettings extends ChangeNotifier {
       p.setInt('s_localPort', localPort),
       p.setBool('s_bypassIran', bypassIran),
       p.setString('s_dns', dns),
+      p.setString('s_dnsPreset', dnsPreset),
+      p.setString('s_customDns', customDns),
       p.setBool('s_fragment', fragment),
       p.setStringList('s_excludedApps', excludedApps.toList()),
       p.setBool('s_warp', warp),
@@ -138,6 +174,7 @@ class AppSettings extends ChangeNotifier {
           ..localPort = 0
           ..bypassIran = true
           ..dns = '1.1.1.1'
+          ..dnsPreset = 'auto'
           ..fragment = false
           ..excludedApps = {}
           ..poolSize = 40
