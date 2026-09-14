@@ -20,6 +20,7 @@ import 'update_notifier.dart';
 import 'updater.dart';
 import 'usage_stats.dart';
 import 'warp.dart';
+import 'windows_engine.dart';
 
 class CountryGroup {
   CountryGroup(this.code);
@@ -289,15 +290,23 @@ class VpnController extends ChangeNotifier {
   /// Applies the route setting to a candidate pool.
   List<Server> _byTransport(List<Server> pool) => switch (settings.transport) {
         'warp' => warpServers,
-        'psiphon' when Platform.isAndroid => [FreeRoutes.psiphon],
-        'tor' when Platform.isAndroid => [FreeRoutes.tor],
+        'psiphon' when transportAvailable('psiphon') => [FreeRoutes.psiphon],
+        'tor' when transportAvailable('tor') => [FreeRoutes.tor],
         'v2ray' => pool.where((s) => !_isWarp(s)).toList(),
-        // Automatic: V2Ray servers, then free WARP, then Psiphon as the last resort (like MSN-GUARD's ladder).
+        // Automatic: V2Ray servers, then free WARP, then Psiphon (and Tor on Windows) as the last resort.
         _ => [
             ...pool.where((s) => !_isWarp(s)),
             ...warpServers.take(4),
-            if (Platform.isAndroid) FreeRoutes.psiphon,
+            if (transportAvailable('psiphon')) FreeRoutes.psiphon,
+            if (Platform.isWindows) FreeRoutes.tor,
           ],
+      };
+
+  /// Whether a route choice ('auto', 'v2ray', 'warp', 'psiphon', 'tor') works on this platform.
+  /// The UI uses this instead of a hard-coded "coming soon" flag.
+  static bool transportAvailable(String t) => switch (t) {
+        'psiphon' || 'tor' => Platform.isAndroid || Platform.isWindows,
+        _ => true,
       };
 
   void _apply(SubscriptionData data) {
@@ -589,6 +598,12 @@ class VpnController extends ChangeNotifier {
     var options = _options;
     final eng = engine;
     if (eng is AndroidEngine) {
+      eng.isCancelled = () => _cancel;
+      eng.onPhase = (text) {
+        phase = text;
+        notifyListeners();
+      };
+    } else if (eng is WindowsEngine) {
       eng.isCancelled = () => _cancel;
       eng.onPhase = (text) {
         phase = text;

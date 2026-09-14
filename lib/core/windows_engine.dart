@@ -7,8 +7,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_log.dart';
 import 'engine.dart';
+import 'free_routes.dart';
 import 'server.dart';
 import 'singbox_core.dart';
+import 'win_free_routes.dart';
 import 'win_system_proxy.dart';
 
 const _proxyOwnedKey = 'win_proxy_owned';
@@ -18,7 +20,14 @@ class WindowsEngine implements VpnEngine {
   final _states = StreamController<VpnState>.broadcast();
   final _traffic = StreamController<TrafficStat>.broadcast();
   late SingboxCore _core;
+  late WinFreeRoutes _free;
   int? _proxyPort;
+
+  /// Status line while Psiphon / Tor is starting (set by the controller).
+  void Function(String phase)? onPhase;
+
+  /// Set by the controller so a slow Psiphon/Tor start can be cancelled.
+  bool Function() isCancelled = () => false;
 
   static bool get isAdmin {
     try {
@@ -46,7 +55,7 @@ class WindowsEngine implements VpnEngine {
   String? get httpProxy => _proxyPort == null ? null : '127.0.0.1:$_proxyPort';
 
   @override
-  bool supports(Server server) => server.uri.startsWith('warp://') || _core.outbound(server) != null;
+  bool supports(Server server) => server.uri.startsWith('warp://') || FreeRoutes.isFree(server) || _core.outbound(server) != null;
 
   @override
   Future<bool> requestPermission() async => true;
@@ -65,6 +74,11 @@ class WindowsEngine implements VpnEngine {
       workDir: Directory('${base.path}\\core')..createSync(recursive: true),
       label: 'windows',
     );
+    _free = WinFreeRoutes(
+      appDir: File(Platform.resolvedExecutable).parent.path,
+      dataDir: Directory('${base.path}\\free')..createSync(recursive: true),
+    );
+    await _free.cleanupStale();
     await _releaseProxy(); // a previous run may have been killed while connected
     if (!_core.binaryExists) throw StateError('sing-box.exe کنار برنامه پیدا نشد');
   }
@@ -78,16 +92,31 @@ class WindowsEngine implements VpnEngine {
   Future<bool> connect(Server server, EngineOptions options) async {
     if (options.tunMode && !isAdmin) throw const AdminRequiredError();
     await disconnect();
-    final outbound = _core.outbound(server);
+    final free = FreeRoutes.isFree(server);
+    Map<String, dynamic>? outbound;
+    if (free) {
+      // Psiphon / Tor run locally; sing-box just forwards to their SOCKS port.
+      final socks = await _free.start(FreeRoutes.routeOf(server), isCancelled: isCancelled, onPhase: onPhase);
+      if (socks == null) {
+        await _free.stop();
+        return false;
+      }
+      outbound = {'type': 'socks', 'server': '127.0.0.1', 'server_port': socks, 'version': '5'};
+      onPhase?.call('راه‌اندازی تونل ${server.displayName}…');
+    } else {
+      outbound = _core.outbound(server);
+    }
     if (outbound == null) return false;
     final port = options.localPort > 0 ? options.localPort : await SingboxCore.freePort();
     final api = await SingboxCore.freePort();
-    final proc = await _core.start(_core.connectConfig(outbound, port, api, options, tun: options.tunMode));
+    final proc = await _core.start(_core.connectConfig(outbound, port, api, options,
+        tun: options.tunMode, directProcesses: free ? WinFreeRoutes.processNames : const []));
     // stdout closes when the process exits: handle a crash while connected.
     unawaited(proc.stdout.drain<void>().whenComplete(() async {
       if (!identical(_core.process, proc)) return;
       _core.process = null;
       _proxyPort = null;
+      await _free.stop();
       if (options.killSwitch && !options.tunMode && options.systemProxy) {
         // Kill switch: point browsers at a dead proxy so nothing leaks until reconnect or disconnect.
         WinSystemProxy.enable('127.0.0.1:9');
@@ -129,5 +158,6 @@ class WindowsEngine implements VpnEngine {
     _proxyPort = null;
     await _releaseProxy();
     await _core.stop();
+    await _free.stop();
   }
 }

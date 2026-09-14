@@ -145,6 +145,56 @@ jobs:
           gh release download "$TAG" -R SagerNet/sing-box -p "sing-box-${VER}-windows-amd64.zip" -O sb.zip
           unzip -q sb.zip
           cp "sing-box-${VER}-windows-amd64/sing-box.exe" build/windows/x64/runner/Release/
+      - name: Bundle Psiphon and Tor (pinned, SHA-256 verified)
+        shell: pwsh
+        env:
+          # psiphon-tunnel-core-binaries commit (2026-08-31); Windows only ships the i686 ConsoleClient.
+          PSIPHON_COMMIT: bc5e85f72d28984c335dd0b1c538041ed2287bc3
+          PSIPHON_SHA256: 0fef46f80eaa3eea87a0e13f4be349f3108164f90cdc229692776b12adbc131d
+          TOR_BROWSER_VERSION: '14.5.6'
+          # Optional extra pin; when empty the checksum published by the Tor Project for this version is used.
+          TOR_BUNDLE_SHA256: ''
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          $rel = 'build/windows/x64/runner/Release'
+          New-Item -ItemType Directory -Force "$rel/psiphon", "$rel/tor", teb | Out-Null
+
+          $psi = "$rel/psiphon/psiphon-tunnel-core.exe"
+          Invoke-WebRequest "https://raw.githubusercontent.com/Psiphon-Labs/psiphon-tunnel-core-binaries/$env:PSIPHON_COMMIT/windows/psiphon-tunnel-core-i686.exe" -OutFile $psi
+          $h = (Get-FileHash $psi -Algorithm SHA256).Hash.ToLower()
+          if ($h -ne $env:PSIPHON_SHA256) { throw "Psiphon SHA-256 mismatch: $h" }
+          Copy-Item windows/psiphon/server_entries.txt "$rel/psiphon/"
+
+          $name = "tor-expert-bundle-windows-x86_64-$env:TOR_BROWSER_VERSION.tar.gz"
+          $base = "https://archive.torproject.org/tor-package-archive/torbrowser/$env:TOR_BROWSER_VERSION"
+          Invoke-WebRequest "$base/$name" -OutFile $name
+          $expected = $env:TOR_BUNDLE_SHA256
+          if (-not $expected) {
+            foreach ($sums in 'sha256sums-unsigned-build.txt', 'sha256sums-signed-build.txt') {
+              try { Invoke-WebRequest "$base/$sums" -OutFile tor-sums.txt } catch { continue }
+              $line = Select-String -Path tor-sums.txt -SimpleMatch $name | Select-Object -First 1
+              if ($line) { $expected = ($line.Line.Trim() -split '\s+')[0]; break }
+            }
+          }
+          if (-not $expected) { throw "No published SHA-256 for $name" }
+          $h = (Get-FileHash $name -Algorithm SHA256).Hash.ToLower()
+          Write-Host "Tor bundle $name sha256=$h"
+          if ($h -ne $expected.ToLower()) { throw "Tor bundle SHA-256 mismatch: $h vs $expected" }
+          tar -xzf $name -C teb
+          $torExe = Get-ChildItem teb -Recurse -Filter tor.exe | Select-Object -First 1
+          $lyre = Get-ChildItem teb -Recurse -Filter lyrebird.exe | Select-Object -First 1
+          if (-not $torExe -or -not $lyre) { throw 'tor.exe or lyrebird.exe missing from the expert bundle' }
+          # tor.exe with its DLLs, lyrebird.exe next to it (torrc names it without a path), GeoIP files.
+          Get-ChildItem $torExe.DirectoryName -File | Copy-Item -Destination "$rel/tor/"
+          Copy-Item $lyre.FullName "$rel/tor/"
+          foreach ($g in 'geoip', 'geoip6') {
+            $f = Get-ChildItem teb -Recurse -File -Filter $g | Select-Object -First 1
+            if ($f) { Copy-Item $f.FullName "$rel/tor/" }
+          }
+          & "$rel/tor/tor.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw 'tor.exe does not run' }
+          Get-ChildItem "$rel/psiphon", "$rel/tor"
       - name: Validate the config shapes the app generates (TUN, fragment, DNS)
         shell: bash
         run: |

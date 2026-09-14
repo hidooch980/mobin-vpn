@@ -178,7 +178,10 @@ class SingboxCore {
   }
 
   /// Config for a live connection: local mixed proxy on [port], optional TUN (Windows), optional WARP chain.
-  Json connectConfig(Json outbound, int port, int api, EngineOptions o, {bool tun = false}) => {
+  /// [directProcesses]: executables whose own traffic must bypass the tunnel (local Psiphon/Tor, avoids a loop).
+  Json connectConfig(Json outbound, int port, int api, EngineOptions o,
+          {bool tun = false, List<String> directProcesses = const []}) =>
+      {
         ..._baseConfig('warn'),
         'dns': {
           'servers': [
@@ -210,6 +213,7 @@ class SingboxCore {
         'route': {
           'rules': [
             {'action': 'sniff'},
+            if (directProcesses.isNotEmpty) {'process_name': directProcesses, 'outbound': 'direct'},
             if (tun) {'protocol': 'dns', 'action': 'hijack-dns'},
             {'ip_is_private': true, 'outbound': 'direct'},
             if (o.bypassIran) {'domain_suffix': ['ir'], 'outbound': 'direct'},
