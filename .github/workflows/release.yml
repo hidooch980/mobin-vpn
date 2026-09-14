@@ -166,9 +166,19 @@ jobs:
           if ($h -ne $env:PSIPHON_SHA256) { throw "Psiphon SHA-256 mismatch: $h" }
           Copy-Item windows/psiphon/server_entries.txt "$rel/psiphon/"
 
-          $name = "tor-expert-bundle-windows-x86_64-$env:TOR_BROWSER_VERSION.tar.gz"
-          $base = "https://archive.torproject.org/tor-package-archive/torbrowser/$env:TOR_BROWSER_VERSION"
-          Invoke-WebRequest "$base/$name" -OutFile $name
+          # Use the pinned version if the Tor Project still has it, otherwise the newest stable one on dist.
+          $torVer = $env:TOR_BROWSER_VERSION
+          $base = "https://archive.torproject.org/tor-package-archive/torbrowser/$torVer"
+          $name = "tor-expert-bundle-windows-x86_64-$torVer.tar.gz"
+          try { Invoke-WebRequest "$base/$name" -OutFile $name } catch {
+            $index = (Invoke-WebRequest 'https://dist.torproject.org/torbrowser/').Content
+            $torVer = [regex]::Matches($index, 'href="(\d+\.\d+(?:\.\d+)?)/"') | ForEach-Object { $_.Groups[1].Value } |
+              Sort-Object { [version]$_ } | Select-Object -Last 1
+            Write-Output "pinned Tor $env:TOR_BROWSER_VERSION unavailable, using latest stable $torVer"
+            $base = "https://dist.torproject.org/torbrowser/$torVer"
+            $name = "tor-expert-bundle-windows-x86_64-$torVer.tar.gz"
+            Invoke-WebRequest "$base/$name" -OutFile $name
+          }
           $expected = $env:TOR_BUNDLE_SHA256
           if (-not $expected) {
             foreach ($sums in 'sha256sums-unsigned-build.txt', 'sha256sums-signed-build.txt') {
