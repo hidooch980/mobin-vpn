@@ -236,45 +236,11 @@ class SettingsScreen extends StatelessWidget {
               ChoiceSettingRow<String>(
                 icon: Icons.dns_outlined,
                 title: 'DNS',
-                subtitle: 'از اتصال بعدی اعمال می‌شود؛ درخواست‌ها از داخل تونل فرستاده می‌شوند',
-                options: {
-                  'auto': 'خودکار',
-                  for (final e in AppSettings.dnsPresets.entries) e.key: e.value.$1,
-                  'custom': 'سفارشی',
-                },
-                value: AppSettings.gamingDnsPresets.containsKey(s.dnsPreset) ? '' : s.dnsPreset,
-                onChanged: (v) async {
-                  if (v == 'custom') {
-                    final input = await _prompt(context, 'IPv4 یا آدرس DoH (https://…)', s.customDns, keyboard: TextInputType.url);
-                    if (input == null) return;
-                    if (!AppSettings.validDns(input)) {
-                      if (context.mounted) _toast(context, 'آدرس DNS معتبر نیست');
-                      return;
-                    }
-                    await s.update((x) => x
-                      ..customDns = input.trim()
-                      ..dnsPreset = 'custom');
-                  } else {
-                    await s.update((x) => x.dnsPreset = v);
-                  }
-                },
+                subtitle: 'خودکار: همان رفتار پیش‌فرض برنامه. از اتصال بعدی اعمال می‌شود.',
+                options: const {'auto': 'خودکار'},
+                value: s.dnsPreset,
+                onChanged: (v) => s.update((x) => x.dnsPreset = v),
               ),
-              if (s.dnsPreset == 'custom')
-                NavSettingRow(
-                  icon: Icons.edit_outlined,
-                  title: 'DNS سفارشی',
-                  value: s.customDns,
-                  ltrValue: true,
-                  onTap: () async {
-                    final input = await _prompt(context, 'IPv4 یا آدرس DoH (https://…)', s.customDns, keyboard: TextInputType.url);
-                    if (input == null) return;
-                    if (!AppSettings.validDns(input)) {
-                      if (context.mounted) _toast(context, 'آدرس DNS معتبر نیست');
-                      return;
-                    }
-                    await s.update((x) => x.customDns = input.trim());
-                  },
-                ),
               ChoiceSettingRow<String>(
                 icon: Icons.sports_esports_outlined,
                 title: 'DNS گیمینگ',

@@ -40,7 +40,6 @@ class EngineOptions {
     this.excludedApps = const [],
     this.warp,
     this.tunnelDns,
-    this.tunnelDnsDirect = false,
   });
 
   final String testUrl;
@@ -50,11 +49,8 @@ class EngineOptions {
   final String dns;
   final List<String> excludedApps;
 
-  /// sing-box DNS: null = automatic (unchanged), else an IPv4 address or a DoH https URL.
+  /// Iranian gaming DNS (IPv4) for sing-box, queried directly; null = automatic (unchanged).
   final String? tunnelDns;
-
-  /// Iranian gaming DNS only answers inside Iran: query it directly, not through the proxy.
-  final bool tunnelDnsDirect;
 
   /// When set, traffic leaves through Cloudflare WARP chained behind the server.
   final WarpAccount? warp;
@@ -73,11 +69,10 @@ class EngineOptions {
         fragment: fragment,
         excludedApps: excludedApps,
         tunnelDns: tunnelDns,
-        tunnelDnsDirect: tunnelDnsDirect,
       );
 
   /// Settings that change the generated core config.
-  String get configKey => '$dns|$tunnelDns|$tunnelDnsDirect|$bypassIran|$fragment|${warp?.privateKey}';
+  String get configKey => '$dns|$tunnelDns|$bypassIran|$fragment|${warp?.privateKey}';
 }
 
 /// Platform VPN core. Delays are measured from the user's own connection.

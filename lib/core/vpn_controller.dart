@@ -122,8 +122,7 @@ class VpnController extends ChangeNotifier {
         fragment: settings.fragment,
         excludedApps: settings.excludedApps.toList(),
         warp: settings.warp ? WarpAccount.fromJsonString(settings.warpAccount) : null,
-        tunnelDns: settings.tunnelDns?.$1,
-        tunnelDnsDirect: settings.tunnelDns?.$2 ?? false,
+        tunnelDns: settings.tunnelDns,
       );
 
   Future<void> init() async {

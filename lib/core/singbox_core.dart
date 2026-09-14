@@ -169,32 +169,12 @@ class SingboxCore {
     }
   }
 
-  /// The user's chosen DNS as a sing-box 1.12 server tagged "remote"; null = automatic.
-  /// Normal presets go through the proxy; Iranian gaming DNS connects directly (no detour = direct,
-  /// sing-box 1.12 rejects a detour to an empty direct outbound).
+  /// The selected Iranian gaming DNS as a sing-box 1.12 server tagged "remote"; null = automatic.
+  /// It only answers inside Iran, so it connects directly: no detour (sing-box 1.12 rejects a detour
+  /// to an empty direct outbound).
   static Json? dnsServer(EngineOptions o) {
     final value = o.tunnelDns;
-    if (value == null) return null;
-    final Json server;
-    if (value.startsWith('https://')) {
-      final uri = Uri.parse(value);
-      server = {
-        'type': 'https',
-        'tag': 'remote',
-        'server': uri.host,
-        if (uri.hasPort) 'server_port': uri.port,
-        if (uri.path.isNotEmpty && uri.path != '/dns-query') 'path': uri.path,
-        if (InternetAddress.tryParse(uri.host) == null) 'domain_resolver': 'local',
-      };
-    } else if (o.tunnelDnsDirect) {
-      server = {'type': 'udp', 'tag': 'remote', 'server': value};
-    } else {
-      // Well-known resolvers serve DoH on their IP; others use DNS over TCP, which every proxy carries.
-      const doh = {'1.1.1.1', '8.8.8.8', '9.9.9.9'};
-      server = {'type': doh.contains(value) ? 'https' : 'tcp', 'tag': 'remote', 'server': value};
-    }
-    if (!o.tunnelDnsDirect) server['detour'] = o.warp != null ? 'warp' : 'proxy';
-    return server;
+    return value == null ? null : {'type': 'udp', 'tag': 'remote', 'server': value};
   }
 
   /// Config for a live connection: local mixed proxy on [port], optional TUN (Windows), optional WARP chain.
