@@ -52,6 +52,7 @@ class AppSettings extends ChangeNotifier {
   String dns = '1.1.1.1';
   String dnsPreset = 'auto'; // auto | a gamingDnsPresets id
   bool fragment = false;
+  bool dataSaver = false; // Windows: block QUIC (UDP 443) and skip background pre-warm / clean-IP probing
   bool multiPath = false; // Windows: "proxy" is a urltest group (main + backups + WARP) instead of a selector
   Set<String> excludedApps = {}; // Android package names that skip the VPN
 
@@ -105,6 +106,7 @@ class AppSettings extends ChangeNotifier {
     dnsPreset = storedDns != null && gamingDnsPresets.containsKey(storedDns) ? storedDns : 'auto';
     fragment = p.getBool('s_fragment') ?? fragment;
     multiPath = p.getBool('s_multiPath') ?? multiPath;
+    dataSaver = p.getBool('s_dataSaver') ?? dataSaver;
     excludedApps = (p.getStringList('s_excludedApps') ?? const []).toSet();
     warp = p.getBool('s_warp') ?? warp;
     warpAccount = p.getString('s_warpAccount') ?? warpAccount;
@@ -151,6 +153,7 @@ class AppSettings extends ChangeNotifier {
       p.setString('s_dnsPreset', dnsPreset),
       p.setBool('s_fragment', fragment),
       p.setBool('s_multiPath', multiPath),
+      p.setBool('s_dataSaver', dataSaver),
       p.setStringList('s_excludedApps', excludedApps.toList()),
       p.setBool('s_warp', warp),
       p.setString('s_warpAccount', warpAccount),
@@ -190,6 +193,7 @@ class AppSettings extends ChangeNotifier {
         'dnsPreset': dnsPreset,
         'fragment': fragment,
         'multiPath': multiPath,
+        'dataSaver': dataSaver,
         'poolSize': poolSize,
         'timeoutSeconds': timeoutSeconds,
         'testUrl': testUrl,
@@ -230,6 +234,7 @@ class AppSettings extends ChangeNotifier {
         ..dnsPreset = gamingDnsPresets.containsKey(pick<String>('dnsPreset')) ? pick<String>('dnsPreset')! : 'auto'
         ..fragment = pick<bool>('fragment') ?? s.fragment
         ..multiPath = pick<bool>('multiPath') ?? s.multiPath
+        ..dataSaver = pick<bool>('dataSaver') ?? s.dataSaver
         ..poolSize = pick<int>('poolSize') ?? s.poolSize
         ..timeoutSeconds = pick<int>('timeoutSeconds') ?? s.timeoutSeconds
         ..testUrl = pick<String>('testUrl') ?? s.testUrl
@@ -285,6 +290,7 @@ class AppSettings extends ChangeNotifier {
           ..dnsPreset = 'auto'
           ..fragment = false
           ..multiPath = false
+          ..dataSaver = false
           ..excludedApps = {}
           ..poolSize = 40
           ..timeoutSeconds = 8

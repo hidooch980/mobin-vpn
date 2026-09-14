@@ -310,6 +310,15 @@ class SettingsScreen extends StatelessWidget {
                   value: s.multiPath,
                   onChanged: (v) => s.update((x) => x.multiPath = v),
                 ),
+              if (Platform.isWindows)
+                SwitchSettingRow(
+                  icon: Icons.data_saver_on_rounded,
+                  title: tr('حالت کم‌مصرف', 'Data saver'),
+                  subtitle: tr('QUIC (UDP 443) بسته می‌شود تا مرورگر از TCP داخل تونل استفاده کند؛ تست‌های پس‌زمینه هم خاموش می‌شوند',
+                      'Blocks QUIC (UDP 443) so browsers use TCP through the tunnel; background probing is turned off'),
+                  value: s.dataSaver,
+                  onChanged: (v) => s.update((x) => x.dataSaver = v),
+                ),
               if (Platform.isAndroid)
                 ChoiceSettingRow<String>(
                   icon: Icons.dns_outlined,

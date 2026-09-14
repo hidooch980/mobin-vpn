@@ -43,7 +43,11 @@ class EngineOptions {
     this.tunMtu = 0,
     this.iranRuleSets = false,
     this.multiPath = false,
+    this.dataSaver = false,
   });
+
+  /// Data saver: QUIC (UDP 443) is rejected so browsers fall back to TCP through the tunnel.
+  final bool dataSaver;
 
   /// Windows: the "proxy" outbound is a sing-box urltest group (main server, backups, WARP) instead of a selector.
   final bool multiPath;
@@ -83,6 +87,7 @@ class EngineOptions {
         tunnelDns: tunnelDns,
         tunMtu: tunMtu,
         iranRuleSets: iranRuleSets,
+        dataSaver: dataSaver,
         multiPath: multiPath,
       );
 
@@ -103,10 +108,11 @@ class EngineOptions {
         tunnelDns: tunnelDns,
         tunMtu: tunMtu,
         iranRuleSets: iranRuleSets,
+        dataSaver: dataSaver,
       );
 
   /// Settings that change the generated core config.
-  String get configKey => '$dns|$tunnelDns|$bypassIran|$iranRuleSets|$fragment|$multiPath|${warp?.privateKey}';
+  String get configKey => '$dns|$tunnelDns|$bypassIran|$iranRuleSets|$fragment|$multiPath|$dataSaver|${warp?.privateKey}';
 }
 
 /// Platform VPN core. Delays are measured from the user's own connection.

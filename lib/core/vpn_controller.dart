@@ -120,6 +120,7 @@ class VpnController extends ChangeNotifier {
         tunMtu: settings.tunMtu,
         iranRuleSets: settings.bypassIran && settings.iranRuleSets,
         multiPath: settings.multiPath,
+        dataSaver: settings.dataSaver,
       );
 
   Future<void> init() async {
@@ -752,7 +753,7 @@ class VpnController extends ChangeNotifier {
   }
 
   void _cleanIpTick() {
-    if (!Platform.isWindows || servers.isEmpty) return;
+    if (!Platform.isWindows || servers.isEmpty || settings.dataSaver) return;
     // Scans must measure the user's own network: not while connecting, and not through a TUN tunnel.
     final direct = state == VpnState.disconnected || (state == VpnState.connected && !settings.tunMode);
     if (!direct) return;
@@ -773,7 +774,7 @@ class VpnController extends ChangeNotifier {
 
   Future<void> _prewarm() async {
     final eng = engine;
-    if (eng is! WindowsEngine || _prewarming || pinging || loading || _connectRun != null) return;
+    if (eng is! WindowsEngine || settings.dataSaver || _prewarming || pinging || loading || _connectRun != null) return;
     if (state != VpnState.disconnected || servers.isEmpty) return;
     _prewarming = true;
     try {

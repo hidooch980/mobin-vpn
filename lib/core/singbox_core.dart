@@ -419,6 +419,8 @@ class SingboxCore {
             {'ip_is_private': true, 'outbound': 'direct'},
             if (o.bypassIran) {'domain_suffix': ['ir'], 'outbound': 'direct'},
             if (_useIranRuleSets(o)) {'rule_set': iranRuleSetUrls.keys.toList(), 'outbound': 'direct'},
+            // Data saver: reject QUIC so browsers fall back to TCP (after the direct rules, so local/Iranian QUIC stays).
+            if (o.dataSaver) {'network': ['udp'], 'port': [443], 'action': 'reject'},
           ],
           if (_useIranRuleSets(o))
             'rule_set': [
