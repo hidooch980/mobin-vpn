@@ -119,6 +119,48 @@ class SettingsScreen extends StatelessWidget {
                 value: s.autoReconnect,
                 onChanged: (v) => s.update((x) => x.autoReconnect = v),
               ),
+              SwitchSettingRow(
+                icon: Icons.schedule_rounded,
+                title: tr('زمان‌بندی اتصال', 'Scheduled connection'),
+                subtitle: tr('از ${s.scheduleFrom} وصل و در ${s.scheduleTo} قطع می‌شود (برنامه باید باز باشد)',
+                    'Connects at ${s.scheduleFrom} and disconnects at ${s.scheduleTo} (app must be open)'),
+                value: s.scheduleEnabled,
+                onChanged: (v) => s.update((x) => x.scheduleEnabled = v),
+              ),
+              if (s.scheduleEnabled) ...[
+                NavSettingRow(
+                  icon: Icons.play_circle_outline_rounded,
+                  title: tr('ساعت شروع', 'Start time'),
+                  value: s.scheduleFrom,
+                  ltrValue: true,
+                  onTap: () async {
+                    final v = await _prompt(context, tr('ساعت شروع (HH:MM)', 'Start time (HH:MM)'), s.scheduleFrom,
+                        keyboard: TextInputType.datetime);
+                    if (v == null) return;
+                    if (AppSettings.parseTime(v) == null) {
+                      if (context.mounted) _toast(context, tr('قالب ساعت درست نیست؛ مثل 08:30', 'Invalid time; e.g. 08:30'));
+                      return;
+                    }
+                    await s.update((x) => x.scheduleFrom = v.trim());
+                  },
+                ),
+                NavSettingRow(
+                  icon: Icons.stop_circle_outlined,
+                  title: tr('ساعت پایان', 'End time'),
+                  value: s.scheduleTo,
+                  ltrValue: true,
+                  onTap: () async {
+                    final v = await _prompt(context, tr('ساعت پایان (HH:MM)', 'End time (HH:MM)'), s.scheduleTo,
+                        keyboard: TextInputType.datetime);
+                    if (v == null) return;
+                    if (AppSettings.parseTime(v) == null) {
+                      if (context.mounted) _toast(context, tr('قالب ساعت درست نیست؛ مثل 23:00', 'Invalid time; e.g. 23:00'));
+                      return;
+                    }
+                    await s.update((x) => x.scheduleTo = v.trim());
+                  },
+                ),
+              ],
             ]),
 
             SectionHeader(tr('محافظت', 'Protection')),

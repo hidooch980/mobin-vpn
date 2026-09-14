@@ -181,6 +181,7 @@ class VpnController extends ChangeNotifier {
     // Clean Cloudflare IP scan (Windows): checks the network every 5 min, rescans on change or after 30 min.
     Timer(const Duration(seconds: 20), _cleanIpTick);
     Timer.periodic(const Duration(minutes: 5), (_) => _cleanIpTick());
+    Timer.periodic(const Duration(seconds: 30), (_) => _scheduleTick());
     if (Account.configured) Timer.periodic(const Duration(minutes: 1), (_) => _reportUsage());
   }
 
@@ -583,6 +584,28 @@ class VpnController extends ChangeNotifier {
 
   void _checkCancel() {
     if (_cancel) throw _Cancelled();
+  }
+
+  /// Last known "inside the scheduled range" value; the schedule only acts when it changes,
+  /// so a manual connect/disconnect in the middle of the range is respected.
+  bool? _scheduleInside;
+
+  void _scheduleTick() {
+    if (!settings.scheduleEnabled) {
+      _scheduleInside = null;
+      return;
+    }
+    final inside = settings.insideSchedule(DateTime.now());
+    final previous = _scheduleInside;
+    _scheduleInside = inside;
+    if (previous == null || previous == inside) return;
+    if (inside && state == VpnState.disconnected) {
+      AppLog.add('schedule: time range started, connecting');
+      unawaited(connect());
+    } else if (!inside && state == VpnState.connected) {
+      AppLog.add('schedule: time range ended, disconnecting');
+      unawaited(disconnect());
+    }
   }
 
   void _cleanIpTick() {

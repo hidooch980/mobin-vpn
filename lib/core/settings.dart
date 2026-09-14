@@ -56,6 +56,8 @@ class AppSettings extends ChangeNotifier {
   bool warp = false; // chain Cloudflare WARP behind the server
   String warpAccount = ''; // JSON of WarpAccount, created on first use
   bool launchAtStartup = false; // Windows
+  bool scheduleEnabled = false; // connect when the time range starts, disconnect when it ends
+  String scheduleFrom = '08:00', scheduleTo = '23:00'; // HH:MM, local time; may cross midnight
   Set<String> favorites = {}; // server uris
   List<String> manualConfigs = []; // user-imported share links
 
@@ -103,6 +105,9 @@ class AppSettings extends ChangeNotifier {
     warp = p.getBool('s_warp') ?? warp;
     warpAccount = p.getString('s_warpAccount') ?? warpAccount;
     launchAtStartup = p.getBool('s_launchAtStartup') ?? launchAtStartup;
+    scheduleEnabled = p.getBool('s_scheduleEnabled') ?? scheduleEnabled;
+    scheduleFrom = p.getString('s_scheduleFrom') ?? scheduleFrom;
+    scheduleTo = p.getString('s_scheduleTo') ?? scheduleTo;
     favorites = (p.getStringList('s_favorites') ?? const []).toSet();
     manualConfigs = p.getStringList('s_manualConfigs') ?? [];
     poolSize = p.getInt('s_poolSize') ?? poolSize;
@@ -145,6 +150,9 @@ class AppSettings extends ChangeNotifier {
       p.setBool('s_warp', warp),
       p.setString('s_warpAccount', warpAccount),
       p.setBool('s_launchAtStartup', launchAtStartup),
+      p.setBool('s_scheduleEnabled', scheduleEnabled),
+      p.setString('s_scheduleFrom', scheduleFrom),
+      p.setString('s_scheduleTo', scheduleTo),
       p.setStringList('s_favorites', favorites.toList()),
       p.setStringList('s_manualConfigs', manualConfigs),
       p.setInt('s_poolSize', poolSize),
@@ -153,6 +161,22 @@ class AppSettings extends ChangeNotifier {
       p.setString('s_customSub', customSubscription),
       p.setStringList('s_protocols', protocols.map((x) => x.name).toList()),
     ]);
+  }
+
+  /// Minutes after midnight for "HH:MM", or null when invalid.
+  static int? parseTime(String hhmm) {
+    final m = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(hhmm.trim());
+    if (m == null) return null;
+    final h = int.parse(m[1]!), min = int.parse(m[2]!);
+    return h < 24 && min < 60 ? h * 60 + min : null;
+  }
+
+  /// Whether [now] falls in the scheduled range (a range may cross midnight, e.g. 22:00–02:00).
+  bool insideSchedule(DateTime now) {
+    final from = parseTime(scheduleFrom), to = parseTime(scheduleTo);
+    if (from == null || to == null || from == to) return false;
+    final m = now.hour * 60 + now.minute;
+    return from < to ? (m >= from && m < to) : (m >= from || m < to);
   }
 
   Future<void> update(void Function(AppSettings s) change) async {
