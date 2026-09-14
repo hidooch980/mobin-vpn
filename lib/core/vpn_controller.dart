@@ -231,6 +231,22 @@ class VpnController extends ChangeNotifier {
   /// Last working server is remembered per network (Wi-Fi, each SIM operator), like MSN-GUARD's per-SIM ladder.
   Future<String> _networkServerKey() async => '$_lastServerKey:${await NetworkInfo.networkKey()}';
 
+  /// Learning: the winner is also remembered per ISP bucket and 3-hour time slot (evening filtering differs
+  /// from morning), and that one is tried first; falls back to the per-network winner.
+  Future<String> _bucketServerKey() async =>
+      '${await _networkServerKey()}|${NetworkInfo.operatorBucket ?? '-'}|h${DateTime.now().hour ~/ 3}';
+
+  Future<String?> _lastWinner() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(await _bucketServerKey()) ?? prefs.getString(await _networkServerKey());
+  }
+
+  Future<void> _rememberWinner(String uri) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(await _networkServerKey(), uri);
+    await prefs.setString(await _bucketServerKey(), uri);
+  }
+
   int _watchTick = 0;
 
   /// True after the anti-freeze watchdog moved the running tunnel to a backup server (shown on the home screen).
@@ -651,7 +667,7 @@ class VpnController extends ChangeNotifier {
     } else {
       pool = _byFreshDelay(_roundRobin(countries, size));
     }
-    final last = (await SharedPreferences.getInstance()).getString(await _networkServerKey());
+    final last = await _lastWinner();
     final lastServer = servers.where((s) => s.uri == last).firstOrNull;
     if (lastServer != null && (country == null || lastServer.countryCode == country)) {
       pool
@@ -739,7 +755,7 @@ class VpnController extends ChangeNotifier {
       if (pool.isEmpty) throw const _UserError('سروری برای این موقعیت پیدا نشد.');
 
       // Fast path like v2rayNG: reconnect straight to the last working server, no ping round.
-      final last = (await SharedPreferences.getInstance()).getString(await _networkServerKey());
+      final last = await _lastWinner();
       if (only == null && pool.isNotEmpty && pool.first.uri == last) {
         final server = pool.first;
         phase = 'اتصال سریع به ${server.displayName}';
@@ -773,7 +789,7 @@ class VpnController extends ChangeNotifier {
           phase = null;
           notifyListeners();
           _report(only, true);
-          await (await SharedPreferences.getInstance()).setString(await _networkServerKey(), only.uri);
+          await _rememberWinner(only.uri);
           return;
         }
         if (!_cancel) _report(only, false);
@@ -797,7 +813,7 @@ class VpnController extends ChangeNotifier {
             phase = null;
             notifyListeners();
             _report(server, true);
-            await (await SharedPreferences.getInstance()).setString(await _networkServerKey(), server.uri);
+            await _rememberWinner(server.uri);
             return;
           }
           if (!_cancel) _report(server, false);
@@ -874,7 +890,7 @@ class VpnController extends ChangeNotifier {
         phase = null;
         notifyListeners();
         _report(server, true, ms: measured[i]);
-        await (await SharedPreferences.getInstance()).setString(await _networkServerKey(), server.uri);
+        await _rememberWinner(server.uri);
         return;
       }
       throw const _UserError(
