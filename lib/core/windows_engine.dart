@@ -10,6 +10,7 @@ import 'cf_clean_ip.dart';
 import 'engine.dart';
 import 'free_routes.dart';
 import 'network_info.dart';
+import 'reality_sni.dart';
 import 'server.dart';
 import 'singbox_core.dart';
 import 'singbox_outbound.dart';
@@ -150,6 +151,7 @@ class WindowsEngine implements VpnEngine {
       dataDir: Directory('${base.path}\\free')..createSync(recursive: true),
     );
     await _free.cleanupStale();
+    unawaited(RealitySni.load());
     unawaited(_core.updateIranRuleSets());
     await _releaseProxy(); // a previous run may have been killed while connected
     if (!_core.binaryExists) throw StateError('sing-box.exe کنار برنامه پیدا نشد');
@@ -164,6 +166,28 @@ class WindowsEngine implements VpnEngine {
   final _failures = <String, int>{};
 
   static const _fingerprints = ['firefox', 'safari', 'randomized'];
+
+  /// SNI used by the running Reality retry attempt; servers whose SNI round already ran this session.
+  String? _sniOverride;
+  final _sniRetried = <String>{};
+
+  /// Retries a failing Reality server once with each of up to 3 remote SNIs; remembers the one that works.
+  Future<bool> _retryRealitySni(Server server, EngineOptions options, Map<String, dynamic> realityBase) async {
+    for (final sni in await RealitySni.candidates(realityBase)) {
+      if (isCancelled()) break;
+      AppLog.add('windows: ${server.displayName} reality retry with another SNI');
+      _sniOverride = sni;
+      try {
+        if (await connect(server, options)) {
+          await RealitySni.remember(realityBase, sni);
+          return true;
+        }
+      } finally {
+        _sniOverride = null;
+      }
+    }
+    return false;
+  }
 
   /// Copy of a TCP-TLS outbound (vless/vmess/trojan) with the uTLS fingerprint rotated by [failures]
   /// (firefox → safari → randomized) and, from the second failure, WebSocket early data when not set.
@@ -231,6 +255,13 @@ class WindowsEngine implements VpnEngine {
       outbound = _core.outbound(server);
     }
     if (outbound == null) return false;
+    // Reality: a remembered working SNI, or the SNI being tried in a retry.
+    final realityBase = !free && RealitySni.isReality(outbound) ? outbound : null;
+    String? sniUsed;
+    if (realityBase != null) {
+      sniUsed = _sniOverride ?? RealitySni.remembered(realityBase);
+      if (sniUsed != null) outbound = RealitySni.withSni(outbound, sniUsed);
+    }
     // Anti-DPI retry: after failures, rotate the uTLS fingerprint and (ws) add early data.
     final failures = free ? 0 : (_failures[server.uri] ?? 0);
     if (failures > 0) outbound = evasive(outbound, failures);
@@ -311,7 +342,13 @@ class WindowsEngine implements VpnEngine {
       AppLog.add('windows: no traffic through ${server.displayName}');
       await disconnect();
       if (cleanIp != null) CleanIp.markBad(cleanIp);
+      if (_sniOverride != null) return false; // one SNI of a retry round
       if (!free) _failures[server.uri] = failures + 1;
+      if (realityBase != null) {
+        if (sniUsed != null) await RealitySni.forget(realityBase);
+        // Only on a retry (the server already failed before), once per server per session.
+        if (failures >= 1 && _sniRetried.add(server.uri)) return _retryRealitySni(server, options, realityBase);
+      }
       return false;
     }
     _failures.remove(server.uri);
