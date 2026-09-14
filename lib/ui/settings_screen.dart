@@ -8,6 +8,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../core/engine.dart';
 import '../core/server.dart';
 import '../core/settings.dart';
+import '../core/speed_test.dart';
 import '../core/vpn_controller.dart';
 import '../core/win_startup.dart';
 import '../core/windows_engine.dart';
@@ -394,6 +395,31 @@ class SettingsScreen extends StatelessWidget {
                   }
                 },
               ),
+              if (controller.state == VpnState.connected && controller.engine.httpProxy != null)
+                NavSettingRow(
+                  icon: Icons.speed_rounded,
+                  title: tr('تست سرعت', 'Speed test'),
+                  subtitle: tr('دانلود و آپلود از داخل VPN (speed.cloudflare.com)',
+                      'Download and upload through the VPN (speed.cloudflare.com)'),
+                  onTap: () async {
+                    final proxy = controller.engine.httpProxy;
+                    if (proxy == null) return;
+                    _toast(context, tr('تست سرعت در حال انجام…', 'Running speed test…'));
+                    final r = await SpeedTest.run(proxy);
+                    if (!context.mounted) return;
+                    String fmt(double? v) => v == null ? tr('ناموفق', 'failed') : '${v.toStringAsFixed(1)} Mbps';
+                    await showDialog<void>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: Text(tr('نتیجه‌ی تست سرعت', 'Speed test result')),
+                        content: Text('${tr('دانلود', 'Download')}: ${fmt(r.down)}\n${tr('آپلود', 'Upload')}: ${fmt(r.up)}'),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(context), child: Text(tr('باشه', 'OK'))),
+                        ],
+                      ),
+                    );
+                  },
+                ),
             ]),
 
             SectionHeader(tr('درباره', 'About')),
