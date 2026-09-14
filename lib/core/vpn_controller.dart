@@ -12,6 +12,7 @@ import 'countries.dart';
 import 'free_routes.dart';
 import 'engine.dart';
 import 'network_info.dart';
+import 'reports.dart';
 import 'server.dart';
 import 'settings.dart';
 import 'subscription.dart';
@@ -157,13 +158,55 @@ class VpnController extends ChangeNotifier {
     final cached = await repository.loadCached();
     if (cached != null) _apply(cached);
     await refresh();
+    // Launched at Windows startup the network may not be up yet: give the server list a few more tries.
+    for (var i = 0; i < 3 && _data == null && settings.connectOnLaunch; i++) {
+      await Future<void>.delayed(const Duration(seconds: 8));
+      await refresh();
+    }
     if (!ready.isCompleted) ready.complete();
-    if (settings.connectOnLaunch && servers.isNotEmpty) unawaited(connect());
+    unawaited(_loadScores());
+    // Auto-connect uses the normal connect path, so the selected location (gaming, favorites, country) is respected.
+    if (settings.connectOnLaunch && servers.isNotEmpty && state == VpnState.disconnected) {
+      AppLog.add('auto-connect on launch (mode=${selectedCountry ?? 'auto'})');
+      unawaited(connect());
+    }
     await checkUpdate();
     // Long-running sessions (e.g. Windows left open) still hear about new releases and get fresh servers.
     Timer.periodic(const Duration(hours: 6), (_) => checkUpdate());
     Timer.periodic(const Duration(minutes: 30), (_) => refresh());
     if (Account.configured) Timer.periodic(const Duration(minutes: 1), (_) => _reportUsage());
+  }
+
+  /// Shared quality score (0..1) per server uri from the optional /scores endpoint; empty when unavailable.
+  final Map<String, double> _scoreByUri = {};
+
+  Future<void> _loadScores() async {
+    try {
+      final scores = await ServerReports.fetchScores(proxy: engine.httpProxy);
+      if (scores == null || scores.isEmpty) return;
+      _scoreByUri.clear();
+      for (final s in servers) {
+        final node = _isWarp(s) ? ServerReports.warpNode : await ServerReports.fingerprint(s.uri);
+        final score = scores[node];
+        if (score != null) _scoreByUri[s.uri] = score;
+      }
+      AppLog.add('scores: ${_scoreByUri.length} servers scored');
+    } catch (_) {
+      // Optional: never affects connecting.
+    }
+  }
+
+  /// Opt-in anonymous report of one connection attempt; fire-and-forget.
+  void _report(Server server, bool ok, {int? ms}) {
+    if (!settings.anonymousReports) return;
+    unawaited(() async {
+      try {
+        final node = _isWarp(server) ? ServerReports.warpNode : await ServerReports.fingerprint(server.uri);
+        var delay = ms != null && ms > 0 ? ms : null;
+        if (ok && delay == null) delay = await measureConnection();
+        await ServerReports.send(node: node, ok: ok, ms: delay, proxy: ok ? engine.httpProxy : null);
+      } catch (_) {}
+    }());
   }
 
   int _healthFailures = 0;
@@ -274,9 +317,9 @@ class VpnController extends ChangeNotifier {
       groups.putIfAbsent(s.countryCode, () => CountryGroup(s.countryCode)).servers.add(s);
     }
     countries = groups.values.toList();
-    if (isGaming) selectedCountry = null; // gaming mode was removed from the app
     if (selectedCountry != null &&
         selectedCountry != favoritesMode &&
+        selectedCountry != gamingMode &&
         !groups.containsKey(selectedCountry)) {
       selectedCountry = null;
     }
@@ -602,8 +645,10 @@ class VpnController extends ChangeNotifier {
           state = VpnState.connected;
           phase = null;
           notifyListeners();
+          _report(server, true);
           return;
         }
+        if (!_cancel) _report(server, false);
         AppLog.add('connect: fast path failed, testing servers');
         pool.removeAt(0);
         _checkCancel();
@@ -619,9 +664,11 @@ class VpnController extends ChangeNotifier {
           state = VpnState.connected;
           phase = null;
           notifyListeners();
+          _report(only, true);
           await (await SharedPreferences.getInstance()).setString(await _networkServerKey(), only.uri);
           return;
         }
+        if (!_cancel) _report(only, false);
         throw const _UserError('این سرور وصل نشد. سرور دیگری را امتحان کنید.');
       }
 
@@ -641,9 +688,11 @@ class VpnController extends ChangeNotifier {
             state = VpnState.connected;
             phase = null;
             notifyListeners();
+            _report(server, true);
             await (await SharedPreferences.getInstance()).setString(await _networkServerKey(), server.uri);
             return;
           }
+          if (!_cancel) _report(server, false);
           AppLog.add('connect: direct ${server.displayName} failed');
         }
         // None worked: test the remaining servers and connect to the fastest responsive one.
@@ -678,8 +727,16 @@ class VpnController extends ChangeNotifier {
         delays[pool[i].uri] = measured[i];
       }
 
+      // Fastest first; within the same ~100 ms band, the shared quality score (when available) breaks the tie.
+      int band(int i) => measured[i] ~/ 100;
+      double score(int i) => _scoreByUri[pool[i].uri] ?? -1;
       var ranked = [for (var i = 0; i < pool.length; i++) if (measured[i] > 0) i]
-        ..sort((a, b) => measured[a].compareTo(measured[b]));
+        ..sort((a, b) {
+          final byBand = band(a).compareTo(band(b));
+          if (byBand != 0) return byBand;
+          final byScore = score(b).compareTo(score(a));
+          return byScore != 0 ? byScore : measured[a].compareTo(measured[b]);
+        });
       if (only == null && isGaming && ranked.length > 1) {
         final scores = await _gamingScores(pool, measured, ranked, options);
         final stable = [for (final i in ranked) if (scores[i] > 0) i]..sort((a, b) => scores[a].compareTo(scores[b]));
@@ -699,6 +756,7 @@ class VpnController extends ChangeNotifier {
         notifyListeners();
         if (!await engine.connect(server, options)) {
           AppLog.add('connect: ${server.displayName} (${server.protocolLabel}) failed');
+          if (!_cancel) _report(server, false, ms: measured[i]);
           continue;
         }
         AppLog.add('connect: connected to ${server.displayName} (${server.protocolLabel}, ${measured[i]} ms)');
@@ -712,6 +770,7 @@ class VpnController extends ChangeNotifier {
         state = VpnState.connected;
         phase = null;
         notifyListeners();
+        _report(server, true, ms: measured[i]);
         await (await SharedPreferences.getInstance()).setString(await _networkServerKey(), server.uri);
         return;
       }

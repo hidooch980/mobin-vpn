@@ -23,6 +23,7 @@ class SubscriptionRepository {
     'https://raw.githubusercontent.com/hidooch980/vpn-sub/sub/sub.txt',
     'https://cdn.jsdelivr.net/gh/hidooch980/vpn-sub@sub/sub.txt',
     'https://fastly.jsdelivr.net/gh/hidooch980/vpn-sub@sub/sub.txt',
+    'https://cdn.jsdelivr.net/gh/hidooch980/vpn-sub@sub/sub_base64.txt',
   ];
   static const _textKey = 'sub_text', _timeKey = 'sub_time';
 

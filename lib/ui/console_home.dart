@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import '../core/engine.dart';
 import '../core/network_info.dart';
 import '../core/vpn_controller.dart';
+import 'flag_badge.dart';
 import 'help_screen.dart';
 import 'import_screen.dart';
 import 'location_sheet.dart';
@@ -16,9 +17,10 @@ import 'servers_screen.dart';
 import 'settings_screen.dart';
 import 'style.dart';
 import 'usage_screen.dart';
+import 'widgets.dart';
 
-/// Connection console: quiet top, one large round control in the middle, the real status under it,
-/// a single route picker, and live facts (exit IP, network, data, duration, latency) as plain rows.
+/// Home screen in the Android app's structure: header with status chip and settings, one large round
+/// connect control, status + detail line, live stat tiles, the exit/route card and network facts.
 class ConsoleHome extends StatefulWidget {
   const ConsoleHome({super.key, required this.controller});
 
@@ -83,51 +85,84 @@ class _ConsoleHomeState extends State<ConsoleHome> {
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: Listenable.merge([c, network, c.settings]),
-      builder: (context, _) => Scaffold(
-        backgroundColor: Palette.bg,
-        drawer: _Drawer(controller: c, open: _open),
-        body: SafeArea(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 460),
-              child: Column(children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
-                  child: Row(children: [
-                    Builder(
-                      builder: (context) => IconButton(
-                        tooltip: 'منو',
-                        onPressed: () => Scaffold.of(context).openDrawer(),
-                        icon: Icon(Icons.menu_rounded, color: Palette.muted),
+      builder: (context, _) {
+        final lastMs = _latency.isEmpty ? null : _latency.last;
+        return Scaffold(
+          backgroundColor: Palette.bg,
+          drawer: _Drawer(controller: c, open: _open),
+          body: SafeArea(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: kContentWidth),
+                child: Column(children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 4, 8, 0),
+                    child: Row(children: [
+                      Builder(
+                        builder: (context) => IconButton(
+                          tooltip: 'منو',
+                          onPressed: () => Scaffold.of(context).openDrawer(),
+                          icon: Icon(Icons.menu_rounded, color: Palette.text),
+                        ),
                       ),
+                      Text('MolidoVPN',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, letterSpacing: 1.5, color: Palette.muted)),
+                      const Spacer(),
+                      _HeaderChip(controller: c),
+                      IconButton(
+                        tooltip: 'تنظیمات',
+                        onPressed: () => _open(SettingsScreen(controller: c)),
+                        icon: Icon(Icons.settings_outlined, color: Palette.text),
+                      ),
+                    ]),
+                  ),
+                  if (c.update != null) _UpdateLine(controller: c),
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                      children: [
+                        const SizedBox(height: 10),
+                        Center(child: _Dial(controller: c)),
+                        const SizedBox(height: 16),
+                        _Status(controller: c, latency: lastMs),
+                        const SizedBox(height: 14),
+                        _Tiles(controller: c),
+                        const SizedBox(height: 12),
+                        _ExitCard(controller: c, onServers: () => _open(ServersScreen(controller: c))),
+                        const SectionHeader('شبکه'),
+                        _Facts(controller: c, network: network, latency: _latency),
+                      ],
                     ),
-                    const Spacer(),
-                    IconButton(
-                      tooltip: 'سرورها و تست پینگ',
-                      onPressed: () => _open(ServersScreen(controller: c)),
-                      icon: Icon(Icons.dns_outlined, color: Palette.muted),
-                    ),
-                  ]),
-                ),
-                if (c.update != null) _UpdateLine(controller: c),
-                const Spacer(flex: 2),
-                _Dial(controller: c),
-                const SizedBox(height: 20),
-                _Status(controller: c),
-                const SizedBox(height: 20),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: _RoutePicker(controller: c),
-                ),
-                const Spacer(flex: 3),
-                _Facts(controller: c, network: network, latency: _latency),
-                const SizedBox(height: 12),
-              ]),
+                  ),
+                ]),
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
+  }
+}
+
+(String, Color, bool) _stateLook(VpnController c) {
+  final failed = c.state == VpnState.disconnected && c.error != null;
+  return switch (c.state) {
+    VpnState.connected => ('متصل', Palette.amber, true),
+    VpnState.connecting => ('در حال اتصال', Palette.forState(VpnState.connecting).first, true),
+    VpnState.disconnecting => ('در حال قطع', Palette.forState(VpnState.disconnecting).first, true),
+    VpnState.disconnected => failed ? ('اتصال ناموفق', Palette.failure, false) : ('قطع', Palette.muted, false),
+  };
+}
+
+class _HeaderChip extends StatelessWidget {
+  const _HeaderChip({required this.controller});
+
+  final VpnController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color, glow) = _stateLook(controller);
+    return StatusChip(label: label, color: color, glow: glow);
   }
 }
 
@@ -139,14 +174,25 @@ class _UpdateLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = controller;
-    return TextButton.icon(
-      onPressed: c.installUpdate,
-      icon: Icon(Icons.system_update_outlined, size: 18, color: Palette.accent),
-      label: Text(
-        c.updateProgress == null
-            ? 'نسخه‌ی ${c.update!.version} آماده‌ی نصب است'
-            : 'دانلود ${((c.updateProgress ?? 0) * 100).toStringAsFixed(0)}٪',
-        style: TextStyle(color: Palette.accent, fontSize: 14),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
+      child: AppCard(
+        onTap: c.installUpdate,
+        borderColor: Palette.accent.withValues(alpha: 0.5),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Row(children: [
+          Icon(Icons.system_update_outlined, size: 18, color: Palette.accent),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              c.updateProgress == null
+                  ? 'نسخه‌ی ${c.update!.version} آماده‌ی نصب است'
+                  : 'دانلود ${((c.updateProgress ?? 0) * 100).toStringAsFixed(0)}٪',
+              style: TextStyle(color: Palette.accent, fontSize: 14, fontWeight: FontWeight.w500),
+            ),
+          ),
+          Icon(Icons.chevron_left_rounded, color: Palette.accent),
+        ]),
       ),
     );
   }
@@ -189,45 +235,63 @@ class _DialState extends State<_Dial> with SingleTickerProviderStateMixin {
     return Semantics(
       button: true,
       label: label,
-      child: GestureDetector(
-        onTapDown: (_) => setState(() => _down = true),
-        onTapCancel: () => setState(() => _down = false),
-        onTapUp: (_) {
-          setState(() => _down = false);
-          HapticFeedback.selectionClick();
-          c.toggle();
-        },
-        child: AnimatedScale(
-          scale: _down ? 0.97 : 1,
-          duration: Duration(milliseconds: _down ? 90 : 180),
-          curve: Curves.easeOutCubic,
-          child: SizedBox.square(
-            dimension: 196,
-            child: Stack(alignment: Alignment.center, children: [
-              RepaintBoundary(
-                child: AnimatedBuilder(
-                  animation: _spin,
-                  builder: (context, _) => CustomPaint(
-                    size: const Size.square(196),
-                    painter: _RingPainter(color: color, track: Palette.border, busy: busy, t: _spin.value, full: connected),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTapDown: (_) => setState(() => _down = true),
+          onTapCancel: () => setState(() => _down = false),
+          onTapUp: (_) {
+            setState(() => _down = false);
+            HapticFeedback.selectionClick();
+            c.toggle();
+          },
+          child: AnimatedScale(
+            scale: _down ? 0.97 : 1,
+            duration: Duration(milliseconds: _down ? 90 : 180),
+            curve: Curves.easeOutCubic,
+            child: SizedBox.square(
+              dimension: 220,
+              child: Stack(alignment: Alignment.center, children: [
+                // Soft halo, stronger while connected.
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 400),
+                  width: 220,
+                  height: 220,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(color: color.withValues(alpha: connected ? 0.28 : 0.10), blurRadius: 36, spreadRadius: 2),
+                    ],
                   ),
                 ),
-              ),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 260),
-                width: 176,
-                height: 176,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: connected ? color : Palette.raised,
+                RepaintBoundary(
+                  child: AnimatedBuilder(
+                    animation: _spin,
+                    builder: (context, _) => CustomPaint(
+                      size: const Size.square(208),
+                      painter: _RingPainter(color: color, track: Palette.border, busy: busy, t: _spin.value, full: connected),
+                    ),
+                  ),
                 ),
-                child: Icon(
-                  connected ? Icons.power_settings_new_rounded : Icons.power_settings_new_rounded,
-                  size: 64,
-                  color: connected ? Palette.bg : color,
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 260),
+                  width: 184,
+                  height: 184,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: connected ? color : Palette.surface,
+                    border: Border.all(color: connected ? color : Palette.border),
+                  ),
+                  child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(Icons.power_settings_new_rounded, size: 60, color: connected ? Palette.bg : color),
+                    const SizedBox(height: 6),
+                    Text(label,
+                        style: TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w600, color: connected ? Palette.bg : Palette.muted)),
+                  ]),
                 ),
-              ),
-            ]),
+              ]),
+            ),
           ),
         ),
       ),
@@ -262,55 +326,106 @@ class _RingPainter extends CustomPainter {
 }
 
 class _Status extends StatelessWidget {
-  const _Status({required this.controller});
+  const _Status({required this.controller, required this.latency});
+
+  final VpnController controller;
+  final int? latency;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = controller;
+    final (title, color, _) = _stateLook(c);
+    final failed = c.state == VpnState.disconnected && c.error != null;
+    final connected = c.state == VpnState.connected;
+    final sub = switch (c.state) {
+      VpnState.connected => c.current?.displayName ?? '',
+      VpnState.connecting => c.phase ?? '',
+      _ => failed ? c.error! : 'برای اتصال دکمه را بزنید',
+    };
+    final ms = latency ?? c.currentDelay;
+    return Column(children: [
+      Text(connected ? 'متصل' : (c.state == VpnState.disconnected && !failed ? 'متصل نیست' : title),
+          style: TextStyle(fontSize: 21, fontWeight: FontWeight.w600, color: connected ? Palette.amber : (failed ? Palette.failure : Palette.text))),
+      const SizedBox(height: 3),
+      SizedBox(
+        height: 40,
+        child: GestureDetector(
+          onTap: failed ? c.clearError : null,
+          child: Text(sub,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, height: 1.5, color: failed ? color : Palette.muted)),
+        ),
+      ),
+      if (c.state == VpnState.connecting && c.progress != null)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 4),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(value: c.progress, minHeight: 4, color: Palette.accent, backgroundColor: Palette.border),
+          ),
+        ),
+      if (connected && c.current != null)
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Text(ms == null ? 'در حال سنجش…' : '$ms ms',
+              textDirection: TextDirection.ltr, style: TextStyle(fontSize: 12.5, color: Palette.forDelay(ms))),
+          Text('  ·  ', style: TextStyle(fontSize: 12, color: Palette.muted.withValues(alpha: 0.5))),
+          Text(c.current!.protocolLabel, textDirection: TextDirection.ltr, style: TextStyle(fontSize: 12.5, color: Palette.muted)),
+        ]),
+    ]);
+  }
+}
+
+/// Download / upload / duration, like the Android home tiles.
+class _Tiles extends StatelessWidget {
+  const _Tiles({required this.controller});
 
   final VpnController controller;
 
   @override
   Widget build(BuildContext context) {
     final c = controller;
-    final failed = c.state == VpnState.disconnected && c.error != null;
-    final title = switch (c.state) {
-      VpnState.connected => 'متصل',
-      VpnState.connecting => 'در حال اتصال',
-      VpnState.disconnecting => 'در حال قطع',
-      VpnState.disconnected => failed ? 'اتصال ناموفق' : 'متصل نیست',
-    };
-    final sub = switch (c.state) {
-      VpnState.connected => c.current?.displayName ?? '',
-      VpnState.connecting => c.phase ?? '',
-      _ => failed ? c.error! : '',
-    };
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 28),
-      child: Column(children: [
-        Text(title,
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
-              color: failed ? Palette.failure : (c.state == VpnState.connected ? Palette.amber : Palette.text),
-            )),
-        const SizedBox(height: 4),
-        SizedBox(
-          height: 40,
-          child: GestureDetector(
-            onTap: failed ? c.clearError : null,
-            child: Text(sub,
-                maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: TextStyle(fontSize: 13, height: 1.5, color: Palette.muted)),
+    final on = c.state == VpnState.connected;
+    Widget tile(IconData icon, String label, String value) => Expanded(
+          child: AppCard(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Icon(icon, size: 15, color: Palette.accent),
+                const SizedBox(width: 6),
+                Text(label, style: TextStyle(fontSize: 12, color: Palette.muted)),
+              ]),
+              const SizedBox(height: 6),
+              Text(value,
+                  maxLines: 1,
+                  textDirection: TextDirection.ltr,
+                  style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w600,
+                      color: on ? Palette.text : Palette.muted,
+                      fontFeatures: const [FontFeature.tabularFigures()])),
+            ]),
           ),
-        ),
-      ]),
-    );
+        );
+    return Row(children: [
+      tile(Icons.arrow_downward_rounded, 'دانلود', on ? formatSpeed(c.traffic.down) : '—'),
+      const SizedBox(width: 9),
+      tile(Icons.arrow_upward_rounded, 'آپلود', on ? formatSpeed(c.traffic.up) : '—'),
+      const SizedBox(width: 9),
+      tile(Icons.timer_outlined, 'مدت', on && c.connectedAt != null ? formatDuration(DateTime.now().difference(c.connectedAt!)) : '—'),
+    ]);
   }
 }
 
-/// Route picker: automatic, V2Ray servers, free WARP; Psiphon and Tor are listed as coming soon.
-class _RoutePicker extends StatelessWidget {
-  const _RoutePicker({required this.controller});
+/// Exit node + route: which location/mode is used and how, with shortcuts to change it.
+class _ExitCard extends StatelessWidget {
+  const _ExitCard({required this.controller, required this.onServers});
 
   final VpnController controller;
+  final VoidCallback onServers;
 
-  static String label(String transport) => switch (transport) {
+  static String routeLabel(String transport) => switch (transport) {
         'v2ray' => 'سرورهای V2Ray',
         'warp' => 'Cloudflare WARP (رایگان)',
         'psiphon' => 'Psiphon (رایگان)',
@@ -318,82 +433,129 @@ class _RoutePicker extends StatelessWidget {
         _ => 'خودکار',
       };
 
-  static bool _serverless(String transport) => transport == 'warp' || transport == 'psiphon' || transport == 'tor';
+  static bool serverless(String transport) => transport == 'warp' || transport == 'psiphon' || transport == 'tor';
 
   @override
   Widget build(BuildContext context) {
     final c = controller;
     final locked = c.state != VpnState.disconnected;
-    final country = c.selectedCountry == null ? '' : ' · ${c.countries.where((g) => g.code == c.selectedCountry).firstOrNull?.name ?? ''}';
-    return OutlinedButton(
-      onPressed: locked ? null : () => _showRoutes(context, c),
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size.fromHeight(52),
-        side: BorderSide(color: Palette.border),
-        foregroundColor: Palette.text,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      ),
-      child: Row(children: [
-        Icon(Icons.alt_route_rounded, color: Palette.muted, size: 20),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text('مسیر: ${label(c.settings.transport)}${_serverless(c.settings.transport) ? '' : country}',
-              maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, color: locked ? Palette.muted : Palette.text)),
+    final transport = c.settings.transport;
+    final current = c.current;
+    final code = current?.countryCode ?? (serverless(transport) ? (transport == 'warp' ? VpnController.warpCode : null) : c.selectedCountry);
+    final title = current != null ? current.displayName : (serverless(transport) ? routeLabel(transport) : locationLabel(c));
+    final subtitle = current != null
+        ? 'سرور خروجی · ${current.protocolLabel}'
+        : 'مسیر: ${routeLabel(transport)}${c.isGaming ? ' · پینگ پایدار برای بازی' : ''}';
+    return CardGroup(children: [
+      InkWell(
+        onTap: locked ? null : () => _showRoutes(context, c),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+          child: Row(children: [
+            FlagBadge(code: code, size: 42),
+            const SizedBox(width: 13),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Palette.text)),
+                const SizedBox(height: 2),
+                Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: Palette.muted)),
+              ]),
+            ),
+            Icon(Icons.expand_more_rounded, color: locked ? Palette.border : Palette.muted),
+          ]),
         ),
-        Icon(Icons.expand_more_rounded, color: Palette.muted),
-      ]),
-    );
+      ),
+      NavSettingRow(
+        icon: Icons.dns_outlined,
+        title: 'سرورها و تست پینگ',
+        value: '${c.servers.length}',
+        onTap: onServers,
+      ),
+    ]);
   }
 
   static void _showRoutes(BuildContext context, VpnController c) {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Palette.surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      backgroundColor: Palette.bg,
+      isScrollControlled: true,
+      constraints: const BoxConstraints(maxWidth: kContentWidth + 40),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (sheet) {
         Widget option(String value, IconData icon, String title, String subtitle, {bool soon = false}) {
           final selected = c.settings.transport == value;
-          return ListTile(
-            enabled: !soon,
-            leading: Icon(icon, color: soon ? Palette.border : (selected ? Palette.amber : Palette.muted)),
-            title: Text(title, style: TextStyle(color: soon ? Palette.muted : Palette.text, fontWeight: selected ? FontWeight.w700 : FontWeight.w500)),
-            subtitle: Text(soon ? 'به‌زودی' : subtitle, style: TextStyle(color: Palette.muted, fontSize: 12.5)),
-            trailing: selected ? Icon(Icons.check_rounded, color: Palette.amber) : null,
+          return SettingRow(
+            icon: icon,
+            title: title,
+            subtitle: soon ? 'به‌زودی' : subtitle,
+            trailing: selected ? Icon(Icons.check_circle_rounded, color: Palette.accent) : null,
             onTap: soon
                 ? null
                 : () {
                     Navigator.of(sheet).pop();
+                    if (serverless(value) && c.isGaming) c.selectCountry(null);
                     c.settings.update((s) => s.transport = value);
                   },
           );
         }
 
         return SafeArea(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const SizedBox(height: 12),
-            Text('انتخاب مسیر', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Palette.text)),
-            const SizedBox(height: 6),
-            option('auto', Icons.auto_mode_rounded, 'خودکار', 'سرورهای V2Ray، بعد WARP رایگان، و در آخر Psiphon'),
-            option('v2ray', Icons.dns_outlined, 'سرورهای V2Ray', 'لیست سرورهای تست‌شده؛ کشور را هم می‌توانید انتخاب کنید'),
-            option('warp', Icons.cloud_outlined, 'Cloudflare WARP', 'رایگان و بدون سرور؛ چند آدرس کلادفلر امتحان می‌شود'),
-            option('psiphon', Icons.hub_outlined, 'Psiphon', 'رایگان؛ خودش سرور پیدا می‌کند؛ اتصال ممکن است تا یک دقیقه طول بکشد',
-                soon: !Platform.isAndroid),
-            option('tor', Icons.lan_outlined, 'Tor', 'رایگان و ناشناس؛ کندتر؛ اگر مسدود بود از پل meek استفاده می‌کند',
-                soon: !Platform.isAndroid),
-            if (!_serverless(c.settings.transport))
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-                child: OutlinedButton.icon(
-                  onPressed: () {
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const SizedBox(height: 10),
+              Container(width: 40, height: 4, decoration: BoxDecoration(color: Palette.border, borderRadius: BorderRadius.circular(2))),
+              const SectionHeader('حالت اتصال'),
+              CardGroup(children: [
+                SettingRow(
+                  icon: Icons.auto_awesome_outlined,
+                  title: 'هوشمند',
+                  subtitle: 'سریع‌ترین سرور برای اینترنت شما',
+                  trailing: c.selectedCountry == null && !serverless(c.settings.transport)
+                      ? Icon(Icons.check_circle_rounded, color: Palette.accent)
+                      : null,
+                  onTap: () {
+                    Navigator.of(sheet).pop();
+                    if (serverless(c.settings.transport)) c.settings.update((s) => s.transport = 'auto');
+                    c.selectCountry(null);
+                  },
+                ),
+                SettingRow(
+                  icon: Icons.sports_esports_outlined,
+                  title: 'حالت گیمینگ',
+                  subtitle: 'کمترین و پایدارترین پینگ از سرورهای نزدیک؛ مناسب بازی‌های آنلاین',
+                  trailing: c.isGaming ? Icon(Icons.check_circle_rounded, color: Palette.accent) : null,
+                  onTap: () {
+                    Navigator.of(sheet).pop();
+                    if (serverless(c.settings.transport)) c.settings.update((s) => s.transport = 'auto');
+                    c.selectCountry(VpnController.gamingMode);
+                  },
+                ),
+                NavSettingRow(
+                  icon: Icons.public_rounded,
+                  title: 'انتخاب کشور',
+                  value: locationLabel(c),
+                  onTap: () {
                     Navigator.of(sheet).pop();
                     showLocationSheet(context, c);
                   },
-                  icon: const Icon(Icons.public_rounded),
-                  label: const Text('انتخاب کشور'),
-                  style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46), foregroundColor: Palette.text),
                 ),
-              ),
-          ]),
+              ]),
+              const SectionHeader('مسیر'),
+              CardGroup(children: [
+                option('auto', Icons.alt_route_rounded, 'خودکار', 'سرورهای V2Ray، بعد WARP رایگان، و در آخر Psiphon'),
+                option('v2ray', Icons.dns_outlined, 'سرورهای V2Ray', 'لیست سرورهای تست‌شده؛ کشور را هم می‌توانید انتخاب کنید'),
+                option('warp', Icons.cloud_outlined, 'Cloudflare WARP', 'رایگان و بدون سرور؛ چند آدرس کلادفلر امتحان می‌شود'),
+                option('psiphon', Icons.hub_outlined, 'Psiphon', 'رایگان؛ خودش سرور پیدا می‌کند؛ اتصال ممکن است تا یک دقیقه طول بکشد',
+                    soon: !Platform.isAndroid),
+                option('tor', Icons.lan_outlined, 'Tor', 'رایگان و ناشناس؛ کندتر؛ اگر مسدود بود از پل meek استفاده می‌کند',
+                    soon: !Platform.isAndroid),
+              ]),
+            ]),
+          ),
         );
       },
     );
@@ -411,42 +573,30 @@ class _Facts extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = controller;
     final connected = c.state == VpnState.connected;
-    Widget row(String label, String value, {Widget? trailing}) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          child: Row(children: [
-            Text(label, style: TextStyle(fontSize: 12, color: Palette.muted)),
-            const Spacer(),
+    Widget row(IconData icon, String label, String value, {Widget? trailing}) => SettingRow(
+          icon: icon,
+          title: label,
+          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
             if (trailing != null) ...[trailing, const SizedBox(width: 10)],
-            Text(value,
-                textDirection: TextDirection.ltr,
-                style: TextStyle(fontSize: 14, color: Palette.text, fontFeatures: const [FontFeature.tabularFigures()])),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 230),
+              child: Text(value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textDirection: TextDirection.ltr,
+                  style: TextStyle(fontSize: 13.5, color: Palette.text, fontFeatures: const [FontFeature.tabularFigures()])),
+            ),
           ]),
         );
     final ip = network.ip == null ? '—' : '${network.ip}${network.countryLabel.isEmpty ? '' : ' · ${network.countryLabel}'}';
     final lastMs = latency.isEmpty ? null : latency.last;
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      decoration: BoxDecoration(
-        color: Palette.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Palette.border),
-      ),
-      child: Column(children: [
-        row(connected ? 'IP خروجی' : 'IP شما', ip),
-        Divider(color: Palette.border, height: 1),
-        row('شبکه', '${network.typeLabel} · ${network.providerLabel}'),
-        if (connected) ...[
-          Divider(color: Palette.border, height: 1),
-          row('مصرف', '↓ ${formatSpeed(c.traffic.down)}   ↑ ${formatSpeed(c.traffic.up)}'),
-          Divider(color: Palette.border, height: 1),
-          row('مدت', c.connectedAt == null ? '—' : formatDuration(DateTime.now().difference(c.connectedAt!))),
-          Divider(color: Palette.border, height: 1),
-          row('تأخیر', lastMs == null ? 'در حال سنجش…' : '$lastMs ms',
-              trailing: SizedBox(width: 90, height: 22, child: CustomPaint(painter: _LatencyGraph(latency, Palette.amber)))),
-        ],
-      ]),
-    );
+    return CardGroup(children: [
+      row(Icons.public_outlined, connected ? 'IP خروجی' : 'IP شما', ip),
+      row(Icons.wifi_rounded, 'شبکه', '${network.typeLabel} · ${network.providerLabel}'),
+      if (connected)
+        row(Icons.speed_rounded, 'تأخیر', lastMs == null ? 'در حال سنجش…' : '$lastMs ms',
+            trailing: SizedBox(width: 90, height: 22, child: CustomPaint(painter: _LatencyGraph(latency, Palette.forDelay(lastMs))))),
+    ]);
   }
 }
 
@@ -485,31 +635,35 @@ class _Drawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = controller;
-    Widget item(IconData icon, String title, VoidCallback onTap) => ListTile(
-          leading: Icon(icon, color: Palette.muted),
-          title: Text(title, style: TextStyle(color: Palette.text)),
+    Widget item(IconData icon, String title, VoidCallback onTap) => NavSettingRow(
+          icon: icon,
+          title: title,
           onTap: () {
             Navigator.of(context).pop();
             onTap();
           },
         );
     return Drawer(
-      backgroundColor: Palette.surface,
+      backgroundColor: Palette.bg,
       child: SafeArea(
-        child: ListView(children: [
+        child: ListView(padding: const EdgeInsets.symmetric(horizontal: 14), children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
-            child: Text('MolidoVPN', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Palette.text)),
+            padding: const EdgeInsets.fromLTRB(8, 18, 8, 0),
+            child: Text('MolidoVPN', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: Palette.text)),
           ),
-          Divider(color: Palette.border),
-          item(Icons.dns_outlined, 'سرورها و تست پینگ', () => open(ServersScreen(controller: c))),
-          item(Icons.cloud_download_outlined, 'به‌روزرسانی سرورها', c.refresh),
-          item(Icons.add_link_rounded, 'کانفیگ‌های من', () => open(ImportScreen(controller: c))),
-          item(Icons.insights_outlined, 'آمار مصرف', () => open(UsageScreen(controller: c))),
-          item(Icons.settings_outlined, 'تنظیمات', () => open(SettingsScreen(controller: c))),
-          Divider(color: Palette.border),
-          item(Icons.bug_report_outlined, 'گزارش خطا', () => open(LogScreen(controller: c))),
-          item(Icons.help_outline_rounded, 'راهنما', () => open(const HelpScreen())),
+          const SectionHeader('سرورها'),
+          CardGroup(children: [
+            item(Icons.dns_outlined, 'سرورها و تست پینگ', () => open(ServersScreen(controller: c))),
+            item(Icons.cloud_download_outlined, 'به‌روزرسانی سرورها', c.refresh),
+            item(Icons.add_link_rounded, 'کانفیگ‌های من', () => open(ImportScreen(controller: c))),
+          ]),
+          const SectionHeader('برنامه'),
+          CardGroup(children: [
+            item(Icons.insights_outlined, 'آمار مصرف', () => open(UsageScreen(controller: c))),
+            item(Icons.settings_outlined, 'تنظیمات', () => open(SettingsScreen(controller: c))),
+            item(Icons.bug_report_outlined, 'گزارش خطا', () => open(LogScreen(controller: c))),
+            item(Icons.help_outline_rounded, 'راهنما', () => open(const HelpScreen())),
+          ]),
         ]),
       ),
     );

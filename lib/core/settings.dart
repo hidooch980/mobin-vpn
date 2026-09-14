@@ -22,7 +22,8 @@ class AppSettings extends ChangeNotifier {
   String connectMode = 'direct'; // direct (like v2rayNG, no ping) | test (ping first, pick fastest)
   String transport = 'auto'; // auto (V2Ray servers, WARP, then Psiphon) | v2ray | warp | psiphon | tor
   bool autoReconnect = true;
-  bool connectOnLaunch = false;
+  bool connectOnLaunch = true; // "اتصال خودکار": connect once servers load (also after Windows startup)
+  bool anonymousReports = false; // opt-in anonymous server quality reports
   bool proxyOnly = false; // Android: local proxy without VPN tunnel
   bool systemProxy = true; // Windows: set the Windows system proxy
   bool tunMode = false; // Windows: full-device VPN (administrator)
@@ -57,7 +58,8 @@ class AppSettings extends ChangeNotifier {
     connectMode = p.getString('s_connectMode') ?? connectMode;
     transport = p.getString('s_transport') ?? transport;
     autoReconnect = p.getBool('s_autoReconnect') ?? autoReconnect;
-    connectOnLaunch = p.getBool('s_connectOnLaunch') ?? connectOnLaunch;
+    connectOnLaunch = p.getBool('s_autoConnect') ?? connectOnLaunch;
+    anonymousReports = p.getBool('s_anonReports') ?? anonymousReports;
     proxyOnly = p.getBool('s_proxyOnly') ?? proxyOnly;
     systemProxy = p.getBool('s_systemProxy') ?? systemProxy;
     tunMode = p.getBool('s_tunMode') ?? tunMode;
@@ -93,7 +95,8 @@ class AppSettings extends ChangeNotifier {
       p.setString('s_connectMode', connectMode),
       p.setString('s_transport', transport),
       p.setBool('s_autoReconnect', autoReconnect),
-      p.setBool('s_connectOnLaunch', connectOnLaunch),
+      p.setBool('s_autoConnect', connectOnLaunch),
+      p.setBool('s_anonReports', anonymousReports),
       p.setBool('s_proxyOnly', proxyOnly),
       p.setBool('s_systemProxy', systemProxy),
       p.setBool('s_tunMode', tunMode),
@@ -127,7 +130,7 @@ class AppSettings extends ChangeNotifier {
         s
           ..warp = false
           ..autoReconnect = true
-          ..connectOnLaunch = false
+          ..connectOnLaunch = true
           ..proxyOnly = false
           ..systemProxy = true
           ..tunMode = false
