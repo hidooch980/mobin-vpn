@@ -190,6 +190,80 @@ const iosFriendly = (line) => {
   return sec === 'tls' || sec === 'reality';
 };
 
+// /sub/1 … /sub/5: five separate links, 50–100 configs each, different servers per link, so a family
+// member can add two or three and still have a working list when one gets filtered.
+const SUB_LINKS = 5;
+const SUB_MIN = 50;
+const SUB_MAX = 100;
+const strongTransport = (line) => iosFriendly(line.split('#')[0]);
+
+async function subRoute(url) {
+  const n = Number(url.pathname.split('/')[2]);
+  if (!Number.isInteger(n) || n < 1 || n > SUB_LINKS) return new Response('use /sub/1 … /sub/5', { status: 404 });
+  const get = (u) =>
+    fetch(u, { cf: { cacheTtl: 300, cacheEverything: true } })
+      .then((r) => (r.ok ? r.text() : ''))
+      .catch(() => '');
+  const [shard, full] = await Promise.all([
+    get('https://raw.githubusercontent.com/hidooch980/molidovpn-android/main/remote/shard-nodes.txt').then(
+      (t) => t || get('https://cdn.jsdelivr.net/gh/hidooch980/molidovpn-android@main/remote/shard-nodes.txt')
+    ),
+    get(FULL).then((t) => t || get(MIRROR('sub_base64.txt'))),
+  ]);
+
+  // Pool in quality order: CDN nodes, then TLS/Reality/QUIC, then everything else (tested list order).
+  const seen = new Set();
+  const cdn = [], strong = [], rest = [];
+  let c = 0;
+  for (const l of shard.split('\n')) {
+    const line = l.trim();
+    if (!line.includes('://') || line.startsWith('#')) continue;
+    const core = line.split('#')[0];
+    if (seen.has(core)) continue;
+    seen.add(core);
+    cdn.push(`${core}#${encodeURIComponent(`MolidoVPN CDN ${++c}`)}`);
+  }
+  for (const l of decodeList(full).split('\n')) {
+    const line = l.trim();
+    if (!line.includes('://')) continue;
+    const core = line.split('#')[0];
+    if (seen.has(core)) continue;
+    seen.add(core);
+    (strongTransport(line) ? strong : rest).push(line);
+  }
+
+  // Deal the non-CDN pool round-robin so every link gets a similar mix, then top each link up with
+  // CDN nodes (shared across links — they are the most reliable in Iran) to reach at least SUB_MIN.
+  const buckets = Array.from({ length: SUB_LINKS }, () => []);
+  [...strong, ...rest].forEach((line, i) => {
+    const b = buckets[i % SUB_LINKS];
+    if (b.length < SUB_MAX - 20) b.push(line);
+  });
+  const mine = buckets[n - 1];
+  const cdnShare = cdn.filter((_, i) => i % SUB_LINKS === n - 1);
+  const cdnOthers = cdn.filter((_, i) => i % SUB_LINKS !== n - 1);
+  const lines = [...cdnShare, ...mine];
+  while (lines.length < SUB_MIN && cdnOthers.length) lines.push(cdnOthers.shift());
+  if (!lines.length) return new Response('server list unavailable, try again shortly', { status: 502 });
+  return listResponse(lines.slice(0, SUB_MAX), `MolidoVPN ${n}`);
+}
+
+function listResponse(lines, title) {
+  const bytes = new TextEncoder().encode(lines.join('\n'));
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return new Response(btoa(bin), {
+    headers: {
+      'content-type': 'text/plain; charset=utf-8',
+      'profile-title': 'base64:' + btoa(title),
+      'profile-update-interval': '1',
+      'profile-web-page-url': 'https://hidooch980.github.io/mobin-vpn/',
+      'cache-control': 'public, max-age=300',
+      'access-control-allow-origin': '*',
+    },
+  });
+}
+
 async function iosRoute(url) {
   const get = (u) =>
     fetch(u, { cf: { cacheTtl: 300, cacheEverything: true } })
@@ -251,6 +325,7 @@ export default {
     if (url.pathname === '/scores') return scoresRoute(request, env, ctx);
     if (url.pathname.startsWith('/remote/')) return remoteRoute(url);
     if (url.pathname.startsWith('/app/')) return appRoute(url);
+    if (url.pathname.startsWith('/sub/')) return subRoute(url);
     if (url.pathname.startsWith('/lite') || url.pathname.startsWith('/ios') || url.pathname.startsWith('/hiddify'))
       return iosRoute(url);
     const sources = [FULL, MIRROR('sub_base64.txt')];
