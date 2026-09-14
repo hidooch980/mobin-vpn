@@ -90,52 +90,95 @@ footer a{color:var(--muted)}
   <!-- iPhone -->
   <section class="panel" id="ios" role="tabpanel" aria-labelledby="tab-ios">
     <div class="card">
-      <h3><span class="num">۱</span>یک برنامه‌ی رایگان نصب کنید</h3>
-      <p>MolidoVPN برای آیفون برنامه‌ی جداگانه ندارد؛ سرورهای ما داخل یکی از این برنامه‌های رایگان اجرا می‌شوند. <b>Hiddify</b> را پیشنهاد می‌کنیم.</p>
-      <a class="btn primary" href="https://apps.apple.com/search?term=Hiddify" rel="noopener">Hiddify <small>(پیشنهادی)</small></a>
-      <div class="row">
-        <a class="btn outline" href="https://apps.apple.com/search?term=Streisand" rel="noopener">Streisand</a>
-        <a class="btn outline" href="https://apps.apple.com/search?term=Karing" rel="noopener">Karing</a>
-      </div>
-      <p class="note">بعضی از این برنامه‌ها در App Store ایران نیستند. اگر پیدا نشد، با یک Apple ID با کشور دیگر (مثلاً ترکیه یا امارات) وارد App Store شوید.</p>
+      <h3><span class="num">۱</span>برنامه‌ی Hiddify را نصب کنید <span class="badge">پیشنهادی</span></h3>
+      <p>برای آیفون، سرورهای MolidoVPN داخل برنامه‌ی رایگان <b>Hiddify</b> اجرا می‌شوند.</p>
+      <a class="btn primary" href="https://apps.apple.com/search?term=Hiddify" rel="noopener">نصب Hiddify از App Store <small>(رایگان)</small></a>
+      <p class="note">اگر در App Store پیدا نشد، با یک Apple ID کشور دیگر (مثلاً ترکیه یا امارات) وارد شوید.</p>
     </div>
 
     <div class="card">
-      <h3><span class="num">۲</span>سرورها را با یک لمس اضافه کنید</h3>
-      <p>بعد از نصب، همین صفحه را در Safari باز کنید و دکمه‌ی برنامه‌ای که نصب کرده‌اید را بزنید. اگر پرسید «باز شود؟»، «Open» را بزنید.</p>
+      <h3><span class="num">۲</span>سرورها را اضافه کنید</h3>
+      <p>بعد از نصب، همین صفحه را در Safari باز کنید و این دکمه را بزنید. اگر پرسید «Open؟»، <b>Open</b> را بزنید.</p>
       <a class="btn primary" id="add-hiddify" href="#">افزودن به Hiddify</a>
-      <div class="row">
-        <a class="btn outline" id="add-streisand" href="#">افزودن به Streisand</a>
-        <a class="btn outline" id="add-karing" href="#">افزودن به Karing</a>
-      </div>
-      <p>دکمه کار نکرد؟ در بخش <a href="#subs">لینک‌های اشتراک</a> لینک را کپی کنید و در برنامه «+» ← «از کلیپ‌بورد» را بزنید.</p>
     </div>
 
     <div class="card">
       <h3><span class="num">۳</span>وصل شوید</h3>
       <ol>
-        <li>در برنامه، پروفایل <b>MolidoVPN</b> را انتخاب کنید.</li>
-        <li>در Hiddify حالت <b>«خودکار / Auto»</b> را انتخاب کنید تا خودش سرور سالم را پیدا کند و اگر قطع شد عوض کند.</li>
-        <li>دکمه‌ی اتصال را بزنید و درخواست افزودن VPN را «Allow» کنید.</li>
-        <li>اگر وصل نشد، بخش <a href="#help">اگر وصل نشد</a> را ببینید.</li>
+        <li>در Hiddify پروفایل <b>MolidoVPN</b> را انتخاب کنید.</li>
+        <li>حالت را روی <b>«خودکار / Auto»</b> بگذارید تا خودش سرور سالم را پیدا کند و اگر قطع شد عوض کند.</li>
+        <li>اگر در تنظیمات گزینه‌ی <b>Region: Iran</b> یا «Iran direct» هست، روشنش کنید تا سایت‌های ایرانی بدون VPN باز شوند.</li>
+        <li>دکمه‌ی بزرگ <b>Connect</b> را بزنید.</li>
+        <li>پیام افزودن VPN را <b>Allow</b> کنید (ممکن است رمز گوشی یا Face ID بخواهد).</li>
       </ol>
     </div>
 
     <div class="card">
-      <h3><span class="num">۴</span>برنامه‌های پشتیبان را هم نصب کنید</h3>
-      <p>تا هیچ‌وقت بی‌VPN نمانید، یکی دو برنامه‌ی دیگر هم داشته باشید. اگر یکی کار نکرد، بعدی را امتحان کنید:</p>
+      <h3><span class="num">۴</span>برنامه‌های جایگزین (همه رایگان)</h3>
+      <p>اگر Hiddify نصب نشد یا کار نکرد، یکی از این‌ها را نصب کنید و دکمه‌ی افزودن همان را بزنید.</p>
+      <div class="row">
+        <a class="btn outline sm" href="https://apps.apple.com/search?term=Streisand" rel="noopener">نصب Streisand</a>
+        <a class="btn primary sm" id="add-streisand" href="#">افزودن به Streisand</a>
+      </div>
+      <div class="row">
+        <a class="btn outline sm" href="https://apps.apple.com/search?term=Karing" rel="noopener">نصب Karing</a>
+        <a class="btn primary sm" id="add-karing" href="#">افزودن به Karing</a>
+      </div>
+      <div class="row">
+        <a class="btn outline sm" href="https://apps.apple.com/search?term=V2Box" rel="noopener">نصب V2Box</a>
+        <button class="btn primary sm" type="button" id="copy-v2box">کپی لینک برای V2Box</button>
+      </div>
+      <p>V2Box: لینک را کپی کنید ← در برنامه «+» ← <b>Import from clipboard</b>. در همه‌ی برنامه‌ها اگر دکمه کار نکرد، همین روش کپی را انجام دهید.</p>
+    </div>
+
+    <div class="card">
+      <h3>کدام لینک؟</h3>
       <ul>
-        <li><b>Psiphon</b> — خودش سرور پیدا می‌کند؛ وقتی همه‌چیز بسته است معمولاً وصل می‌شود.</li>
-        <li><b>1.1.1.1</b> (Cloudflare WARP) — یک دکمه؛ برای وب‌گردی و بازی.</li>
-        <li><b>Orbot</b> (Tor) — کندتر، ولی مقاوم‌ترین در برابر فیلتر (پل Snowflake را روشن کنید).</li>
-        <li><b>Karing</b> — لینک‌های اشتراک ما را در آن هم اضافه کنید.</li>
+        <li><b>/ios</b> — لینک اصلی آیفون. سرورهایی که از داخل ایران تست شده‌اند اول می‌آیند؛ حداکثر ۸۰ سرور تا حافظه‌ی آیفون پر نشود.</li>
+        <li><b>/hiddify</b> — همان به‌علاوه‌ی تونل‌های WARP (فقط برای Hiddify).</li>
+        <li><b>/sub/1 تا /sub/5</b> — فهرست‌های اضافه؛ ۲ یا ۳ تا را هم اضافه کنید تا اگر یکی از کار افتاد، بقیه کار کنند. همه در بخش <a href="#subs">لینک‌های اشتراک</a>.</li>
+      </ul>
+    </div>
+
+    <div class="card" style="border-color:var(--warn)">
+      <h3>⚠️ اگر سایتی مثل Gemini گفت «در کشور شما در دسترس نیست»</h3>
+      <p>یعنی از طریق <b>WARP یا 1.1.1.1</b> وصل شده‌اید که کشور خروجی‌اش ایران است. در Hiddify یک سرور <b>V2Ray/Reality</b> (نه WARP) انتخاب کنید و مطمئن شوید پرچم/IP نشان‌داده‌شده کشور دیگری است، نه ایران.</p>
+    </div>
+
+    <div class="card">
+      <h3>بدون برنامه، از طریق گوشی اندروید خانواده</h3>
+      <ol>
+        <li>روی گوشی اندروید: MolidoVPN را وصل کنید ← تنظیمات ← <b>«اشتراک با آیفون و لپ‌تاپ»</b> را روشن کنید.</li>
+        <li>هات‌اسپات (نقطه‌ی اتصال) اندروید را روشن کنید و آیفون را به آن وصل کنید.</li>
+        <li>در آیفون: Settings ← Wi-Fi ← ⓘ کنار همان شبکه ← <b>Configure Proxy</b> ← <b>Manual</b>.</li>
+        <li>Server = آی‌پی‌ای که روی کارت اندروید نوشته شده، Port = <b>8080</b> ← Save. (یا QR روی کارت اندروید را با دوربین آیفون اسکن کنید تا آدرس را ببینید.)</li>
+      </ol>
+      <p>لپ‌تاپ ویندوز هم همین‌طور: Settings ← Network ← Proxy ← Manual proxy ← همان IP و پورت 8080.</p>
+    </div>
+
+    <div class="card">
+      <h3>تونل‌های پشتیبان آیفون</h3>
+      <ul>
+        <li><b>Psiphon</b> — وقتی همه‌چیز بسته است؛ خودش راه پیدا می‌کند.</li>
+        <li><b>1.1.1.1</b> — برای وب‌گردی سریع؛ ولی کشور خروجی ایران است (Gemini و مانند آن باز نمی‌شوند).</li>
+        <li><b>Orbot</b> (Tor) — آخرین راه؛ کند ولی مقاوم (پل Snowflake را روشن کنید).</li>
       </ul>
       <div class="row">
         <a class="btn outline sm" href="https://apps.apple.com/search?term=Psiphon" rel="noopener">Psiphon</a>
         <a class="btn outline sm" href="https://apps.apple.com/search?term=1.1.1.1" rel="noopener">1.1.1.1</a>
         <a class="btn outline sm" href="https://apps.apple.com/search?term=Orbot" rel="noopener">Orbot</a>
-        <a class="btn outline sm" href="https://apps.apple.com/search?term=Karing" rel="noopener">Karing</a>
       </div>
+    </div>
+
+    <div class="card">
+      <h3>آیفون وصل نشد؟</h3>
+      <ol>
+        <li><b>به‌روزرسانی اشتراک</b> — در صفحه‌ی پروفایل‌ها صفحه را پایین بکشید یا دکمه‌ی فلش گرد را بزنید.</li>
+        <li><b>تست پینگ</b> — پینگ بگیرید و سروری با عدد سبز انتخاب کنید (نه timeout).</li>
+        <li><b>فهرست دیگر</b> — لینک <b>/sub/2</b> یا <b>/sub/3</b> را اضافه کنید.</li>
+        <li><b>App Store</b> — اگر برنامه پیدا نمی‌شود، Apple ID کشور دیگری لازم است.</li>
+        <li><b>DNS گیمینگ</b> فقط وقتی VPN خاموش است و روی Wi-Fi کار می‌کند (<a href="#gamedns">راهنما</a>).</li>
+      </ol>
     </div>
   </section>
 
@@ -171,11 +214,12 @@ footer a{color:var(--muted)}
     <div class="card">
       <h3>امکانات برنامه</h3>
       <ul>
-        <li><b>انتخاب و تعویض خودکار سرور</b></li>
-        <li>چند تونل: سرورهای SHARD CDN، WireGuard/MASQUE (Cloudflare WARP)، WARP-in-WARP، Psiphon و Tor</li>
-        <li>DNS خودکار یا DNS گیمینگ ایرانی (رادار گیم، الکترو، شکن، ۴۰۳)</li>
-        <li>اتصال خودکار بعد از روشن شدن گوشی</li>
-        <li>به‌روزرسانی از داخل برنامه · فارسی و انگلیسی</li>
+        <li><b>حالت خودکار:</b> همه‌ی تونل‌ها را تست می‌کند (SHARD، V2Ray، WireGuard، MASQUE، WoW، Psiphon، Tor) و از تونل‌هایی که خروجی‌شان ایران است دوری می‌کند</li>
+        <li>حالت سرورهای V2Ray · اسکن IP تمیز Cloudflare</li>
+        <li>سرور آماده‌به‌کار ضدقطعی · چندمسیره (اختیاری)</li>
+        <li>سایت‌های ایرانی مستقیم · DNS خودکار یا DNS گیمینگ ایرانی</li>
+        <li>تست سرعت · زمان‌بندی · پشتیبان‌گیری تنظیمات · «تست سرورها با اینترنت من»</li>
+        <li>ویجت صفحه‌ی اصلی · فارسی و انگلیسی</li>
       </ul>
       <p class="note">اگر نسخه‌ی قدیمی‌تر از ۲.۰.۴۶ دارید، یک بار نسخه‌ی جدید را از همین صفحه دستی نصب کنید (روی نسخه‌ی قبلی)؛ از آن به بعد به‌روزرسانی داخل برنامه انجام می‌شود.</p>
     </div>
@@ -210,10 +254,12 @@ footer a{color:var(--muted)}
     <div class="card">
       <h3>امکانات برنامه</h3>
       <ul>
-        <li>حالت‌ها: خودکار، V2Ray، WARP، Psiphon و Tor</li>
-        <li>پراکسی سیستم یا TUN (همه‌ی برنامه‌ها)</li>
-        <li>اتصال خودکار با روشن شدن ویندوز · DNS گیمینگ</li>
-        <li>به‌روزرسانی از داخل برنامه · فارسی و انگلیسی</li>
+        <li><b>حالت خودکار:</b> همه‌ی تونل‌ها را تست می‌کند (SHARD، V2Ray، WireGuard، MASQUE، WoW، Psiphon، Tor) و از تونل‌هایی که خروجی‌شان ایران است دوری می‌کند</li>
+        <li>حالت سرورهای V2Ray · اسکن IP تمیز Cloudflare</li>
+        <li>سرور آماده‌به‌کار ضدقطعی · چندمسیره (اختیاری)</li>
+        <li>سایت‌های ایرانی مستقیم · DNS خودکار یا DNS گیمینگ ایرانی</li>
+        <li>تست سرعت · زمان‌بندی · پشتیبان‌گیری تنظیمات · «تست سرورها با اینترنت من»</li>
+        <li>پراکسی سیستم یا TUN · آیکون کنار ساعت (tray) · فارسی و انگلیسی</li>
       </ul>
     </div>
   </section>
@@ -344,6 +390,7 @@ document.getElementById('add-hiddify').href = links.hiddify(HIDDIFY);
 document.getElementById('add-streisand').href = links.streisand(LITE);
 document.getElementById('add-karing').href = links.karing(LITE);
 document.getElementById('full-url').textContent = FULL;
+document.getElementById('copy-v2box').addEventListener('click', () => copy(LITE));
 
 // ---- toast + copy
 function toast(text) {
@@ -358,7 +405,7 @@ async function copy(text) {
 
 // ---- subscription cards
 const subs = [
-  { url: LITE, title: 'لینک آیفون', badge: 'پیشنهادی آیفون', desc: 'سرورهای CDN و TLS/Reality/QUIC، حداکثر ۸۰ سرور؛ سبک و مناسب آیفون.', apps: ['hiddify', 'streisand', 'karing', 'v2rayng'] },
+  { url: LITE, title: 'لینک آیفون', badge: 'پیشنهادی آیفون', desc: 'سرورهای تست‌شده از داخل ایران اول؛ حداکثر ۸۰ سرور، مناسب حافظه‌ی آیفون.', apps: ['hiddify', 'streisand', 'karing', 'v2rayng'] },
   { url: HIDDIFY, title: 'لینک Hiddify', badge: 'فقط Hiddify', desc: 'همان لینک آیفون به‌علاوه‌ی تونل‌های WARP.', apps: ['hiddify'] },
 ];
 for (let i = 1; i <= 5; i++) subs.push({ url: `${WORKER}/sub/${i}`, title: `لینک اشتراک ${fa(i)}`, desc: '۵۰ تا ۱۰۰ سرور، متفاوت با لینک‌های دیگر.', apps: ['hiddify', 'streisand', 'karing', 'v2rayng'] });
