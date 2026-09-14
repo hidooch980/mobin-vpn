@@ -177,7 +177,7 @@ footer a{color:var(--muted)}
         <li><b>تست پینگ</b> — پینگ بگیرید و سروری با عدد سبز انتخاب کنید (نه timeout).</li>
         <li><b>فهرست دیگر</b> — لینک <b>/sub/2</b> یا <b>/sub/3</b> را اضافه کنید.</li>
         <li><b>App Store</b> — اگر برنامه پیدا نمی‌شود، Apple ID کشور دیگری لازم است.</li>
-        <li><b>DNS گیمینگ</b> فقط وقتی VPN خاموش است و روی Wi-Fi کار می‌کند (<a href="#gamedns">راهنما</a>).</li>
+        <li><b>DNS گیمینگ</b> — با VPN روشن از Hiddify ← DNS ← Direct DNS؛ بدون برنامه فقط روی Wi-Fi با VPN خاموش (<a href="#gamedns">راهنما</a>).</li>
       </ol>
     </div>
   </section>
@@ -291,13 +291,25 @@ footer a{color:var(--muted)}
     <p class="note">در اندروید، DNS گیمینگ از اندروید ۱۳ به بالا کامل کار می‌کند؛ در نسخه‌های قدیمی‌تر برنامه خودکار DNS عادی را استفاده می‌کند.</p>
   </div>
   <div class="card">
+    <h3>DNS گیمینگ همراه با VPN روشن (وای‌فای و اینترنت همراه)</h3>
+    <p>با این برنامه‌ها سایت‌ها و سرورهای بازی ایرانی مستقیم و با DNS گیمینگ می‌روند و بقیه از VPN:</p>
+    <ul>
+      <li><b>آیفون — Hiddify:</b> Settings ← DNS ← «Direct DNS» = <code>10.202.10.10</code> (رادار) یا <code>78.157.42.100</code> (الکترو)، و Region = <b>Iran</b> / «bypass Iran» روشن.</li>
+      <li><b>آیفون — Karing:</b> Settings ← DNS ← DNS «Direct» همان آدرس‌ها + قانون (rule set) ایران.</li>
+      <li><b>اندروید — MolidoVPN:</b> تنظیمات ← DNS ← DNS گیمینگ (بیرون از تونل؛ اندروید ۱۳+).</li>
+      <li><b>اندروید — v2rayNG:</b> Settings ← «Domestic DNS» = <code>10.202.10.10</code> و مسیریابی «Bypass Iran». <b>Hiddify اندروید:</b> مثل آیفون.</li>
+      <li><b>ویندوز — MolidoVPN:</b> تنظیمات ← DNS ← DNS گیمینگ. <b>Hiddify ویندوز:</b> مثل آیفون.</li>
+    </ul>
+    <p class="note">نام دقیق منوها در نسخه‌های مختلف برنامه‌ها ممکن است کمی فرق کند. آیفون روی اینترنت همراه (بدون VPN) تنظیم DNS ندارد (محدودیت اپل)؛ فقط از طریق این برنامه‌ها یا DNS دستی وای‌فای.</p>
+  </div>
+  <div class="card">
     <h3>آیفون (بدون VPN، فقط برای بازی)</h3>
     <ol>
       <li>Settings ← Wi-Fi ← روی ⓘ کنار وای‌فای وصل‌شده بزنید.</li>
       <li>Configure DNS ← <b>Manual</b> ← DNSهای قبلی را پاک کنید و دو آدرس یکی از سرویس‌های بالا را اضافه کنید ← Save.</li>
       <li>برای برگشت: همان‌جا <b>Automatic</b> را انتخاب کنید.</li>
     </ol>
-    <p class="note">وقتی VPN روشن است، DNS دستی آیفون استفاده نمی‌شود. برای بازی‌هایی که با DNS گیمینگ باز می‌شوند، VPN را خاموش کنید.</p>
+    <p class="note">وقتی VPN روشن است، DNS دستی آیفون استفاده نمی‌شود؛ یا VPN را خاموش کنید یا از روش Hiddify/Karing بالا استفاده کنید.</p>
   </div>
   </section>
 
