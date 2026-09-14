@@ -51,8 +51,10 @@ const count = (body) => {
   return s.split('\n').filter((l) => /^[a-z0-9]+:\/\//i.test(l.trim())).length;
 };
 const lastRun = async (repo, wf) => {
-  const d = await json(`https://api.github.com/repos/hidooch980/${repo}/actions/workflows/${wf}/runs?per_page=5&status=completed`);
-  return d.workflow_runs.find((r) => r.conclusion === 'success') || d.workflow_runs[0];
+  // A run that is still going (e.g. waiting to schedule the next one) counts from when it started.
+  const d = await json(`https://api.github.com/repos/hidooch980/${repo}/actions/workflows/${wf}/runs?per_page=5`);
+  const r = d.workflow_runs.find((x) => x.conclusion === 'success' || x.status !== 'completed') || d.workflow_runs[0];
+  return { updated_at: r.status === 'completed' ? r.updated_at : r.created_at };
 };
 
 const checks = [
