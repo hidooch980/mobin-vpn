@@ -65,6 +65,23 @@ async function remoteRoute(url) {
   return new Response('file unavailable', { status: 502 });
 }
 
+// WARP device registration relay: api.cloudflareclient.com is often reset from Iran. Forwards the app's
+// registration POST unchanged (only a public key goes up; the private key never leaves the device).
+async function warpRegRoute(request) {
+  if (request.method !== 'POST') return new Response('method not allowed', { status: 405 });
+  const body = await request.text();
+  if (body.length > 2048) return new Response('bad request', { status: 400 });
+  const res = await fetch('https://api.cloudflareclient.com/v0a2158/reg', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'user-agent': 'okhttp/3.12.1', 'cf-client-version': 'a-6.10-2158' },
+    body,
+  });
+  return new Response(await res.text(), {
+    status: res.status,
+    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+  });
+}
+
 // Anonymous opt-in connection reports, aggregated per UTC day in D1. No IPs are stored.
 const CORS = {
   'access-control-allow-origin': '*',
@@ -378,6 +395,7 @@ export default {
     if (url.pathname === '/scores') return scoresRoute(request, env, ctx);
     if (url.pathname.startsWith('/remote/')) return remoteRoute(url);
     if (url.pathname.startsWith('/app/')) return appRoute(url);
+    if (url.pathname === '/warp/reg') return warpRegRoute(request);
     if (url.pathname.startsWith('/sub/')) return subRoute(url, env);
     if (url.pathname.startsWith('/lite') || url.pathname.startsWith('/ios') || url.pathname.startsWith('/hiddify'))
       return iosRoute(url, env);
