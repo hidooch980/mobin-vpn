@@ -85,7 +85,8 @@ jobs:
           path: dist/*
 
   android-smoke:
-    # Installs the universal APK on an emulator, launches it and fails the release on a crash.
+    # Installs the universal APK on an emulator, launches it, connects the VPN and loads a page through it.
+    # Any crash or failed connection stops the release.
     needs: android
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -117,7 +118,7 @@ jobs:
             adb shell pidof com.mobin.mobin_vpn || { echo "app is not running"; grep -A20 "FATAL EXCEPTION" logcat.txt | head -60; exit 1; }
             if grep -q "FATAL EXCEPTION" logcat.txt; then grep -A30 "FATAL EXCEPTION" logcat.txt | head -80; exit 1; fi
             echo "app launched and is still running after 25 s"
-            bash tools/connect-test.sh || echo "::warning::real connection test did not pass (release is not blocked by it)"
+            bash tools/connect-test.sh || { echo "::error::app did not connect and load a page through the tunnel"; exit 1; }
 
   windows:
     needs: test
