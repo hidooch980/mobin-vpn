@@ -16,8 +16,12 @@ http_check() { # prints the status line of a plain HTTP request made from the de
 connect_mode() { # mode
   local mode=$1
   echo "=== mode: $mode ==="
-  adb shell am start -n $PKG/com.msnguard.vpn.MainActivity --es molido_mode "$mode" >/dev/null
-  sleep 5
+  # Fresh process each time, so a stale tile state or a half-stopped service can't swallow the tap.
+  adb shell am force-stop $PKG
+  sleep 2
+  adb shell am start -W -n $PKG/com.msnguard.vpn.MainActivity --es molido_mode "$mode" >/dev/null
+  sleep 8
+  echo "saved mode: $(adb shell run-as $PKG cat shared_prefs/settings.xml 2>/dev/null | grep -o 'default_protocol">[^<]*' || echo 'n/a (release build)')"
   adb logcat -c
   adb shell cmd statusbar click-tile $TILE
   adb shell cmd statusbar collapse || true
@@ -27,7 +31,10 @@ connect_mode() { # mode
   done
   if ! tunnel_up; then
     echo "no tun0 after 180 s"
-    adb logcat -d | grep -iE "msnguard|aether|shard|vpn|MolidoGaming" | tail -60
+    pid=$(adb shell pidof $PKG | tr -d '\r')
+    echo "--- app pid: ${pid:-not running} ---"
+    if [ -n "$pid" ]; then adb logcat -d --pid="$pid" | tail -80; else adb logcat -d | tail -80; fi
+    adb shell dumpsys connectivity | grep -iE "VPN|tun0" | head -10
     return 1
   fi
   sleep 10
