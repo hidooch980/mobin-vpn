@@ -424,10 +424,15 @@ class _Facts extends StatelessWidget {
         );
     final ip = network.ip == null ? '—' : '${network.ip}${network.countryLabel.isEmpty ? '' : ' · ${network.countryLabel}'}';
     final lastMs = latency.isEmpty ? null : latency.last;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      decoration: BoxDecoration(
+        color: Palette.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Palette.border),
+      ),
       child: Column(children: [
-        Divider(color: Palette.border, height: 1),
         row(connected ? 'IP خروجی' : 'IP شما', ip),
         Divider(color: Palette.border, height: 1),
         row('شبکه', '${network.typeLabel} · ${network.providerLabel}'),
@@ -440,7 +445,6 @@ class _Facts extends StatelessWidget {
           row('تأخیر', lastMs == null ? 'در حال سنجش…' : '$lastMs ms',
               trailing: SizedBox(width: 90, height: 22, child: CustomPaint(painter: _LatencyGraph(latency, Palette.amber)))),
         ],
-        Divider(color: Palette.border, height: 1),
       ]),
     );
   }

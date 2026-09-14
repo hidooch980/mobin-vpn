@@ -30,34 +30,34 @@ class Palette {
     isDark = brightness == Brightness.dark;
     // Calm system-tool palette: green-grey canvas, soft green primary, brighter green when connected.
     if (isDark) {
-      bg = const Color(0xFF101411);
-      surface = const Color(0xFF171C18);
-      raised = const Color(0xFF222A24);
-      text = const Color(0xFFE8F1EA);
-      muted = const Color(0xFFB9C6BB);
-      accent = const Color(0xFFA4D8BB);
-      amber = const Color(0xFF67D89C);
-      mapDot = const Color(0x33A4D8BB);
+      bg = const Color(0xFF0A0F0C);
+      surface = const Color(0xFF111814);
+      raised = const Color(0xFF18221C);
+      text = const Color(0xFFE9F5EE);
+      muted = const Color(0xFF9CB3A6);
+      accent = const Color(0xFF3ECF8E);
+      amber = const Color(0xFF6EE7B7);
+      mapDot = const Color(0x333ECF8E);
       fill = const Color(0x0FFFFFFF);
       fillStrong = const Color(0x1AFFFFFF);
-      border = const Color(0xFF3B473E);
-      sheet = const Color(0xFF171C18);
-      cardTop = const Color(0xFF171C18);
-      cardBottom = const Color(0xFF171C18);
+      border = const Color(0xFF1F2B24);
+      sheet = const Color(0xFF111814);
+      cardTop = const Color(0xFF111814);
+      cardBottom = const Color(0xFF111814);
       shadow = const Color(0x00000000);
       auroraStrength = 0.0;
     } else {
-      bg = const Color(0xFFF4F7F4);
+      bg = const Color(0xFFEEF4F0);
       surface = const Color(0xFFFFFFFF);
-      raised = const Color(0xFFE7EEE9);
-      text = const Color(0xFF17201A);
-      muted = const Color(0xFF55635A);
-      accent = const Color(0xFF3E7F5C);
-      amber = const Color(0xFF238A55);
-      mapDot = const Color(0x2E3E7F5C);
-      fill = const Color(0x0A17201A);
-      fillStrong = const Color(0x1417201A);
-      border = const Color(0xFFCBD6CE);
+      raised = const Color(0xFFF3F8F5);
+      text = const Color(0xFF111A1F);
+      muted = const Color(0xFF4E6069);
+      accent = const Color(0xFF1B9E66);
+      amber = const Color(0xFF17A05E);
+      mapDot = const Color(0x2E1B9E66);
+      fill = const Color(0x0A111A1F);
+      fillStrong = const Color(0x14111A1F);
+      border = const Color(0xFFE0E6EA);
       sheet = const Color(0xFFFFFFFF);
       cardTop = const Color(0xFFFFFFFF);
       cardBottom = const Color(0xFFFFFFFF);
@@ -73,15 +73,15 @@ class Palette {
   static List<Color> forState(VpnState state) {
     if (isDark) {
       return switch (state) {
-        VpnState.connected => const [Color(0xFF67D89C), Color(0xFFA4D8BB), Color(0xFF3B473E)],
-        VpnState.connecting || VpnState.disconnecting => const [Color(0xFFA4D8BB), Color(0xFF67D89C), Color(0xFF3B473E)],
-        VpnState.disconnected => const [Color(0xFFA4D8BB), Color(0xFF67D89C), Color(0xFF3B473E)],
+        VpnState.connected => const [Color(0xFF6EE7B7), Color(0xFF3ECF8E), Color(0xFF1F2B24)],
+        VpnState.connecting || VpnState.disconnecting => const [Color(0xFFFFC46B), Color(0xFF3ECF8E), Color(0xFF1F2B24)],
+        VpnState.disconnected => const [Color(0xFF3ECF8E), Color(0xFF6EE7B7), Color(0xFF1F2B24)],
       };
     }
     return switch (state) {
-      VpnState.connected => const [Color(0xFF238A55), Color(0xFF3E7F5C), Color(0xFFCBD6CE)],
-      VpnState.connecting || VpnState.disconnecting => const [Color(0xFF3E7F5C), Color(0xFF238A55), Color(0xFFCBD6CE)],
-      VpnState.disconnected => const [Color(0xFF3E7F5C), Color(0xFF238A55), Color(0xFFCBD6CE)],
+      VpnState.connected => const [Color(0xFF17A05E), Color(0xFF1B9E66), Color(0xFFE0E6EA)],
+      VpnState.connecting || VpnState.disconnecting => const [Color(0xFFA96A08), Color(0xFF1B9E66), Color(0xFFE0E6EA)],
+      VpnState.disconnected => const [Color(0xFF1B9E66), Color(0xFF17A05E), Color(0xFFE0E6EA)],
     };
   }
 
