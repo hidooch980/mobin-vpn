@@ -57,9 +57,19 @@ connect_mode auto || exit 1
 disconnect || exit 1
 
 connect_mode gaming || exit 1
-line=$(adb logcat -d -s MolidoGaming:* | grep -v "^-" | tail -1)
+# The gaming race logs its winner once a node is chosen, which can come after tun0 is already up.
+line=""
+for i in $(seq 1 12); do
+  line=$(adb logcat -d | grep "MolidoGaming" | tail -1)
+  [ -n "$line" ] && break
+  sleep 5
+done
 if [ -z "$line" ]; then
   echo "gaming mode connected but did not log its node choice (MolidoGaming)"
+  echo "--- saved mode ---"
+  adb shell dumpsys activity services com.mobin.mobin_vpn | grep -iE "protocol|shard" | head -5
+  echo "--- logcat (app) ---"
+  adb logcat -d | grep -iE "MsnGuard|Shard|Gaming|Molido|AutoConnect|protocol" | tail -80
   exit 1
 fi
 echo "gaming choice: $line"
