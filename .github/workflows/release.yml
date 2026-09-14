@@ -90,6 +90,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: android
@@ -116,6 +117,7 @@ jobs:
             adb shell pidof com.mobin.mobin_vpn || { echo "app is not running"; grep -A20 "FATAL EXCEPTION" logcat.txt | head -60; exit 1; }
             if grep -q "FATAL EXCEPTION" logcat.txt; then grep -A30 "FATAL EXCEPTION" logcat.txt | head -80; exit 1; fi
             echo "app launched and is still running after 25 s"
+            bash tools/connect-test.sh || echo "::warning::real connection test did not pass (release is not blocked by it)"
 
   windows:
     needs: test

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>وضعیت MolidoVPN</title>
+<meta name="theme-color" content="#0A0F0C">
+<link rel="icon" href="logo.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;900&display=swap">
+<style>
+:root{ --bg:#EEF4F0; --surface:#FFFFFF; --ink:#111A1F; --muted:#4E6069; --line:#E0E6EA;
+       --good:#17A05E; --warn:#A96A08; --bad:#E04257; }
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#0A0F0C; --surface:#111814; --ink:#E9F5EE; --muted:#9CB3A6; --line:#1F2B24;
+         --good:#6EE7B7; --warn:#FFC46B; --bad:#FF6B7F; }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Vazirmatn,Tahoma,system-ui,sans-serif;line-height:1.8}
+.wrap{max-width:560px;margin:0 auto;padding:28px 18px 40px}
+h1{margin:0;font-size:24px;font-weight:900}
+.sum{margin:4px 0 18px;color:var(--muted);font-size:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:4px 16px}
+.item{display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--line)}
+.item:last-child{border-bottom:0}
+.dot{width:12px;height:12px;border-radius:50%;background:var(--muted);flex:none}
+.ok .dot{background:var(--good)} .warn .dot{background:var(--warn)} .bad .dot{background:var(--bad)}
+.name{flex:1;font-weight:700;font-size:15px}
+.val{color:var(--muted);font-size:13px;text-align:left}
+a{color:var(--muted)}
+footer{margin-top:18px;text-align:center;font-size:12.5px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>وضعیت سرویس</h1>
+  <p class="sum" id="sum">در حال بررسی…</p>
+  <div class="card" id="list"></div>
+  <footer><a href="./">بازگشت به صفحهٔ نصب</a> · هر ۵ دقیقه خودکار تازه می‌شود</footer>
+</div>
+<script>
+const H = 3600e3;
+const ago = (t) => {
+  const m = Math.round((Date.now() - new Date(t)) / 60000);
+  return m < 60 ? `${m} دقیقه پیش` : m < 1440 ? `${Math.round(m / 60)} ساعت پیش` : `${Math.round(m / 1440)} روز پیش`;
+};
+const json = (u) => fetch(u, { cache: 'no-store' }).then((r) => { if (!r.ok) throw r.status; return r.json(); });
+const text = (u) => fetch(u, { cache: 'no-store' }).then((r) => { if (!r.ok) throw r.status; return r.text(); });
+const count = (body) => {
+  let s = body.trim();
+  if (!s.includes('://')) { try { s = atob(s.replace(/\s/g, '')); } catch { return 0; } }
+  return s.split('\n').filter((l) => /^[a-z0-9]+:\/\//i.test(l.trim())).length;
+};
+const lastRun = async (repo, wf) => {
+  const d = await json(`https://api.github.com/repos/hidooch980/${repo}/actions/workflows/${wf}/runs?per_page=5&status=completed`);
+  return d.workflow_runs.find((r) => r.conclusion === 'success') || d.workflow_runs[0];
+};
+
+const checks = [
+  ['لینک اشتراک (همهٔ سرورها)', async () => {
+    const n = count(await text('https://molido-sub.hidooch980.workers.dev/'));
+    return [n >= 50 ? 'ok' : n > 0 ? 'warn' : 'bad', `${n} سرور`];
+  }],
+  ['لینک اشتراک آیفون (lite)', async () => {
+    const n = count(await text('https://molido-sub.hidooch980.workers.dev/lite'));
+    return [n > 0 ? 'ok' : 'bad', `${n} سرور`];
+  }],
+  ['جمع‌آوری و تست سرورها', async () => {
+    const r = await lastRun('vpn-sub', 'update.yml');
+    const age = Date.now() - new Date(r.updated_at);
+    return [age < H ? 'ok' : age < 6 * H ? 'warn' : 'bad', ago(r.updated_at)];
+  }],
+  ['سرورهای SHARD اندروید', async () => {
+    const body = await text('https://raw.githubusercontent.com/hidooch980/molidovpn-android/main/remote/shard-nodes.txt');
+    const all = count(body), ours = (body.match(/#MolidoVPN/g) || []).length;
+    return [all > 0 ? 'ok' : 'bad', `${all} سرور (${ours} از ما)`];
+  }],
+  ['همگام‌سازی لیست‌های اندروید', async () => {
+    const r = await lastRun('molidovpn-android', 'sync-lists.yml');
+    const age = Date.now() - new Date(r.updated_at);
+    return [age < 7 * H ? 'ok' : age < 24 * H ? 'warn' : 'bad', ago(r.updated_at)];
+  }],
+  ['آخرین نسخهٔ برنامه', async () => {
+    const r = await json('https://api.github.com/repos/hidooch980/mobin-vpn/releases/latest');
+    return [r.assets.length >= 5 ? 'ok' : 'warn', `${r.tag_name} · ${ago(r.published_at)}`];
+  }],
+];
+
+async function run() {
+  const list = document.getElementById('list');
+  list.innerHTML = '';
+  let bad = 0;
+  await Promise.all(checks.map(async ([name, fn]) => {
+    const row = document.createElement('div');
+    row.className = 'item';
+    row.innerHTML = '<span class="dot"></span><span class="name"></span><span class="val">…</span>';
+    row.querySelector('.name').textContent = name;
+    list.append(row);
+    try {
+      const [level, value] = await fn();
+      row.classList.add(level);
+      row.querySelector('.val').textContent = value;
+      if (level !== 'ok') bad++;
+    } catch {
+      row.classList.add('bad');
+      row.querySelector('.val').textContent = 'در دسترس نیست';
+      bad++;
+    }
+  }));
+  document.getElementById('sum').textContent =
+    (bad ? `${bad} مورد نیاز به بررسی دارد` : 'همه‌چیز سالم است ✅') + ` · ${new Date().toLocaleTimeString('fa-IR')}`;
+}
+run();
+setInterval(run, 5 * 60e3);
+</script>
+</body>
+</html>
