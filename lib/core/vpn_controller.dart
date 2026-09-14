@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'account.dart';
 import 'android_engine.dart';
 import 'app_log.dart';
+import 'cf_clean_ip.dart';
 import 'countries.dart';
 import 'free_routes.dart';
 import 'engine.dart';
@@ -176,6 +177,9 @@ class VpnController extends ChangeNotifier {
     // Pre-warm: keep delays of the top servers fresh while idle, so Connect starts with the fastest ones.
     Timer(const Duration(minutes: 1), () => _prewarm());
     Timer.periodic(const Duration(minutes: 20), (_) => _prewarm());
+    // Clean Cloudflare IP scan (Windows): checks the network every 5 min, rescans on change or after 30 min.
+    Timer(const Duration(seconds: 20), _cleanIpTick);
+    Timer.periodic(const Duration(minutes: 5), (_) => _cleanIpTick());
     if (Account.configured) Timer.periodic(const Duration(minutes: 1), (_) => _reportUsage());
   }
 
@@ -562,6 +566,14 @@ class VpnController extends ChangeNotifier {
 
   void _checkCancel() {
     if (_cancel) throw _Cancelled();
+  }
+
+  void _cleanIpTick() {
+    if (!Platform.isWindows || servers.isEmpty) return;
+    // Scans must measure the user's own network: not while connecting, and not through a TUN tunnel.
+    final direct = state == VpnState.disconnected || (state == VpnState.connected && !settings.tunMode);
+    if (!direct) return;
+    unawaited(CleanIp.tick(servers.where((s) => !_isWarp(s) && !FreeRoutes.isFree(s)).toList()));
   }
 
   /// When the last idle re-ping finished; its delays order the next connect.

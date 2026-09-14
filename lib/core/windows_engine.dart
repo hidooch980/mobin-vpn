@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_log.dart';
+import 'cf_clean_ip.dart';
 import 'engine.dart';
 import 'free_routes.dart';
 import 'network_info.dart';
@@ -134,6 +135,11 @@ class WindowsEngine implements VpnEngine {
       outbound = _core.outbound(server);
     }
     if (outbound == null) return false;
+    // Cloudflare CDN server: dial a clean edge IP found on this network (SNI/Host unchanged).
+    final original = outbound;
+    outbound = CleanIp.apply(outbound);
+    final cleanIp = identical(outbound, original) ? null : outbound['server'] as String?;
+    if (cleanIp != null) AppLog.add('windows: ${server.displayName} via clean Cloudflare IP $cleanIp');
     final port = options.localPort > 0 ? options.localPort : await SingboxCore.freePort();
     final api = await SingboxCore.freePort();
     final mtu = options.tunMode ? await NetworkInfo.tunMtu(options.tunMtu) : 1420;
@@ -146,7 +152,7 @@ class WindowsEngine implements VpnEngine {
         final o = _core.outbound(s);
         if (o == null) continue;
         backups.add(s);
-        backupOutbounds.add(o);
+        backupOutbounds.add(CleanIp.apply(o));
       }
     }
     _activeStandby = backups;
@@ -190,6 +196,7 @@ class WindowsEngine implements VpnEngine {
     if (!await _core.verifyThroughProxy(port, options.testUrl)) {
       AppLog.add('windows: no traffic through ${server.displayName}');
       await disconnect();
+      if (cleanIp != null) CleanIp.markBad(cleanIp);
       return false;
     }
     _proxyPort = port;
