@@ -61,7 +61,17 @@ adb shell appops set $PKG ACTIVATE_VPN allow
 adb shell cmd statusbar add-tile $TILE || true
 sleep 3
 
-connect_mode auto || exit 1
+shot() { mkdir -p shots; adb exec-out screencap -p > "shots/$1.png" || true; }
+
+adb shell am force-stop $PKG
+adb shell am start -W -n $PKG/com.msnguard.vpn.MainActivity >/dev/null
+sleep 8
+shot 1-home-disconnected
+
+connect_mode auto || { shot fail-auto; exit 1; }
+adb shell am start -W -n $PKG/com.msnguard.vpn.MainActivity >/dev/null
+sleep 4
+shot 2-home-connected
 disconnect || exit 1
 
 connect_mode gaming || exit 1
@@ -81,6 +91,9 @@ if [ -z "$line" ]; then
   exit 1
 fi
 echo "gaming choice: $line"
+adb shell am start -W -n $PKG/com.msnguard.vpn.MainActivity >/dev/null
+sleep 4
+shot 3-home-gaming-connected
 
 # Five timed requests through the tunnel; gaming should average under 1.5 s on the CI network.
 total=0; ok=0

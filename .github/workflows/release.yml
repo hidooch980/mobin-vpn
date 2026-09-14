@@ -119,6 +119,15 @@ jobs:
             if grep -q "FATAL EXCEPTION" logcat.txt; then grep -A30 "FATAL EXCEPTION" logcat.txt | head -80; exit 1; fi
             echo "app launched and is still running after 25 s"
             bash tools/connect-test.sh || { echo "::error::app did not connect and load a page through the tunnel"; exit 1; }
+      - name: Publish emulator screenshots (branch previews-android)
+        if: always()
+        run: |
+          [ -d shots ] || exit 0
+          cd shots
+          git init -q -b previews-android
+          git config user.name molido-bot && git config user.email molido-bot@users.noreply.github.com
+          git add . && git commit -qm "Android screenshots ${{ github.sha }}"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" previews-android
 
   windows:
     needs: test
@@ -272,6 +281,25 @@ jobs:
           "@
           Set-Content -Path molido.iss -Value $iss -Encoding UTF8
           & "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe" molido.iss
+      - name: Screenshots of the Windows app (branch previews-windows)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $exe = Get-ChildItem build/windows/x64/runner/Release -Filter *.exe | Where-Object { $_.Name -notmatch 'sing-box|psiphon|tor|lyrebird' } | Select-Object -First 1
+          New-Item -ItemType Directory -Force shots | Out-Null
+          $p = Start-Process $exe.FullName -PassThru
+          Start-Sleep 25
+          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          $bmp.Save("$PWD/shots/windows-home.png")
+          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          Set-Location shots
+          git init -q -b previews-windows
+          git config user.name molido-bot; git config user.email molido-bot@users.noreply.github.com
+          git add .; git commit -qm "Windows screenshots ${{ github.sha }}"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" previews-windows
       - uses: actions/upload-artifact@v4
         with:
           name: windows
