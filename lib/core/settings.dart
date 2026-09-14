@@ -34,7 +34,7 @@ class AppSettings extends ChangeNotifier {
   // Connection
   String androidCore = 'auto'; // auto | xray | singbox
   String connectMode = 'direct'; // direct (like v2rayNG, no ping) | test (ping first, pick fastest)
-  String transport = 'auto'; // auto (V2Ray servers, WARP, then Psiphon) | v2ray | warp | psiphon | tor
+  String transport = 'auto'; // auto (V2Ray servers, WARP, then Psiphon) | v2ray | warp | psiphon | tor | dns (Windows: gaming DNS only, no proxy)
   bool autoReconnect = true;
   bool connectOnLaunch = true; // "اتصال خودکار": connect once servers load (also after Windows startup)
   bool anonymousReports = false; // opt-in anonymous server quality reports

@@ -473,7 +473,7 @@ class _Status extends StatelessWidget {
     final connected = c.state == VpnState.connected;
     final detail = switch (c.state) {
       VpnState.connected => c.current == null
-          ? ''
+          ? (c.dnsOnlyNote ?? '')
           : '${c.activeMember != null ? '${serverTitle(c.current!)} · ${tr('مسیر فعال', 'active path')}: ${c.activeMember}' : c.switchedToBackup ? '${serverTitle(c.current!)} · ${tr('به سرور پشتیبان منتقل شد', 'switched to backup server')}' : serverTitle(c.current!)}'
               '${c.exitInIran ? ' · ${tr(VpnController.exitIranMessage, 'Exit is in Iran; some services (like Gemini) will not work')}' : ''}',
       VpnState.connecting => c.phase ?? '',
@@ -525,6 +525,7 @@ String _routeShort(String transport) => switch (transport) {
       'warp' => 'WARP',
       'psiphon' => 'Psiphon',
       'tor' => 'Tor',
+      'dns' => 'DNS',
       _ => tr('خودکار', 'Auto'),
     };
 
@@ -684,6 +685,8 @@ class _ModeChips extends StatelessWidget {
                 c.selectCountry(null);
               },
       ),
+      if (VpnController.transportAvailable('dns'))
+        _ModeChip(label: 'DNS', selected: transport == 'dns', onTap: locked ? null : () => setRoute('dns')),
       _ModeChip(label: 'V2Ray', selected: transport == 'v2ray', onTap: locked ? null : () => setRoute('v2ray')),
       _ModeChip(label: 'WARP', selected: transport == 'warp', onTap: locked ? null : () => setRoute('warp')),
       _ModeChip(label: 'Psiphon', selected: transport == 'psiphon', onTap: locked ? null : () => setRoute('psiphon')),

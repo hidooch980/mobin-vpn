@@ -140,6 +140,7 @@ class WindowsEngine implements VpnEngine {
   /// Quick check (one request, 4 s) so a frozen tunnel is noticed within a few seconds.
   @override
   Future<bool> healthCheck(EngineOptions options) async {
+    if (_dnsOnly) return _core.process != null && await _systemLookupOk();
     final port = _proxyPort;
     return port != null &&
         _core.process != null &&
@@ -415,6 +416,50 @@ class WindowsEngine implements VpnEngine {
     return true;
   }
 
+  /// DNS-only mode is running (no proxy; health = the system resolver answers).
+  bool _dnsOnly = false;
+
+  /// Resolves www.google.com through the system resolver (hijacked by the TUN to the gaming DNS).
+  static Future<bool> _systemLookupOk() async {
+    try {
+      final result = await InternetAddress.lookup('www.google.com').timeout(const Duration(seconds: 5));
+      return result.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// DNS-only mode for games: TUN without any proxy, all traffic direct, DNS answered by [dns].
+  /// Needs administrator like TUN mode. Returns true once a system DNS lookup succeeds.
+  Future<bool> connectDnsOnly(String dns, EngineOptions options) async {
+    if (!isAdmin) throw const AdminRequiredError();
+    await disconnect();
+    final api = await SingboxCore.freePort();
+    final mtu = await NetworkInfo.tunMtu(options.tunMtu);
+    AppLog.add('windows: dns-only mode via $dns, tun mtu $mtu');
+    final proc = await _core.start(_core.dnsOnlyConfig(dns, api, mtu: mtu));
+    unawaited(proc.stdout.drain<void>().whenComplete(() {
+      if (!identical(_core.process, proc)) return;
+      _core.process = null;
+      _dnsOnly = false;
+      _states.add(VpnState.disconnected);
+    }));
+    if (!await _core.waitApi(api, stop: isCancelled)) {
+      AppLog.add('windows: dns-only core did not start (see sing-box lines above)');
+      await disconnect();
+      return false;
+    }
+    _api = api;
+    _dnsOnly = true;
+    if (!await _systemLookupOk()) {
+      AppLog.add('windows: dns-only lookup of www.google.com failed');
+      await disconnect();
+      return false;
+    }
+    unawaited(_core.streamTraffic(api, _traffic));
+    return true;
+  }
+
   Future<void> _releaseProxy() async {
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool(_proxyOwnedKey) ?? false) {
@@ -430,6 +475,7 @@ class WindowsEngine implements VpnEngine {
     _activeStandby = const [];
     _activeIndex = 0;
     _multiPath = false;
+    _dnsOnly = false;
     await _releaseProxy();
     await _core.stop();
     await _free.stop();

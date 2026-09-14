@@ -369,6 +369,9 @@ class VpnController extends ChangeNotifier {
   /// The connected route exits in Iran (WARP exits in the user's own country): some services will not work.
   bool exitInIran = false;
 
+  /// Status line while DNS-only mode is connected, else null.
+  String? dnsOnlyNote;
+
   /// Persian warning for [exitInIran]; the UI shows its own English text.
   static const exitIranMessage = 'خروجی ایران است؛ بعضی سرویس‌ها (مثل Gemini) کار نمی‌کنند';
 
@@ -440,6 +443,7 @@ class VpnController extends ChangeNotifier {
   /// The UI uses this instead of a hard-coded "coming soon" flag.
   static bool transportAvailable(String t) => switch (t) {
         'psiphon' || 'tor' => Platform.isAndroid || Platform.isWindows,
+        'dns' => Platform.isWindows,
         _ => true,
       };
 
@@ -1003,6 +1007,32 @@ class VpnController extends ChangeNotifier {
         AppLog.add('vpn permission: ${granted ? 'granted' : 'denied'}');
         if (!granted) throw const PermissionDeniedError();
       }
+      // DNS-only mode (games): no proxy, only DNS through the chosen Iranian gaming DNS.
+      if (settings.transport == 'dns' && only == null) {
+        if (eng is! WindowsEngine) throw const _UserError('حالت DNS فقط در ویندوز در دسترس است.');
+        final preset = AppSettings.gamingDnsPresets[settings.dnsPreset] ?? AppSettings.gamingDnsPresets['radar']!;
+        final (name, address) = preset;
+        phase = 'راه‌اندازی DNS گیمینگ $name…';
+        notifyListeners();
+        try {
+          if (!await eng.connectDnsOnly(address, options)) {
+            _checkCancel();
+            throw _UserError('DNS گیمینگ $name فعال نشد (نام www.google.com پاسخ نگرفت). جزئیات در گزارش خطا.');
+          }
+        } on AdminRequiredError {
+          throw const _UserError(
+              'حالت DNS به TUN و دسترسی Administrator نیاز دارد. از تنظیمات «اجرای دوباره به‌عنوان ادمین» را بزنید.');
+        }
+        _checkCancel();
+        dnsOnlyNote = 'DNS گیمینگ فعال است: $name';
+        current = null;
+        currentDelay = null;
+        connectedAt = DateTime.now();
+        state = VpnState.connected;
+        phase = null;
+        notifyListeners();
+        return;
+      }
       if (servers.isEmpty && only == null) await refresh();
       if (settings.warp && options.warp == null) {
         phase = 'ساخت هویت Cloudflare WARP…';
@@ -1239,6 +1269,7 @@ class VpnController extends ChangeNotifier {
     switchedToBackup = false;
     activeMember = null;
     exitInIran = false;
+    dnsOnlyNote = null;
     traffic = const TrafficStat();
     phase = null;
     progressDone = progressTotal = 0;

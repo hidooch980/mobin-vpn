@@ -438,6 +438,48 @@ class SingboxCore {
         },
       };
 
+  /// DNS-only mode (Windows TUN, games): no proxy at all. Every connection leaves directly; only DNS queries
+  /// are hijacked and answered by the Iranian gaming DNS [dns] (queried directly, no detour).
+  Json dnsOnlyConfig(String dns, int api, {int mtu = 1420}) => {
+        'log': {'level': 'warn'},
+        'dns': {
+          'servers': [
+            {'type': 'udp', 'tag': 'gaming', 'server': dns},
+            {'type': 'local', 'tag': 'local'},
+          ],
+          'final': 'gaming',
+          'strategy': 'prefer_ipv4',
+        },
+        'inbounds': [
+          {
+            'type': 'tun',
+            'tag': 'tun',
+            'interface_name': 'MobinVPN',
+            'address': ['172.19.0.1/30', 'fdfe:dcba:9876::1/126'],
+            'mtu': mtu,
+            'auto_route': true,
+            'strict_route': false,
+            'stack': 'mixed',
+          },
+        ],
+        'outbounds': [
+          {'type': 'direct', 'tag': 'direct'},
+        ],
+        'route': {
+          'rules': [
+            {'action': 'sniff'},
+            {'protocol': 'dns', 'action': 'hijack-dns'},
+            {'port': 53, 'action': 'hijack-dns'},
+          ],
+          'final': 'direct',
+          if (detectInterface) 'auto_detect_interface': true,
+          'default_domain_resolver': 'local',
+        },
+        'experimental': {
+          'clash_api': {'external_controller': '127.0.0.1:$api'},
+        },
+      };
+
   /// Helper relay: a local mixed (HTTP+SOCKS) proxy on [port] whose traffic all leaves through [outbound]
   /// (without tag). Used as Psiphon's WARP upstream and to register WARP through a V2Ray server.
   Json relayConfig(Json outbound, int port, int api) => {
