@@ -46,10 +46,15 @@ class Updater {
     final installed = await installedVersion();
     UpdateInfo? latest;
     try {
-      latest = await _fromApi(installed, proxy);
+      latest = await _fromApi(installed, proxy, _mirrorApi);
     } catch (e) {
-      AppLog.add('update: GitHub API failed ($e), trying the releases page');
-      latest = await _fromRedirect(proxy);
+      AppLog.add('update: mirror failed ($e), trying the GitHub API');
+      try {
+        latest = await _fromApi(installed, proxy, 'https://api.github.com/repos/$_repo/releases/latest');
+      } catch (e) {
+        AppLog.add('update: GitHub API failed ($e), trying the releases page');
+        latest = await _fromRedirect(proxy);
+      }
     }
     if (latest == null) return null;
     final newer = isNewer(latest.version, installed);
@@ -57,10 +62,13 @@ class Updater {
     return newer ? latest : null;
   }
 
-  Future<UpdateInfo?> _fromApi(String installed, String? proxy) async {
+  /// Our Cloudflare worker: same JSON as the GitHub API, download links served through the worker.
+  static const _mirrorApi = 'https://molido-sub.hidooch980.workers.dev/app/latest.json';
+
+  Future<UpdateInfo?> _fromApi(String installed, String? proxy, String url) async {
     final client = _client(proxy);
     try {
-      final req = await client.getUrl(Uri.parse('https://api.github.com/repos/$_repo/releases/latest'));
+      final req = await client.getUrl(Uri.parse(url));
       req.headers
         ..set(HttpHeaders.userAgentHeader, 'MobinVPN/$installed')
         ..set(HttpHeaders.acceptHeader, 'application/vnd.github+json');
