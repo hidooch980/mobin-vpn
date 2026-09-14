@@ -519,8 +519,7 @@ class _LocationCard extends StatelessWidget {
     final title = current != null ? serverTitle(current) : (_serverless(transport) ? _routeLabel(transport) : locationLabel(c));
     final subtitle = current != null
         ? '${tr('سرور خروجی', 'Exit server')} · ${current.protocolLabel}'
-        : '${tr('مسیر', 'Route')}: ${_routeLabel(transport)}'
-            '${c.isGaming ? tr(' · پینگ پایدار برای بازی', ' · stable ping for gaming') : ''}';
+        : '${tr('مسیر', 'Route')}: ${_routeLabel(transport)}';
     return AppCard(
       onTap: locked ? null : () => showLocationSheet(context, c),
       padding: const EdgeInsetsDirectional.fromSTEB(16, 14, 14, 14),
@@ -547,7 +546,7 @@ class _LocationCard extends StatelessWidget {
   }
 }
 
-/// Mode chips (Auto, Gaming) followed by route chips (V2Ray, WARP, Psiphon, Tor).
+/// Auto chip followed by route chips (V2Ray, WARP, Psiphon, Tor).
 class _ModeChips extends StatelessWidget {
   const _ModeChips({required this.controller});
 
@@ -559,10 +558,7 @@ class _ModeChips extends StatelessWidget {
     final locked = c.state != VpnState.disconnected;
     final transport = c.settings.transport;
 
-    void setRoute(String value) {
-      if (_serverless(value) && c.isGaming) c.selectCountry(null);
-      c.settings.update((s) => s.transport = value);
-    }
+    void setRoute(String value) => c.settings.update((s) => s.transport = value);
 
     Widget chip(IconData icon, String label, bool selected, VoidCallback onTap) => Padding(
           padding: const EdgeInsetsDirectional.only(end: 8),
@@ -575,10 +571,6 @@ class _ModeChips extends StatelessWidget {
         chip(Icons.auto_awesome_rounded, tr('خودکار', 'Auto'), transport == 'auto' && c.selectedCountry == null, () {
           if (transport != 'auto') c.settings.update((s) => s.transport = 'auto');
           c.selectCountry(null);
-        }),
-        chip(Icons.sports_esports_rounded, tr('گیمینگ', 'Gaming'), c.isGaming, () {
-          if (_serverless(transport)) c.settings.update((s) => s.transport = 'auto');
-          c.selectCountry(VpnController.gamingMode);
         }),
         Container(
           width: 1,

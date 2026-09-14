@@ -265,13 +265,6 @@ class SettingsScreen extends StatelessWidget {
 
             const SectionHeader('DNS'),
             CardGroup(children: [
-              if (controller.isGaming && s.dnsPreset == 'auto')
-                SettingRow(
-                  icon: Icons.sports_esports_outlined,
-                  title: tr('پیشنهاد برای حالت گیمینگ', 'Tip for gaming mode'),
-                  subtitle: tr('برای پینگ کمتر به سرورهای بازی ایرانی، یکی از «DNS گیمینگ» پایین را انتخاب کنید.',
-                      'For lower ping to Iranian game servers, pick one of the gaming DNS options below.'),
-                ),
               ChoiceSettingRow<String>(
                 icon: Icons.dns_outlined,
                 title: 'DNS',

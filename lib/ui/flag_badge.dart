@@ -40,12 +40,6 @@ class FlagBadge extends StatelessWidget {
         Icon(Icons.bookmark_added_rounded, color: Colors.white, size: size * 0.5),
       );
     }
-    if (code == 'GAME') {
-      return _circle(
-        const [Color(0xFFF43F5E), Color(0xFFF59E0B)],
-        Icon(Icons.sports_esports_rounded, color: Colors.white, size: size * 0.52),
-      );
-    }
     if (!Platform.isWindows) {
       return _circle(
         [Palette.border, Palette.fill],

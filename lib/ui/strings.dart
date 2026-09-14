@@ -44,7 +44,7 @@ const Map<String, String> _enCountries = {
   'SA': 'Saudi Arabia', 'SC': 'Seychelles', 'SE': 'Sweden', 'SG': 'Singapore', 'SI': 'Slovenia',
   'SK': 'Slovakia', 'TH': 'Thailand', 'TR': 'Turkey', 'TW': 'Taiwan', 'UA': 'Ukraine',
   'US': 'United States', 'VN': 'Vietnam', 'ZA': 'South Africa',
-  'ZZ': 'My configs', 'UN': 'Unknown', 'WARP': 'Cloudflare WARP', 'FAV': 'Favorites', 'GAME': 'Gaming',
+  'ZZ': 'My configs', 'UN': 'Unknown', 'WARP': 'Cloudflare WARP', 'FAV': 'Favorites',
 };
 
 /// Country name for [code]; [faName] is the Persian name the core already computed.

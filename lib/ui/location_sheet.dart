@@ -20,7 +20,6 @@ Future<void> showLocationSheet(BuildContext context, VpnController controller) {
 String locationLabel(VpnController c) => switch (c.selectedCountry) {
       null => tr('هوشمند', 'Smart'),
       VpnController.favoritesMode => tr('علاقه‌مندی‌ها', 'Favorites'),
-      VpnController.gamingMode => tr('حالت گیمینگ', 'Gaming mode'),
       final String code => countryText(code, c.countries.where((g) => g.code == code).firstOrNull?.name ?? code),
     };
 
@@ -39,7 +38,7 @@ class _LocationSheetState extends State<_LocationSheet> {
   void _pick(String? code) {
     Navigator.of(context).pop();
     final c = widget.controller;
-    // Gaming and countries need the V2Ray server list; a serverless route (WARP only) would ignore them.
+    // Countries and favorites need the V2Ray server list; a serverless route (WARP only) would ignore them.
     if (code != null && (c.settings.transport == 'warp' || c.settings.transport == 'psiphon' || c.settings.transport == 'tor')) {
       c.settings.update((x) => x.transport = 'auto');
     }
@@ -106,14 +105,6 @@ class _LocationSheetState extends State<_LocationSheet> {
                         subtitle: tr('اتصال خودکار به سریع‌ترین سرور برای اینترنت شما', 'Connects to the fastest server for your internet'),
                         selected: c.selectedCountry == null,
                         onTap: () => _pick(null),
-                      ),
-                      _Tile(
-                        code: VpnController.gamingMode,
-                        title: tr('حالت گیمینگ', 'Gaming mode'),
-                        subtitle: tr('کمترین و پایدارترین پینگ از سرورهای نزدیک؛ مناسب بازی‌های آنلاین',
-                            'Lowest, most stable ping from nearby servers; for online games'),
-                        selected: c.selectedCountry == VpnController.gamingMode,
-                        onTap: () => _pick(VpnController.gamingMode),
                       ),
                       if (c.settings.favorites.isNotEmpty)
                         _Tile(

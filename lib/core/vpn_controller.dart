@@ -66,21 +66,11 @@ class VpnController extends ChangeNotifier {
   /// Country code given to user-imported configs (shown as "کانفیگ‌های من").
   static const manualCode = 'ZZ';
 
-  /// Pseudo location: low, stable ping from servers geographically close to Iran.
-  static const gamingMode = 'GAME';
-  static const _nearIran = [
-    'TR', 'AE', 'AM', 'GE', 'AZ', 'QA', 'OM', 'BH', 'SA', 'KZ', 'CY', 'RU', 'BG', 'RO', 'GR', 'UA',
-    'DE', 'AT', 'NL', 'FR', 'IT', 'PL', 'FI', 'SE', 'CH', 'GB', 'ES',
-  ];
-  static const _gamingRefine = 8, _gamingRounds = 2;
-
   /// Direct mode tries at most this many servers before giving up.
   static const _directAttempts = 6;
 
   /// Smart mode stops pinging after this many responsive servers (Android pings one by one, so stop at the first).
   static int get _enoughGood => Platform.isAndroid ? 1 : 3;
-
-  bool get isGaming => selectedCountry == gamingMode;
 
   SubscriptionData? _data;
   List<Server> servers = const [];
@@ -150,6 +140,11 @@ class VpnController extends ChangeNotifier {
     });
     final prefs = await SharedPreferences.getInstance();
     selectedCountry = prefs.getString(_countryKey);
+    // The removed gaming mode was stored as 'GAME': fall back to automatic.
+    if (selectedCountry == 'GAME') {
+      selectedCountry = null;
+      await prefs.remove(_countryKey);
+    }
     try {
       await engine.init();
       AppLog.add('engine ready (${Platform.operatingSystem} ${Platform.operatingSystemVersion})');
@@ -167,7 +162,7 @@ class VpnController extends ChangeNotifier {
     }
     if (!ready.isCompleted) ready.complete();
     unawaited(_loadScores());
-    // Auto-connect uses the normal connect path, so the selected location (gaming, favorites, country) is respected.
+    // Auto-connect uses the normal connect path, so the selected location (favorites, country) is respected.
     if (settings.connectOnLaunch && servers.isNotEmpty && state == VpnState.disconnected) {
       AppLog.add('auto-connect on launch (mode=${selectedCountry ?? 'auto'})');
       unawaited(connect());
@@ -329,7 +324,6 @@ class VpnController extends ChangeNotifier {
     countries = groups.values.toList();
     if (selectedCountry != null &&
         selectedCountry != favoritesMode &&
-        selectedCountry != gamingMode &&
         !groups.containsKey(selectedCountry)) {
       selectedCountry = null;
     }
@@ -515,30 +509,6 @@ class VpnController extends ChangeNotifier {
     return pool;
   }
 
-  /// Gaming: re-test the fastest few and rank by average + jitter, not a single lucky ping.
-  Future<List<int>> _gamingScores(List<Server> pool, List<int> measured, List<int> ranked, EngineOptions options) async {
-    final top = ranked.take(_gamingRefine).toList();
-    final samples = {for (final i in top) i: [measured[i]]};
-    for (var round = 0; round < _gamingRounds; round++) {
-      _checkCancel();
-      phase = 'سنجش پایداری پینگ برای بازی (${round + 1}/$_gamingRounds)';
-      notifyListeners();
-      final again = await engine.pingAll([for (final i in top) pool[i]], options, isCancelled: () => _cancel);
-      for (var k = 0; k < top.length; k++) {
-        samples[top[k]]!.add(again[k]);
-      }
-    }
-    final scores = List<int>.filled(pool.length, -1);
-    for (final e in samples.entries) {
-      final ok = e.value.where((d) => d > 0).toList();
-      if (ok.length < e.value.length) continue; // any lost probe = unstable for games
-      final avg = ok.reduce((a, b) => a + b) ~/ ok.length;
-      final jitter = ok.reduce((a, b) => a > b ? a : b) - ok.reduce((a, b) => a < b ? a : b);
-      scores[e.key] = avg + jitter * 2;
-    }
-    return scores;
-  }
-
   Future<List<Server>> _candidates() async {
     final List<Server> pool;
     final country = selectedCountry;
@@ -547,14 +517,6 @@ class VpnController extends ChangeNotifier {
       final favorites = servers.where((s) => settings.favorites.contains(s.uri)).toList();
       final healthy = favorites.where((s) => !_isBad(s)).toList();
       return healthy.isEmpty ? favorites : healthy;
-    }
-    if (country == gamingMode) {
-      final near = [
-        for (final code in _nearIran) ...countries.where((g) => g.code == code),
-      ];
-      final pool = _roundRobin(near.isEmpty ? countries : near, size);
-      final healthy = pool.where((s) => !_isBad(s)).toList();
-      return healthy.isEmpty ? pool : healthy;
     }
     if (country != null) {
       pool = servers.where((s) => s.countryCode == country).take(_countryPoolSize).toList();
@@ -648,7 +610,7 @@ class VpnController extends ChangeNotifier {
 
       // Fast path like v2rayNG: reconnect straight to the last working server, no ping round.
       final last = (await SharedPreferences.getInstance()).getString(await _networkServerKey());
-      if (only == null && !isGaming && pool.isNotEmpty && pool.first.uri == last) {
+      if (only == null && pool.isNotEmpty && pool.first.uri == last) {
         final server = pool.first;
         phase = 'اتصال سریع به ${server.displayName}';
         notifyListeners();
@@ -688,7 +650,7 @@ class VpnController extends ChangeNotifier {
         throw const _UserError('این سرور وصل نشد. سرور دیگری را امتحان کنید.');
       }
 
-      if (!isGaming) {
+      {
         // Direct first (like v2rayNG): no ping round, try servers in order until one really carries traffic.
         final tried = pool.take(_directAttempts).toList();
         for (final server in tried) {
@@ -722,7 +684,7 @@ class VpnController extends ChangeNotifier {
       notifyListeners();
       AppLog.add('connect: mode=${selectedCountry ?? 'auto'} pool=${pool.length} platform=${Platform.operatingSystem}');
       // Smart/country modes stop testing once a few good servers are found — much faster, especially on Android.
-      final canStopEarly = only == null && !isGaming;
+      final canStopEarly = only == null;
       var good = 0;
       final measured = await engine.pingAll(
         pool,
@@ -753,11 +715,6 @@ class VpnController extends ChangeNotifier {
           final byScore = score(b).compareTo(score(a));
           return byScore != 0 ? byScore : measured[a].compareTo(measured[b]);
         });
-      if (only == null && isGaming && ranked.length > 1) {
-        final scores = await _gamingScores(pool, measured, ranked, options);
-        final stable = [for (final i in ranked) if (scores[i] > 0) i]..sort((a, b) => scores[a].compareTo(scores[b]));
-        if (stable.isNotEmpty) ranked = stable;
-      }
       if (ranked.isEmpty) {
         // A failed ping test is not proof the server is dead (the test URL may be blocked): try connecting anyway.
         AppLog.add('ping: nothing responded, trying direct connection to the first servers');
