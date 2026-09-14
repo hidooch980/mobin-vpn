@@ -1,0 +1,100 @@
+name: Health alert (Telegram)
+
+# Checks the same things as site/status.html and sends a Telegram message when something is wrong.
+# Needs two repository secrets (Settings → Secrets and variables → Actions):
+#   TELEGRAM_BOT_TOKEN  – from @BotFather
+#   TELEGRAM_CHAT_ID    – your chat id (e.g. from @userinfobot)
+# Without them the job only prints the report.
+on:
+  schedule:
+    - cron: '23 */2 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check service health
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python3 - <<'PY'
+          import base64, json, os, subprocess, time, urllib.parse, urllib.request
+          from datetime import datetime, timezone
+
+          W = "https://molido-sub.hidooch980.workers.dev"
+          problems, lines = [], []
+
+          def get(url, timeout=40):
+              req = urllib.request.Request(url, headers={"User-Agent": "molido-health"})
+              return urllib.request.urlopen(req, timeout=timeout).read().decode("utf-8", "ignore")
+
+          def count(body):
+              t = body.strip()
+              if "://" not in t:
+                  try:
+                      t = base64.b64decode(t + "=" * (-len(t) % 4)).decode("utf-8", "ignore")
+                  except Exception:
+                      return 0
+              return sum(1 for l in t.splitlines() if "://" in l)
+
+          for path, minimum in [("/", 100), ("/ios", 20), ("/sub/1", 50), ("/sub/3", 50), ("/sub/5", 50)]:
+              try:
+                  n = count(get(W + path))
+              except Exception as e:
+                  n = 0
+              lines.append(f"{path}: {n}")
+              if n < minimum:
+                  problems.append(f"لینک {path} فقط {n} کانفیگ دارد")
+
+          try:
+              shard = get("https://raw.githubusercontent.com/hidooch980/molidovpn-android/main/remote/shard-nodes.txt")
+              n = sum(1 for l in shard.splitlines() if "://" in l)
+              lines.append(f"SHARD: {n}")
+              if n < 20:
+                  problems.append(f"سرورهای SHARD اندروید کم است ({n})")
+          except Exception:
+              problems.append("لیست SHARD اندروید در دسترس نیست")
+
+          def age_hours(repo, wf):
+              out = subprocess.run(["gh", "api", f"repos/hidooch980/{repo}/actions/workflows/{wf}/runs?per_page=5"],
+                                   capture_output=True, text=True).stdout
+              runs = json.loads(out or "{}").get("workflow_runs", [])
+              for r in runs:
+                  if r.get("conclusion") == "success" or r.get("status") != "completed":
+                      ts = r["updated_at"] if r.get("status") == "completed" else r["created_at"]
+                      return (datetime.now(timezone.utc) - datetime.fromisoformat(ts.replace("Z", "+00:00"))).total_seconds() / 3600
+              return None
+
+          for repo, wf, limit, name in [("vpn-sub", "update.yml", 2, "جمع‌آوری سرورها"),
+                                        ("molidovpn-android", "sync-lists.yml", 8, "همگام‌سازی لیست اندروید")]:
+              h = age_hours(repo, wf)
+              lines.append(f"{name}: {'?' if h is None else f'{h:.1f}h'}")
+              if h is None or h > limit:
+                  problems.append(f"{name} {'اجرا نشده' if h is None else f'{h:.0f} ساعت است اجرا نشده'}")
+
+          try:
+              rel = json.loads(get(W + "/app/latest.json"))
+              lines.append(f"release: {rel.get('tag_name')}")
+              if len(rel.get("assets", [])) < 5:
+                  problems.append("فایل‌های آخرین نسخه ناقص است")
+          except Exception:
+              problems.append("مسیر به‌روزرسانی برنامه (worker /app) جواب نمی‌دهد")
+
+          print("\n".join(lines))
+          print("problems:", problems)
+          token, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
+          if problems and token and chat:
+              text = "⚠️ MolidoVPN\n" + "\n".join("• " + p for p in problems) + "\n\nhttps://hidooch980.github.io/mobin-vpn/status.html"
+              data = urllib.parse.urlencode({"chat_id": chat, "text": text}).encode()
+              urllib.request.urlopen(f"https://api.telegram.org/bot{token}/sendMessage", data=data, timeout=30)
+              print("telegram alert sent")
+          elif problems:
+              print("problems found, but Telegram secrets are not set")
+          PY
