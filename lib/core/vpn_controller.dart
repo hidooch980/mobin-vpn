@@ -17,6 +17,7 @@ import 'reports.dart';
 import 'server.dart';
 import 'settings.dart';
 import 'subscription.dart';
+import 'udp_probe.dart';
 import 'update_notifier.dart';
 import 'updater.dart';
 import 'usage_stats.dart';
@@ -590,6 +591,7 @@ class VpnController extends ChangeNotifier {
     final direct = state == VpnState.disconnected || (state == VpnState.connected && !settings.tunMode);
     if (!direct) return;
     unawaited(CleanIp.tick(servers.where((s) => !_isWarp(s) && !FreeRoutes.isFree(s)).toList()));
+    unawaited(UdpProbe.probe());
   }
 
   /// When the last idle re-ping finished; its delays order the next connect.
@@ -753,6 +755,15 @@ class VpnController extends ChangeNotifier {
         }
       }
       if (pool.isEmpty) throw const _UserError('سروری برای این موقعیت پیدا نشد.');
+      // UDP is dropped on this network: skip Hysteria2/TUIC/WireGuard/WARP in automatic selection.
+      if (only == null &&
+          (settings.transport == 'auto' || settings.transport == 'v2ray') &&
+          UdpProbe.blocked &&
+          pool.any((s) => !UdpProbe.udpOnly(s))) {
+        final before = pool.length;
+        pool.removeWhere(UdpProbe.udpOnly);
+        AppLog.add('connect: UDP blocked here, skipped ${before - pool.length} UDP-only routes');
+      }
 
       // Fast path like v2rayNG: reconnect straight to the last working server, no ping round.
       final last = await _lastWinner();
