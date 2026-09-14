@@ -381,6 +381,19 @@ class SettingsScreen extends StatelessWidget {
                 subtitle: tr('جزئیات آخرین اتصال‌ها؛ کپی کنید و بفرستید', 'Details of recent connections; copy and send'),
                 onTap: () => _push(context, LogScreen(controller: controller)),
               ),
+              NavSettingRow(
+                icon: Icons.support_agent_rounded,
+                title: tr('گزارش مشکل', 'Report a problem'),
+                subtitle: tr('نسخه، اپراتور و گزارش اخیر بدون لینک سرور و IP کپی می‌شود',
+                    'Copies version, operator and the recent log without server links or IPs'),
+                onTap: () async {
+                  final text = await redactedProblemReport(controller);
+                  await Clipboard.setData(ClipboardData(text: text));
+                  if (context.mounted) {
+                    _toast(context, tr('گزارش کپی شد؛ برای پشتیبانی بفرستید', 'Report copied; send it to support'));
+                  }
+                },
+              ),
             ]),
 
             SectionHeader(tr('درباره', 'About')),
