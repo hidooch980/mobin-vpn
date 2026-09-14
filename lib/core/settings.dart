@@ -41,6 +41,7 @@ class AppSettings extends ChangeNotifier {
   bool tunMode = false; // Windows: full-device VPN (administrator)
   bool killSwitch = false; // Windows: block traffic if the core dies
   int localPort = 0; // Windows: 0 = random free port
+  int tunMtu = 0; // Windows TUN: 0 = automatic (manual override when set)
 
   // Routing / DNS / anti-censorship
   bool bypassIran = true;
@@ -79,6 +80,7 @@ class AppSettings extends ChangeNotifier {
     tunMode = p.getBool('s_tunMode') ?? tunMode;
     killSwitch = p.getBool('s_killSwitch') ?? killSwitch;
     localPort = p.getInt('s_localPort') ?? localPort;
+    tunMtu = p.getInt('s_tunMtu') ?? tunMtu;
     bypassIran = p.getBool('s_bypassIran') ?? bypassIran;
     dns = p.getString('s_dns') ?? dns;
     final storedDns = p.getString('s_dnsPreset');
@@ -120,6 +122,7 @@ class AppSettings extends ChangeNotifier {
       p.setBool('s_tunMode', tunMode),
       p.setBool('s_killSwitch', killSwitch),
       p.setInt('s_localPort', localPort),
+      p.setInt('s_tunMtu', tunMtu),
       p.setBool('s_bypassIran', bypassIran),
       p.setString('s_dns', dns),
       p.setString('s_dnsPreset', dnsPreset),

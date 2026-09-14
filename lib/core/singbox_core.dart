@@ -180,7 +180,7 @@ class SingboxCore {
   /// Config for a live connection: local mixed proxy on [port], optional TUN (Windows), optional WARP chain.
   /// [directProcesses]: executables whose own traffic must bypass the tunnel (local Psiphon/Tor, avoids a loop).
   Json connectConfig(Json outbound, int port, int api, EngineOptions o,
-          {bool tun = false, List<String> directProcesses = const []}) =>
+          {bool tun = false, int mtu = 1420, List<String> directProcesses = const []}) =>
       {
         ..._baseConfig('warn'),
         'dns': {
@@ -200,6 +200,7 @@ class SingboxCore {
               'tag': 'tun',
               'interface_name': 'MobinVPN',
               'address': ['172.19.0.1/30', 'fdfe:dcba:9876::1/126'],
+              'mtu': mtu,
               'auto_route': true,
               'strict_route': o.killSwitch,
               'stack': 'mixed',

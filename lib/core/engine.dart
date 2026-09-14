@@ -40,7 +40,11 @@ class EngineOptions {
     this.excludedApps = const [],
     this.warp,
     this.tunnelDns,
+    this.tunMtu = 0,
   });
+
+  /// TUN interface MTU; 0 = automatic (1340 on cellular / USB tethering, 1420 otherwise).
+  final int tunMtu;
 
   final String testUrl;
   final Duration timeout;
@@ -69,6 +73,7 @@ class EngineOptions {
         fragment: fragment,
         excludedApps: excludedApps,
         tunnelDns: tunnelDns,
+        tunMtu: tunMtu,
       );
 
   /// Settings that change the generated core config.

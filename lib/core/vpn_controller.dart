@@ -114,6 +114,7 @@ class VpnController extends ChangeNotifier {
         excludedApps: settings.excludedApps.toList(),
         warp: settings.warp ? WarpAccount.fromJsonString(settings.warpAccount) : null,
         tunnelDns: settings.tunnelDns,
+        tunMtu: settings.tunMtu,
       );
 
   Future<void> init() async {

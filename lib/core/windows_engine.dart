@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app_log.dart';
 import 'engine.dart';
 import 'free_routes.dart';
+import 'network_info.dart';
 import 'server.dart';
 import 'singbox_core.dart';
 import 'win_free_routes.dart';
@@ -109,8 +110,10 @@ class WindowsEngine implements VpnEngine {
     if (outbound == null) return false;
     final port = options.localPort > 0 ? options.localPort : await SingboxCore.freePort();
     final api = await SingboxCore.freePort();
+    final mtu = options.tunMode ? await NetworkInfo.tunMtu(options.tunMtu) : 1420;
+    if (options.tunMode) AppLog.add('windows: tun mtu $mtu');
     final proc = await _core.start(_core.connectConfig(outbound, port, api, options,
-        tun: options.tunMode, directProcesses: free ? WinFreeRoutes.processNames : const []));
+        tun: options.tunMode, mtu: mtu, directProcesses: free ? WinFreeRoutes.processNames : const []));
     // stdout closes when the process exits: handle a crash while connected.
     unawaited(proc.stdout.drain<void>().whenComplete(() async {
       if (!identical(_core.process, proc)) return;

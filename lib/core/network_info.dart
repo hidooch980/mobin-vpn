@@ -69,6 +69,28 @@ class NetworkInfo extends ChangeNotifier {
     }
   }
 
+  /// True when the PC is online through a cellular modem or a USB-tethered phone (smaller MTU helps there).
+  /// Heuristic on adapter names; Wi-Fi / Ethernet (the usual Windows case) returns false.
+  static Future<bool> cellularLike() async {
+    try {
+      if (Platform.isAndroid) return (await networkKey()).startsWith('mobile');
+      final interfaces = await NetworkInterface.list(includeLinkLocal: false, type: InternetAddressType.IPv4);
+      const hints = ['cellular', 'mobile broadband', 'rndis', 'tether', 'wwan', 'android', 'iphone'];
+      final names = [
+        for (final i in interfaces)
+          if (!i.name.toLowerCase().contains('mobinvpn') && i.addresses.any((a) => !a.isLoopback)) i.name.toLowerCase(),
+      ];
+      // Only when no ordinary Wi-Fi adapter is up as well.
+      if (names.any((n) => n.contains('wi-fi') || n.contains('wlan') || n.contains('wireless'))) return false;
+      return names.any((n) => hints.any(n.contains));
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// TUN MTU: [manual] when set (> 0), else 1340 on cellular / tethering and 1420 otherwise.
+  static Future<int> tunMtu(int manual) async => manual > 0 ? manual : (await cellularLike() ? 1340 : 1420);
+
   Future<void> refresh({String? proxy}) async {
     if (loading) return;
     loading = true;
