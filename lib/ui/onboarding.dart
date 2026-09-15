@@ -34,9 +34,11 @@ class _OnboardingState extends State<_Onboarding> {
           Icons.admin_panel_settings_rounded,
           tr('VPN برای همه‌ی برنامه‌ها', 'VPN for every app'),
           tr('معمولاً مرورگرها از VPN استفاده می‌کنند. برای بازی‌ها و همه‌ی برنامه‌ها، «VPN کامل» را در تنظیمات پیشرفته روشن کنید؛ '
-                  'برای آن برنامه را با کلیک راست و «Run as administrator» باز کنید.',
+                  'برای آن برنامه را با کلیک راست و «Run as administrator» باز کنید.\n'
+                  'اگر مشکل ادامه داشت، در تلگرام به @Molido_Vpn پیام دهید.',
               'Browsers use the VPN by default. For games and every app, turn on "Full VPN" in advanced settings; '
-                  'for that, open the app with right-click and "Run as administrator".'),
+                  'for that, open the app with right-click and "Run as administrator".\n'
+                  'If problems continue, message @Molido_Vpn on Telegram.'),
         ),
       ];
 

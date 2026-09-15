@@ -534,7 +534,15 @@ class SettingsScreen extends StatelessWidget {
                   final text = await redactedProblemReport(controller);
                   await Clipboard.setData(ClipboardData(text: text));
                   if (context.mounted) {
-                    _toast(context, tr('گزارش کپی شد؛ برای پشتیبانی بفرستید', 'Report copied; send it to support'));
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(tr('گزارش کپی شد؛ برای پشتیبانی بفرستید', 'Report copied; send it to support')),
+                      behavior: SnackBarBehavior.floating,
+                      duration: const Duration(seconds: 8),
+                      action: SnackBarAction(
+                        label: tr('ارسال به پشتیبانی', 'Send to support'),
+                        onPressed: () => openLink(telegramUrl),
+                      ),
+                    ));
                   }
                 },
               ),

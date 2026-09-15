@@ -233,6 +233,23 @@ String _friendlyError(String error) {
   return tr('وصل نشد. اینترنت خود را بررسی کنید و دوباره تلاش کنید.', "Couldn't connect. Check your internet and try again.");
 }
 
+/// Secondary "message support" link shown under a connection failure (simple and advanced views).
+class _SupportButton extends StatelessWidget {
+  const _SupportButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: TextButton.icon(
+        onPressed: () => openLink(telegramUrl),
+        icon: const Icon(Icons.support_agent_rounded, size: 18),
+        label: Text(tr('مشکل دارید؟ پیام به پشتیبانی', 'Having trouble? Message support')),
+      ),
+    );
+  }
+}
+
 /// Simple view: one plain status line, or a friendly error with a big retry button (retries in automatic mode).
 class _SimpleStatus extends StatelessWidget {
   const _SimpleStatus({required this.controller});
@@ -266,6 +283,7 @@ class _SimpleStatus extends StatelessWidget {
             label: Text(tr('دوباره تلاش کن', 'Try again'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
           ),
         ),
+        const _SupportButton(),
       ]);
     }
     final line = switch (c.state) {
@@ -664,6 +682,7 @@ class _Status extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13.5, height: 1.5, color: failed ? Palette.danger : Palette.muted)),
         ),
+        if (failed) const _SupportButton(),
       ],
       if (c.state == VpnState.connecting && c.progress != null)
         Padding(
