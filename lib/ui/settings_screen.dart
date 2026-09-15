@@ -394,8 +394,8 @@ class SettingsScreen extends StatelessWidget {
               if (Platform.isWindows)
                 NavSettingRow(
                   icon: Icons.vpn_key_outlined,
-                  title: tr('وارد کردن کانفیگ Amnezia', 'Import Amnezia config'),
-                  value: s.amneziaConfig.isEmpty ? tr('وارد نشده', 'Not imported') : tr('وارد شده', 'Imported'),
+                  title: tr('Amnezia: کانفیگ شخصی (اختیاری)', 'Amnezia: personal config (optional)'),
+                  value: s.amneziaConfig.isEmpty ? tr('خودکار (WARP)', 'Automatic (WARP)') : tr('وارد شده', 'Imported'),
                   onTap: () => showAmneziaImport(context, s),
                 ),
               NavSettingRow(

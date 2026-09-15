@@ -913,6 +913,61 @@ class VpnController extends ChangeNotifier {
     return healthy.isEmpty ? pool : healthy;
   }
 
+  /// AmneziaWG (Windows) with the personal config when one is imported, otherwise a config built from the app's
+  /// own WARP identity. [auto]: quick WARP registration only, and a route exiting in Iran is dropped.
+  Future<bool> _amnezia(WindowsEngine eng, EngineOptions options, {required bool auto}) async {
+    var config = AmneziaConfig.fromJsonString(settings.amneziaConfig);
+    if (config == null) {
+      if (WarpAccount.fromJsonString(settings.warpAccount) == null) {
+        phase = 'ساخت هویت رایگان Cloudflare WARP…';
+        notifyListeners();
+        if (!await ensureWarp(quick: auto)) {
+          eng.amneziaError = warpFailedMessage;
+          return false;
+        }
+      }
+      final warp = WarpAccount.fromJsonString(settings.warpAccount);
+      if (warp == null) return false;
+      config = AmneziaConfig.fromWarp(
+          privateKey: warp.privateKey, peerPublicKey: warp.peerPublicKey, v4: warp.addressV4, v6: warp.addressV6);
+    }
+    phase = 'اتصال AmneziaWG…';
+    notifyListeners();
+    final working = await eng.connectAmnezia(config, options,
+        preferred: settings.amneziaEndpoint.isEmpty ? null : settings.amneziaEndpoint);
+    if (working == null || _cancel) return false;
+    final ir = _checkExit && eng.amneziaExitCountry == 'IR';
+    if (auto && ir) {
+      AppLog.add('connect: AmneziaWG exits in Iran, skipped in automatic mode');
+      await eng.disconnect();
+      return false;
+    }
+    if (working != settings.amneziaEndpoint) await settings.update((x) => x.amneziaEndpoint = working);
+    // WARP exits in the user's own country: warn like other WARP routes.
+    exitInIran = ir;
+    dnsOnlyNote = 'AmneziaWG · $working';
+    current = null;
+    currentDelay = null;
+    connectedAt = DateTime.now();
+    state = VpnState.connected;
+    phase = null;
+    notifyListeners();
+    return true;
+  }
+
+  /// Automatic mode (Windows): AmneziaWG as a late fallback when it can work here (admin, full tunnel, UDP open).
+  Future<bool> _amneziaAuto(EngineOptions options) async {
+    final eng = engine;
+    if (eng is! WindowsEngine || settings.transport != 'auto' || _cancel) return false;
+    if (!WindowsEngine.isAdmin || options.proxyOnly || UdpProbe.blocked) return false;
+    try {
+      return await _amnezia(eng, options, auto: true);
+    } catch (e) {
+      AppLog.add('connect: AmneziaWG (auto) failed ($e)');
+      return false;
+    }
+  }
+
   Future<void>? _connectRun;
 
   Future<void> connect({Server? only}) async {
@@ -1037,36 +1092,14 @@ class VpnController extends ChangeNotifier {
       // AmneziaWG (Windows): the imported config runs as an amneziawg.exe tunnel service, endpoints tried in order.
       if (settings.transport == 'amnezia' && only == null) {
         if (eng is! WindowsEngine) throw const _UserError('AmneziaWG فقط در ویندوز در دسترس است.');
-        final config = AmneziaConfig.fromJsonString(settings.amneziaConfig);
-        if (config == null) {
-          throw const _UserError('کانفیگ Amnezia وارد نشده است. از تنظیمات «وارد کردن کانفیگ Amnezia» را بزنید.');
-        }
-        phase = 'اتصال AmneziaWG…';
-        notifyListeners();
-        String? endpoint;
         try {
-          endpoint = await eng.connectAmnezia(config, options,
-              preferred: settings.amneziaEndpoint.isEmpty ? null : settings.amneziaEndpoint);
+          if (await _amnezia(eng, options, auto: false)) return;
         } on AdminRequiredError {
           throw const _UserError(
               'AmneziaWG دسترسی Administrator می‌خواهد. از تنظیمات «اجرای دوباره به‌عنوان ادمین» را بزنید.');
         }
         _checkCancel();
-        final working = endpoint;
-        if (working == null) {
-          throw _UserError(eng.amneziaError ?? 'هیچ‌کدام از Endpointهای Amnezia وصل نشد. جزئیات در گزارش خطا.');
-        }
-        if (working != settings.amneziaEndpoint) await settings.update((x) => x.amneziaEndpoint = working);
-        // WARP exits in the user's own country: warn like other WARP routes.
-        exitInIran = _checkExit && eng.amneziaExitCountry == 'IR';
-        dnsOnlyNote = 'AmneziaWG · $working';
-        current = null;
-        currentDelay = null;
-        connectedAt = DateTime.now();
-        state = VpnState.connected;
-        phase = null;
-        notifyListeners();
-        return;
+        throw _UserError(eng.amneziaError ?? 'هیچ‌کدام از Endpointهای Amnezia وصل نشد. جزئیات در گزارش خطا.');
       }
       if (servers.isEmpty && only == null) await refresh();
       if (settings.warp && options.warp == null) {
@@ -1177,6 +1210,8 @@ class VpnController extends ChangeNotifier {
         AppLog.add('connect: direct attempts failed, testing the other servers');
         pool.removeWhere(tried.contains);
         if (pool.isEmpty) {
+          if (only == null && await _amneziaAuto(options)) return;
+          _checkCancel();
           if (await useIrFallback()) return;
           // Psiphon / Tor alone (or last): their own reason instead of the server-list advice.
           final eng = engine;
@@ -1257,6 +1292,8 @@ class VpnController extends ChangeNotifier {
         await _rememberWinner(server.uri);
         return;
       }
+      if (await _amneziaAuto(options)) return;
+      _checkCancel();
       if (await useIrFallback()) return;
       throw const _UserError(
           'اتصال برقرار نشد. «ضد فیلتر» را روشن کنید یا کشور دیگری را امتحان کنید. جزئیات در تنظیمات ← گزارش خطا.');

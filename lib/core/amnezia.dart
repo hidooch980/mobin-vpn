@@ -35,6 +35,24 @@ class AmneziaConfig {
 
   bool get isWarp => publicKey == warpPublicKey;
 
+  /// Built-in WARP ingress endpoints for the config generated from the app's own WARP identity, tried in order.
+  static const warpEndpoints = [
+    '188.114.97.6:7281', '162.159.195.8:3581', '162.159.192.2:878', '8.6.112.224:8886', '162.159.192.64:894',
+  ];
+
+  /// No imported config: AmneziaWG config from the app's registered WARP identity (no private key is bundled).
+  static AmneziaConfig fromWarp(
+          {required String privateKey, required String peerPublicKey, required String v4, required String v6}) =>
+      AmneziaConfig(
+        privateKey: privateKey,
+        publicKey: peerPublicKey,
+        addresses: ['$v4/32', '$v6/128'],
+        endpoints: warpEndpoints,
+        dns: const ['1.1.1.1'],
+        mtu: 1280,
+        obfuscation: const {'Jc': '5', 'Jmin': '10', 'Jmax': '40', 'H1': '1', 'H2': '2', 'H3': '3', 'H4': '4'},
+      );
+
   bool get hasJunk => (int.tryParse(obfuscation['Jc'] ?? '') ?? 0) > 0;
 
   /// Parses a .conf text; throws [FormatException] with a Persian message when it is not usable.

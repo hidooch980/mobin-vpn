@@ -8,7 +8,6 @@ import '../core/engine.dart';
 import '../core/network_info.dart';
 import '../core/settings.dart';
 import '../core/vpn_controller.dart';
-import 'amnezia_import.dart';
 import 'flag_badge.dart';
 import 'location_sheet.dart';
 import 'servers_screen.dart';
@@ -704,11 +703,8 @@ class _ModeChips extends StatelessWidget {
           selected: transport == 'amnezia',
           onTap: locked
               ? null
-              : () async {
-                  // No imported config yet: ask for it first.
-                  if (c.settings.amneziaConfig.isEmpty && !await showAmneziaImport(context, c.settings)) return;
-                  setRoute('amnezia');
-                },
+              // No import needed: without a personal config the app's own WARP identity is used.
+              : () => setRoute('amnezia'),
         ),
       _ModeChip(label: 'Psiphon', selected: transport == 'psiphon', onTap: locked ? null : () => setRoute('psiphon')),
       _ModeChip(label: 'Tor', selected: transport == 'tor', onTap: locked ? null : () => setRoute('tor')),
