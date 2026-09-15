@@ -560,73 +560,13 @@ async function fetchOwnerSub(link, ctx) {
   }
 }
 
-// Owner files edited on github.com (hidooch980/mobin-vpn/owner/configs.txt and subs.txt): one item per
-// line, '#' lines are comments. Cached ~5 min in caches.default. Never throws; [] when unreachable.
-const OWNER_GH_TTL = 300; // seconds
-const OWNER_GH_URLS = (file) => [
-  `https://raw.githubusercontent.com/hidooch980/mobin-vpn/main/owner/${file}`,
-  `https://cdn.jsdelivr.net/gh/hidooch980/mobin-vpn@main/owner/${file}`,
-];
-async function fetchOwnerGithub(file, ctx) {
-  try {
-    const cache = caches.default;
-    const key = new Request(`https://owner-gh.molido.internal/${file}`);
-    let body = null;
-    const hit = await cache.match(key);
-    if (hit) body = await hit.text();
-    for (const u of hit ? [] : OWNER_GH_URLS(file)) {
-      const ac = new AbortController();
-      const timer = setTimeout(() => ac.abort(), 6000);
-      try {
-        const res = await fetch(u, { signal: ac.signal, headers: { 'user-agent': 'molido-sub-worker' } });
-        if (res.ok) {
-          body = (await res.text()).slice(0, 1_000_000);
-          break;
-        }
-      } catch {
-      } finally {
-        clearTimeout(timer);
-      }
-    }
-    if (body === null) return [];
-    if (!hit) {
-      const res = new Response(body, { headers: { 'cache-control': `public, max-age=${OWNER_GH_TTL}` } });
-      const put = cache.put(key, res);
-      if (ctx && ctx.waitUntil) ctx.waitUntil(put);
-    }
-    return body
-      .split('\n')
-      .map((l) => l.replace(/^﻿/, '').trim())
-      .filter((l) => l && !l.startsWith('#'));
-  } catch {
-    return [];
-  }
-}
-
 // All enabled owner configs (single configs first, then sub-link configs), deduped, as
-// { line, fp, item }. Items come from D1 (/admin) and the GitHub owner files; either may fail alone.
+// { line, fp, item }. Throws on DB errors.
 async function ownerEntries(env, ctx) {
-  const ghRow = (kind, value, i) => ({ id: `gh-${kind}-${i + 1}`, kind, value, always_show: 0, due_at: 0, src: 'github' });
-  const [db, ghConfigs, ghSubs] = await Promise.all([
-    (async () => {
-      try {
-        await ensureOwnerSchema(env);
-        const { results } = await env.DB.prepare(
-          'SELECT id, kind, value, always_show, due_at FROM owner_items WHERE enabled = 1 ORDER BY id'
-        ).all();
-        return results.map((r) => ({ ...r, src: 'panel' }));
-      } catch {
-        return [];
-      }
-    })(),
-    fetchOwnerGithub('configs.txt', ctx),
-    fetchOwnerGithub('subs.txt', ctx),
-  ]);
-  const results = [
-    ...db,
-    ...ghConfigs.map((v, i) => ghRow('config', v, i)),
-    ...ghSubs.filter(validSubUrl).map((v, i) => ghRow('sub', v.trim(), i)),
-  ];
+  await ensureOwnerSchema(env);
+  const { results } = await env.DB.prepare(
+    'SELECT id, kind, value, always_show, due_at FROM owner_items WHERE enabled = 1 ORDER BY id'
+  ).all();
   const configs = results.filter((r) => r.kind === 'config');
   const subs = results.filter((r) => r.kind === 'sub');
   const subLines = await Promise.all(subs.map((r) => fetchOwnerSub(r.value, ctx)));
@@ -701,7 +641,7 @@ async function ownerConfigsRoute(env, ctx) {
     const entries = await ownerEntries(env, ctx);
     const st = entries.length ? await ownerStatus(env) : { tests: new Map(), users: new Map() };
     const now = Date.now();
-    const configs = entries.map((e) => ({ id: e.fp, uri: e.line, due: ownerDue(e, st, now), src: e.item.src }));
+    const configs = entries.map((e) => ({ id: e.fp, uri: e.line, due: ownerDue(e, st, now) }));
     return new Response(JSON.stringify({ configs }), { headers });
   } catch {
     return new Response(JSON.stringify({ error: 'unavailable' }), { status: 500, headers });
