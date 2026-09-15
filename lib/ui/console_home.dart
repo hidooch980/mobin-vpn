@@ -15,6 +15,7 @@ import 'servers_screen.dart';
 import 'settings_screen.dart';
 import 'strings.dart';
 import 'style.dart';
+import 'support.dart';
 import 'widgets.dart';
 
 /// Single scrolling home, laid out like the Android app: header, connect squircle, status,
@@ -154,6 +155,7 @@ class _ConsoleHomeState extends State<ConsoleHome> {
                         value: digits(c.servers.length),
                         onTap: _openServers,
                       ),
+                      const TelegramSupportRow(),
                     ]),
                     const SizedBox(height: 12),
                     _Tiles(controller: c),

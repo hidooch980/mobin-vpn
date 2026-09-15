@@ -20,6 +20,7 @@ import 'import_screen.dart';
 import 'log_screen.dart';
 import 'strings.dart';
 import 'style.dart';
+import 'support.dart';
 import 'usage_screen.dart';
 import 'widgets.dart';
 
@@ -554,6 +555,7 @@ class SettingsScreen extends StatelessWidget {
                   _toast(context, tr('لینک کپی شد', 'Link copied'));
                 },
               ),
+              const TelegramSupportRow(),
               NavSettingRow(
                 icon: Icons.gavel_rounded,
                 title: tr('مجوزهای متن‌باز', 'Open-source licenses'),
