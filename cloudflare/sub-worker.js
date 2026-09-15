@@ -323,9 +323,10 @@ function brand(lines) {
       } catch {}
     }
     flag = flag || '🌐';
-    const n = (counters.get(flag) || 0) + 1;
-    counters.set(flag, n);
-    const label = `${flag} MolidoVPN ${String(n).padStart(2, '0')}`;
+    const vip = lines.vip?.has(lineCore(line)) ? ' VIP' : '';
+    const n = (counters.get(flag + vip) || 0) + 1;
+    counters.set(flag + vip, n);
+    const label = `${flag} MolidoVPN ${String(n).padStart(2, '0')}${vip}`;
     if (core.startsWith('vmess://')) {
       try {
         const j = JSON.parse(atob(core.slice(8)));
@@ -671,7 +672,9 @@ async function ownerFps(env, ctx) {
 function mergeOwner(owner, lines) {
   if (!owner.length) return lines;
   const seen = new Set(owner.map(lineCore));
-  return [...owner, ...lines.filter((l) => !seen.has(lineCore(l)))];
+  const merged = [...owner, ...lines.filter((l) => !seen.has(lineCore(l)))];
+  merged.vip = seen; // brand() names owner configs "... VIP"
+  return merged;
 }
 
 const ADMIN_HEADERS = {
