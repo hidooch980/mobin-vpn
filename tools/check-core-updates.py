@@ -251,16 +251,7 @@ def check_psiphon(ctx: Ctx) -> None:
         record(ctx.state, "psiphon", sha, ctx.now)
     else:
         print(f"Psiphon (Windows): {cur[:7]} is current")
-    # Android AAR comes from the upstream core mirror (different build/version scheme): report only.
-    a = gh_api(f"repos/{repo}/commits?path=android&per_page=1")
-    if a:
-        asha = a[0]["sha"]
-        seen = ctx.state.get("components", {}).get("psiphon-android-upstream", {}).get("seen")
-        if asha != seen:
-            ctx.report.append(f"- Android: Psiphon upstream `android/ca.psiphon.aar` changed "
-                              f"(commit {asha[:7]}); the app ships `psiphontunnel-2.0.39.aar` from the "
-                              "mirror. Review before replacing (API differences).")
-            ctx.state.setdefault("components", {}).setdefault("psiphon-android-upstream", {})["seen"] = asha
+    # The Android AAR is updated automatically by hidooch980/molidovpn-android's core-updates workflow.
 
 
 def check_tor(ctx: Ctx) -> None:
