@@ -39,3 +39,6 @@ APK signing uses repository secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE
 must be uninstalled before installing the next).
 
 Local: `flutter pub get && flutter test && flutter run -d windows` (copy `sing-box.exe` next to the built exe).
+
+## Licenses
+The Android app is based on the open-source MSN-GUARD project (AGPL-3.0); its source code: https://github.com/hidooch980/molidovpn-android

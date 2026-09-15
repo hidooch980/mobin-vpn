@@ -33,7 +33,7 @@ jobs:
           SUB_FILE=$PWD/sub.txt flutter test
 
   android:
-    # Android app = MolidoVPN Android (MSN-GUARD based, AGPL-3.0) from hidooch980/molidovpn-android.
+    # Android app = MolidoVPN Android from hidooch980/molidovpn-android.
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 90

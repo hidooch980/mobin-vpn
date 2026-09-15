@@ -237,7 +237,7 @@ class VpnController extends ChangeNotifier {
 
   bool _isBad(Server s) => _badUntil[s.uri]?.isAfter(DateTime.now()) ?? false;
 
-  /// Last working server is remembered per network (Wi-Fi, each SIM operator), like MSN-GUARD's per-SIM ladder.
+  /// Last working server is remembered per network (Wi-Fi, each SIM operator), like the Android app's per-SIM ladder.
   Future<String> _networkServerKey() async => '$_lastServerKey:${await NetworkInfo.networkKey()}';
 
   /// Learning: the winner is also remembered per ISP bucket and 3-hour time slot (evening filtering differs

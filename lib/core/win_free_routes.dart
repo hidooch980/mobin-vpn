@@ -121,7 +121,7 @@ class WinFreeRoutes {
     var socksPort = await SingboxCore.freePort();
     final httpPort = await SingboxCore.freePort();
     final config = File('${dir.path}\\config.json');
-    // Same public identity and keys as the Android app (MsnGuardVpnService.buildPsiphonConfig).
+    // Same public identity and keys as the Android app (its Psiphon config builder).
     await config.writeAsString(jsonEncode({
       'PropagationChannelId': 'FFFFFFFFFFFFFFFF',
       'SponsorId': '1111111111111111',
