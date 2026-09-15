@@ -1,44 +1,103 @@
+<div dir="rtl">
+
 # MolidoVPN
 
-One-button VPN client for **Android** and **Windows**, fed by the tested server list from
-[hidooch980/vpn-sub](https://github.com/hidooch980/vpn-sub).
+**یک VPN رایگان و ساده برای خانواده‌های ایرانی — اندروید، ویندوز و آیفون.**
 
-- **Smart mode:** measures real delay to many servers *from the user's own internet*, connects to the fastest one and retries the next if it fails.
-- **Locations:** pick a country; the fastest server there is used.
-- **Gaming:** servers near Iran, re-tested for average ping + jitter.
-- **Advanced:** settings (reconnect, proxy-only, Iran bypass, DNS, pool size, test URL, protocols, custom subscription), full server list with ping test.
-- **Pro:** split tunneling (Android), full-device TUN VPN as administrator (Windows), kill switch, TLS fragment anti-censorship, daily/monthly usage stats.
-- **Extras:** home-screen widget and Quick Settings tile (Android), favorites, "My configs" import by paste or QR, Cloudflare WARP chained behind the server, start with Windows.
-- **Protocols:** VLESS, VMess, Trojan, Shadowsocks (both); Hysteria2, TUIC, AnyTLS, WireGuard, SOCKS, HTTP (Windows).
-- **Updates:** on launch the app checks the latest GitHub Release; one tap downloads it (Android opens the installer, Windows swaps files and relaunches). The server list refreshes on every launch.
+[![Release](https://img.shields.io/github/v/release/hidooch980/mobin-vpn?style=flat-square)](https://github.com/hidooch980/mobin-vpn/releases/latest)
+[![Telegram](https://img.shields.io/badge/Telegram-@Molido__Vpn-26A5E4?style=flat-square&logo=telegram)](https://t.me/Molido_Vpn)
 
-Download from **[Releases](../../releases/latest)**.
+[سایت](https://hidooch980.github.io/mobin-vpn/) · [دانلود](https://github.com/hidooch980/mobin-vpn/releases/latest) · [قابلیت‌ها](docs/FEATURES.md) · [راهنمای مدیر](docs/OWNER-GUIDE.md) · [English](#english)
 
-## How it works
-| | Android | Windows |
-|---|---|---|
-| Core | Xray via `flutter_v2ray` (VpnService, whole device) | bundled `sing-box.exe` (local proxy + Windows system proxy) |
-| Protocols | VLESS, VMess, Trojan, Shadowsocks | + Hysteria2, TUIC |
-| Delay test | Xray real delay per server | sing-box Clash API `/proxies/:name/delay` |
+---
 
-The server list is fetched from GitHub raw with jsDelivr mirrors and cached for offline start.
+## این برنامه چیست؟
 
-## Code map
-- `lib/core/server.dart`: subscription parsing and names (country/number from `Mobin ✦ 🇩🇪 Germany 03 · VLESS`)
-- `lib/core/singbox_outbound.dart`: share link → sing-box outbound (port of `vpn-aggregator/parsers.py`)
-- `lib/core/vpn_controller.dart`: smart selection, ping, connect with failover
-- `lib/core/android_engine.dart`, `lib/core/windows_engine.dart`: platform cores
-- `lib/ui/`: animated aurora background, connect orb, location and share sheets
+برنامه MolidoVPN با یک دکمه وصل می‌شود. خودش همهٔ راه‌ها (سرورهای V2Ray، وارپ، سایفون، تور و …) را از روی اینترنت خود شما امتحان می‌کند و بهترین را انتخاب می‌کند. رایگان است، ثبت‌نام نمی‌خواهد و رابط آن فارسی است.
 
-## Build & release
-Every push to `main` runs `.github/workflows/release.yml`: analyze + tests, APKs (universal, arm64, armv7),
-Windows zip with sing-box, then publishes GitHub Release `v1.0.<run>`.
+## دانلود و نصب
 
-APK signing uses repository secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
-`ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` (falls back to a debug key without them — then each release
-must be uninstalled before installing the next).
+| دستگاه | چه چیزی نصب کنید |
+|---|---|
+| اندروید (بیشتر گوشی‌ها) | `MobinVPN-android-arm64.apk` از [صفحهٔ Releases](https://github.com/hidooch980/mobin-vpn/releases/latest) |
+| اندروید قدیمی / مطمئن نیستید | `MobinVPN-android-armv7.apk` یا `MobinVPN-android-universal.apk` |
+| ویندوز ۱۰ و ۱۱ | `MolidoVPN-windows-setup.exe` (یا نسخهٔ بدون نصب `MobinVPN-windows-x64.zip`) |
+| آیفون | برنامهٔ **Hiddify** یا **Streisand** را از App Store نصب کنید و یکی از لینک‌های اشتراک زیر را اضافه کنید |
 
-Local: `flutter pub get && flutter test && flutter run -d windows` (copy `sing-box.exe` next to the built exe).
+راه ساده‌تر: [سایت برنامه](https://hidooch980.github.io/mobin-vpn/) را باز کنید؛ دکمهٔ مناسب دستگاه شما آنجاست.
 
-## Licenses
+**لینک‌های اشتراک (آیفون و هر برنامهٔ V2Ray):**
+
+- `https://molido-sub.hidooch980.workers.dev/sub/1` تا `/sub/5` — پنج لینک با سرورهای متفاوت؛ اگر یکی کار نکرد بعدی را امتحان کنید
+- `https://molido-sub.hidooch980.workers.dev/ios` — فهرست سبک مخصوص آیفون
+- `https://molido-sub.hidooch980.workers.dev/hiddify` — همان فهرست به‌علاوهٔ وارپ برای Hiddify
+
+## قابلیت‌ها
+
+فهرست کامل و توضیح هر مورد: [docs/FEATURES.md](docs/FEATURES.md)
+
+### حالت‌های اتصال
+- **خودکار** — پیش‌فرض؛ همهٔ مسیرها را به ترتیب امتحان می‌کند
+- **سرورهای V2Ray** — VLESS، VMess، Trojan، Shadowsocks، Reality، XHTTP، Hysteria2، TUIC، AnyTLS
+- **وارپ (WARP / WireGuard)**، **MASQUE** و **وارپ در وارپ (WARP-on-WARP)** — اندروید
+- **AmneziaWG** داخلی — بدون نیاز به وارد کردن کانفیگ، با هویت وارپ خود برنامه
+- **سایفون (Psiphon)** و **تور (Tor)** — با انتخاب کشور خروج؛ در اندروید Tor/Psiphon روی وارپ هم هست
+- **V2Ray از روی Psiphon** — زنجیره برای شبکه‌های خیلی بسته
+- **SHARD** — سرورهای پشت CDN (اندروید)
+- **فقط DNS گیمینگ** — بدون تونل، با Radar Game، Electro، Shecan و 403.online
+
+### هوشمندی
+- تست خودکار همهٔ مسیرها و سرورها از روی اینترنت خود کاربر
+- پرهیز از خروجی ایران: اگر مسیری با IP ایران بیرون برود، کنار گذاشته می‌شود
+- بهترین حالت برای هر اپراتور (همراه اول، ایرانسل، مخابرات …) از روی گزارش‌های ناشناس
+- انتخاب کشور با تأیید واقعی کشور خروج
+- اسکنر پس‌زمینه که سرورها را ساعتی تست می‌کند
+- ضدقفل (anti-freeze): اگر تونل وسط کار گیر کند، به سرور پشتیبان منتقل می‌شود
+- «کانفیگ‌های من»: وارد کردن با چسباندن، فایل، QR، لینک اشتراک و کلید Outline
+
+### تجربهٔ کاربری
+- نمای **ساده** و **پیشرفته**، راهنمای شروع، رابط کاملاً فارسی
+- **اطلاعیه‌ها** از طرف مدیر، بالای صفحهٔ اصلی
+- **معرفی به دوستان** با کد QR سایت
+- **به‌روزرسانی خودکار** برنامه (حتی وقتی GitHub فیلتر است، از طریق Worker)
+
+### حریم خصوصی
+- گزارش‌های کیفیت فقط با اجازهٔ کاربر (opt-in) و **ناشناس** هستند: اثرانگشت سرور، موفق/ناموفق، تأخیر، نوع شبکه و اپراتور
+- هیچ IP ای ذخیره نمی‌شود؛ آمار به‌صورت روزانه جمع‌بندی و بعد از ۳۰ روز پاک می‌شود
+
+### زیرساخت
+- **جمع‌کنندهٔ سرور** ([vpn-sub](https://github.com/hidooch980/vpn-sub)) هر ۱۵ دقیقه سرورها را تست می‌کند و هر ساعت منابع جدید پیدا می‌کند
+- **تست محلی از ایران** روی کامپیوتر مدیر؛ سرورهای ناموفق در ایران از لینک‌ها حذف می‌شوند
+- **Worker اشتراک** روی Cloudflare: نام‌گذاری یکسان `🇩🇪 MolidoVPN 01`، رتبه‌بندی با گزارش‌ها
+- **پنل مدیر** (`/admin`): کانفیگ‌های VIP، وضعیت تست ایران، اطلاعیه، خاموش/روشن کردن حالت‌ها از راه دور، آمار
+- هسته‌ها (sing-box، Xray، Tor، Psiphon، AmneziaWG) هر ۶ ساعت بررسی و به‌روز می‌شوند؛ انتشار فقط وقتی تست اتصال روی شبیه‌ساز اندروید موفق باشد
+- گردش‌کارهای زمان‌بندی‌شده با یک commit ماهانه زنده نگه داشته می‌شوند
+
+جزئیات فنی: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+
+## پشتیبانی و حمایت
+
+- پشتیبانی تلگرام: [@Molido_Vpn](https://t.me/Molido_Vpn)
+- حمایت مالی: [reymit.ir/molido](https://reymit.ir/molido)
+
+</div>
+
+---
+
+## English
+
+**MolidoVPN** is a free, one-button VPN for Iranian families on **Android**, **Windows** and **iPhone** (via Hiddify/Streisand). It tests every route from the user's own connection and picks what works.
+
+- **Download:** [latest release](https://github.com/hidooch980/mobin-vpn/releases/latest) (Android APKs, Windows installer/zip) or the [website](https://hidooch980.github.io/mobin-vpn/).
+- **iPhone / any V2Ray client:** `https://molido-sub.hidooch980.workers.dev/sub/1` … `/sub/5`, `/ios`, `/hiddify`.
+- **Modes:** Automatic; V2Ray servers (VLESS, VMess, Trojan, Shadowsocks, Reality, XHTTP, Hysteria2, TUIC, AnyTLS); WARP, MASQUE, WARP-on-WARP (Android); built-in AmneziaWG; Psiphon; Tor; V2Ray over Psiphon; SHARD CDN nodes (Android); gaming-DNS-only.
+- **Smart:** tests all tunnels, avoids Iran exits, best mode per mobile operator, country picker with exit verification, hourly background scanner, anti-freeze failover, "My configs" import (paste/file/QR/subscription/Outline).
+- **UX:** simple/advanced home, onboarding, Persian UI, owner announcements, share-with-friends QR, automatic app updates.
+- **Privacy:** opt-in anonymous quality reports only; no IPs stored.
+- **Infra:** server aggregator every 15 min (+ hourly source discovery), local Iran testing, Cloudflare subscription worker with owner admin panel, remote mode flags and stats, core auto-updates every 6 h gated by an emulator connect test.
+- **Docs:** [Features (Persian)](docs/FEATURES.md) · [Owner guide (Persian)](docs/OWNER-GUIDE.md) · [Architecture](docs/ARCHITECTURE.md)
+- **Support:** Telegram [@Molido_Vpn](https://t.me/Molido_Vpn) · Donate: [reymit.ir/molido](https://reymit.ir/molido)
+
+## License
+
 The Android app is a modified version of an open-source AGPL-3.0 project; its source code: https://github.com/hidooch980/molidovpn-android
