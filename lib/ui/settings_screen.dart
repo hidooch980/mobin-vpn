@@ -71,7 +71,7 @@ class SettingsScreen extends StatelessWidget {
                 ]),
               ),
 
-            SectionHeader(tr('زبان و ظاهر', 'Language & appearance')),
+            SectionHeader(tr('تنظیمات اصلی', 'Main settings')),
             CardGroup(children: [
               ChoiceSettingRow<String>(
                 icon: Icons.translate_rounded,
@@ -87,17 +87,6 @@ class SettingsScreen extends StatelessWidget {
                 value: s.themeMode,
                 onChanged: (v) => _changeAppearance(() => s.update((x) => x.themeMode = v)),
               ),
-              SwitchSettingRow(
-                icon: Icons.animation_rounded,
-                title: tr('کاهش انیمیشن', 'Reduce motion'),
-                subtitle: tr('برای کامپیوترها و گوشی‌های ضعیف روان‌تر', 'Smoother on slow computers and phones'),
-                value: s.reduceMotion,
-                onChanged: (v) => _changeAppearance(() => s.update((x) => x.reduceMotion = v)),
-              ),
-            ]),
-
-            SectionHeader(tr('شروع و اتصال خودکار', 'Startup & auto-connect')),
-            CardGroup(children: [
               SwitchSettingRow(
                 icon: Icons.bolt_rounded,
                 title: tr('اتصال خودکار', 'Auto-connect'),
@@ -118,6 +107,63 @@ class SettingsScreen extends StatelessWidget {
                     s.update((x) => x.launchAtStartup = v);
                   },
                 ),
+              SwitchSettingRow(
+                icon: Icons.flag_outlined,
+                title: tr('سایت‌های ایرانی مستقیم', 'Iranian sites direct'),
+                subtitle: tr('دامنه‌های .ir و شبکه‌ی محلی از VPN عبور نمی‌کنند (سریع‌تر، بانک‌ها کار می‌کنند)',
+                    '.ir domains and the local network bypass the VPN (faster, banks work)'),
+                value: s.bypassIran,
+                onChanged: (v) => s.update((x) {
+                  x.bypassIran = v;
+                  // Turning it on (again) enables the full Iranian IP/domain lists too.
+                  if (v) x.iranRuleSets = true;
+                }),
+              ),
+              const TelegramSupportRow(),
+              NavSettingRow(
+                icon: Icons.favorite_outline_rounded,
+                title: tr('حمایت مالی', 'Donate'),
+                onTap: () => showDonateDialog(context),
+              ),
+              FutureBuilder<PackageInfo>(
+                future: PackageInfo.fromPlatform(),
+                builder: (context, snap) => NavSettingRow(
+                  icon: Icons.verified_outlined,
+                  title: tr('نسخه', 'Version'),
+                  value: snap.data?.version ?? '…',
+                  ltrValue: true,
+                ),
+              ),
+              NavSettingRow(
+                icon: Icons.system_update_outlined,
+                title: tr('بررسی به‌روزرسانی', 'Check for updates'),
+                onTap: () async {
+                  final u = await controller.checkUpdate();
+                  if (!context.mounted) return;
+                  if (u == null) {
+                    _toast(context, tr('برنامه به‌روز است', 'The app is up to date'));
+                  } else {
+                    await controller.installUpdate();
+                  }
+                },
+              ),
+            ]),
+
+            const SizedBox(height: 16),
+            _AdvancedSettings(children: [
+            SectionHeader(tr('ظاهر', 'Appearance')),
+            CardGroup(children: [
+              SwitchSettingRow(
+                icon: Icons.animation_rounded,
+                title: tr('کاهش انیمیشن', 'Reduce motion'),
+                subtitle: tr('برای کامپیوترها و گوشی‌های ضعیف روان‌تر', 'Smoother on slow computers and phones'),
+                value: s.reduceMotion,
+                onChanged: (v) => _changeAppearance(() => s.update((x) => x.reduceMotion = v)),
+              ),
+            ]),
+
+            SectionHeader(tr('شروع و اتصال خودکار', 'Startup & auto-connect')),
+            CardGroup(children: [
               SwitchSettingRow(
                 icon: Icons.autorenew_rounded,
                 title: tr('اتصال دوباره‌ی خودکار', 'Auto-reconnect'),
@@ -229,18 +275,6 @@ class SettingsScreen extends StatelessWidget {
                   onTap: () => const AndroidIntent(action: 'android.settings.VPN_SETTINGS').launch(),
                 ),
               ],
-              SwitchSettingRow(
-                icon: Icons.flag_outlined,
-                title: tr('سایت‌های ایرانی مستقیم', 'Iranian sites direct'),
-                subtitle: tr('دامنه‌های .ir و شبکه‌ی محلی از VPN عبور نمی‌کنند (سریع‌تر، بانک‌ها کار می‌کنند)',
-                    '.ir domains and the local network bypass the VPN (faster, banks work)'),
-                value: s.bypassIran,
-                onChanged: (v) => s.update((x) {
-                  x.bypassIran = v;
-                  // Turning it on (again) enables the full Iranian IP/domain lists too.
-                  if (v) x.iranRuleSets = true;
-                }),
-              ),
             ]),
 
             if (Platform.isWindows) ...[
@@ -533,28 +567,6 @@ class SettingsScreen extends StatelessWidget {
 
             SectionHeader(tr('درباره', 'About')),
             CardGroup(children: [
-              FutureBuilder<PackageInfo>(
-                future: PackageInfo.fromPlatform(),
-                builder: (context, snap) => NavSettingRow(
-                  icon: Icons.verified_outlined,
-                  title: tr('نسخه', 'Version'),
-                  value: snap.data?.version ?? '…',
-                  ltrValue: true,
-                ),
-              ),
-              NavSettingRow(
-                icon: Icons.system_update_outlined,
-                title: tr('بررسی به‌روزرسانی', 'Check for updates'),
-                onTap: () async {
-                  final u = await controller.checkUpdate();
-                  if (!context.mounted) return;
-                  if (u == null) {
-                    _toast(context, tr('برنامه به‌روز است', 'The app is up to date'));
-                  } else {
-                    await controller.installUpdate();
-                  }
-                },
-              ),
               NavSettingRow(
                 icon: Icons.code_rounded,
                 title: tr('کد برنامه در گیت‌هاب', 'Source code on GitHub'),
@@ -564,12 +576,6 @@ class SettingsScreen extends StatelessWidget {
                   _toast(context, tr('لینک کپی شد', 'Link copied'));
                 },
               ),
-              NavSettingRow(
-                icon: Icons.favorite_outline_rounded,
-                title: tr('حمایت مالی', 'Donate'),
-                onTap: () => showDonateDialog(context),
-              ),
-              const TelegramSupportRow(),
               NavSettingRow(
                 icon: Icons.gavel_rounded,
                 title: tr('مجوزهای متن‌باز', 'Open-source licenses'),
@@ -633,7 +639,36 @@ class SettingsScreen extends StatelessWidget {
                 },
               ),
             ]),
+            ]),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// "تنظیمات پیشرفته": everything beyond the main settings, collapsed until opened.
+class _AdvancedSettings extends StatelessWidget {
+  const _AdvancedSettings({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: AppCard(
+        child: ExpansionTile(
+          leading: Icon(Icons.tune_rounded, color: Palette.accent),
+          title: Text(tr('تنظیمات پیشرفته', 'Advanced settings'),
+              style: TextStyle(fontWeight: FontWeight.w700, color: Palette.text)),
+          subtitle: Text(tr('حالت اتصال، محافظت، DNS، سرورها، ابزارها', 'Connection, protection, DNS, servers, tools'),
+              style: TextStyle(fontSize: 12, color: Palette.muted)),
+          iconColor: Palette.muted,
+          collapsedIconColor: Palette.muted,
+          childrenPadding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+          expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+          children: children,
         ),
       ),
     );

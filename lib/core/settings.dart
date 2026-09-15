@@ -63,6 +63,8 @@ class AppSettings extends ChangeNotifier {
   String amneziaConfig = ''; // Windows: JSON of the imported AmneziaConfig (secret: never in backups or logs)
   String amneziaEndpoint = ''; // last AmneziaWG endpoint that passed traffic, tried first
   bool launchAtStartup = false; // Windows
+  bool homeAdvanced = false; // home shows mode chips, DNS, servers and stats (off = simple view, always automatic)
+  bool onboarded = false; // first-launch steps were shown
   bool scheduleEnabled = false; // connect when the time range starts, disconnect when it ends
   String scheduleFrom = '08:00', scheduleTo = '23:00'; // HH:MM, local time; may cross midnight
   Set<String> favorites = {}; // server uris
@@ -118,6 +120,8 @@ class AppSettings extends ChangeNotifier {
     amneziaConfig = p.getString('s_amneziaConfig') ?? amneziaConfig;
     amneziaEndpoint = p.getString('s_amneziaEndpoint') ?? amneziaEndpoint;
     launchAtStartup = p.getBool('s_launchAtStartup') ?? launchAtStartup;
+    homeAdvanced = p.getBool('s_homeAdvanced') ?? homeAdvanced;
+    onboarded = p.getBool('s_onboarded') ?? onboarded;
     scheduleEnabled = p.getBool('s_scheduleEnabled') ?? scheduleEnabled;
     scheduleFrom = p.getString('s_scheduleFrom') ?? scheduleFrom;
     scheduleTo = p.getString('s_scheduleTo') ?? scheduleTo;
@@ -169,6 +173,8 @@ class AppSettings extends ChangeNotifier {
       p.setString('s_amneziaConfig', amneziaConfig),
       p.setString('s_amneziaEndpoint', amneziaEndpoint),
       p.setBool('s_launchAtStartup', launchAtStartup),
+      p.setBool('s_homeAdvanced', homeAdvanced),
+      p.setBool('s_onboarded', onboarded),
       p.setBool('s_scheduleEnabled', scheduleEnabled),
       p.setString('s_scheduleFrom', scheduleFrom),
       p.setString('s_scheduleTo', scheduleTo),

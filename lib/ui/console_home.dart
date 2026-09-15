@@ -10,6 +10,7 @@ import '../core/settings.dart';
 import '../core/vpn_controller.dart';
 import 'flag_badge.dart';
 import 'location_sheet.dart';
+import 'onboarding.dart';
 import 'servers_screen.dart';
 import 'settings_screen.dart';
 import 'strings.dart';
@@ -17,8 +18,9 @@ import 'style.dart';
 import 'support.dart';
 import 'widgets.dart';
 
-/// Single scrolling home, laid out like the Android app: header, connect squircle, status,
-/// exit card, mode chips, DNS chip, servers row and stats. Settings and Servers open as full pages.
+/// Single scrolling home. Simple view (default): header, connect squircle, one plain status line (or a friendly
+/// error with a retry button), location card and support. Advanced view ("حالت پیشرفته", remembered): status
+/// details, exit card, mode chips, DNS chip, servers row, stats and network facts. Settings and Servers open as pages.
 class ConsoleHome extends StatefulWidget {
   const ConsoleHome({super.key, required this.controller});
 
@@ -49,7 +51,19 @@ class _ConsoleHomeState extends State<ConsoleHome> {
         if (mounted) _openSettings();
       });
     }
-    unawaited(_askReportsConsent());
+    unawaited(_firstRun());
+  }
+
+  /// Once settings are loaded: simple view always uses automatic mode, first-launch steps, then the reports question.
+  Future<void> _firstRun() async {
+    await c.ready.future;
+    final s = c.settings;
+    if (!s.homeAdvanced && s.transport != 'auto') await s.update((x) => x.transport = 'auto');
+    if (mounted && !s.onboarded) {
+      await showOnboarding(context);
+      await s.update((x) => x.onboarded = true);
+    }
+    await _askReportsConsent();
   }
 
   void _openSettings() =>
@@ -128,6 +142,7 @@ class _ConsoleHomeState extends State<ConsoleHome> {
         listenable: Listenable.merge([c, network, c.settings]),
         builder: (context, _) {
           final lastMs = _latency.isEmpty ? null : _latency.last;
+          final advanced = c.settings.homeAdvanced;
           return SafeArea(
             child: Center(
               child: ConstrainedBox(
@@ -139,6 +154,13 @@ class _ConsoleHomeState extends State<ConsoleHome> {
                     if (c.update != null) _UpdateLine(controller: c),
                     const SizedBox(height: 14),
                     Center(child: _Squircle(controller: c)),
+                    if (!advanced) ...[
+                      _SimpleStatus(controller: c),
+                      const SizedBox(height: 16),
+                      _LocationCard(controller: c),
+                      const SizedBox(height: 12),
+                      const CardGroup(children: [TelegramSupportRow()]),
+                    ] else ...[
                     _Status(controller: c, latency: lastMs),
                     const SizedBox(height: 12),
                     _ExitCard(controller: c, network: network, latency: _latency),
@@ -160,12 +182,147 @@ class _ConsoleHomeState extends State<ConsoleHome> {
                     _Tiles(controller: c),
                     SectionHeader(tr('شبکه', 'Network')),
                     _Facts(controller: c, network: network, latency: _latency),
+                    ],
+                    const SizedBox(height: 12),
+                    _AdvancedToggle(controller: c),
                   ],
                 ),
               ),
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// "حالت پیشرفته" switch on home; turning it off returns to automatic mode.
+class _AdvancedToggle extends StatelessWidget {
+  const _AdvancedToggle({required this.controller});
+
+  final VpnController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = controller.settings;
+    return CardGroup(children: [
+      SwitchSettingRow(
+        icon: Icons.tune_rounded,
+        title: tr('حالت پیشرفته', 'Advanced mode'),
+        subtitle: tr('انتخاب نوع اتصال، DNS، لیست سرورها و آمار', 'Connection type, DNS, server list and statistics'),
+        value: s.homeAdvanced,
+        onChanged: (v) => s.update((x) {
+          x.homeAdvanced = v;
+          if (!v) x.transport = 'auto';
+        }),
+      ),
+    ]);
+  }
+}
+
+/// One plain sentence for errors in the simple view; the technical message stays in the log and advanced view.
+String _friendlyError(String error) {
+  if (error.contains('Administrator')) {
+    return tr('این حالت دسترسی مدیر ویندوز می‌خواهد. برنامه را ببندید، روی آیکونش کلیک راست کنید و «Run as administrator» را بزنید.',
+        'This mode needs Windows administrator rights. Close the app, right-click its icon and choose "Run as administrator".');
+  }
+  if (error.contains('کشور')) {
+    return tr('سروری از این کشور در دسترس نیست. مکان را روی «خودکار» بگذارید.',
+        'No server is available in this country. Set the location to "Automatic".');
+  }
+  return tr('وصل نشد. اینترنت خود را بررسی کنید و دوباره تلاش کنید.', "Couldn't connect. Check your internet and try again.");
+}
+
+/// Simple view: one plain status line, or a friendly error with a big retry button (retries in automatic mode).
+class _SimpleStatus extends StatelessWidget {
+  const _SimpleStatus({required this.controller});
+
+  final VpnController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = controller;
+    final error = c.state == VpnState.disconnected ? c.error : null;
+    if (error != null) {
+      return Column(children: [
+        Text(_friendlyError(error),
+            textAlign: TextAlign.center, style: TextStyle(fontSize: 14.5, height: 1.6, color: Palette.errorText)),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: 260,
+          height: 50,
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: Palette.accent,
+              foregroundColor: Palette.bg,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Palette.pillRadius)),
+            ),
+            onPressed: () async {
+              c.clearError();
+              if (c.settings.transport != 'auto') await c.settings.update((x) => x.transport = 'auto');
+              await c.connect();
+            },
+            icon: const Icon(Icons.refresh_rounded),
+            label: Text(tr('دوباره تلاش کن', 'Try again'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          ),
+        ),
+      ]);
+    }
+    final line = switch (c.state) {
+      VpnState.connected => c.exitInIran
+          ? tr('متصل هستید (خروجی ایران است؛ بعضی سایت‌ها باز نمی‌شوند)', 'Connected (exit is in Iran; some sites will not open)')
+          : tr('متصل هستید و اینترنت شما امن است', 'You are connected and protected'),
+      VpnState.connecting => tr('در حال پیدا کردن بهترین سرور…', 'Finding the best server…'),
+      VpnState.disconnecting => tr('در حال قطع اتصال…', 'Disconnecting…'),
+      VpnState.disconnected => tr('برای اتصال، دکمه‌ی بالا را بزنید', 'Press the button above to connect'),
+    };
+    return Column(children: [
+      Text(line,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: c.state == VpnState.connected ? Palette.connected : Palette.muted)),
+      if (c.state == VpnState.connecting && c.progress != null)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 8),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(value: c.progress, minHeight: 3, color: Palette.connecting, backgroundColor: Palette.raised),
+          ),
+        ),
+    ]);
+  }
+}
+
+/// Simple view: "مکان: خودکار (بهترین)" with a flag; opens the country list.
+class _LocationCard extends StatelessWidget {
+  const _LocationCard({required this.controller});
+
+  final VpnController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = controller;
+    final locked = c.state != VpnState.disconnected;
+    final code = c.selectedCountry;
+    final place = code == null ? tr('خودکار (بهترین)', 'Automatic (best)') : locationLabel(c);
+    return Opacity(
+      opacity: locked ? 0.6 : 1,
+      child: AppCard(
+        onTap: locked ? null : () => showLocationSheet(context, c),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(children: [
+          FlagBadge(code: code, size: 36),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text('${tr('مکان', 'Location')}: $place',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600, color: Palette.text)),
+          ),
+          Icon(chevronEnd, color: Palette.muted),
+        ]),
       ),
     );
   }
