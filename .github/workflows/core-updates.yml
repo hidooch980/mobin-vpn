@@ -79,7 +79,11 @@ jobs:
             # Only bookkeeping (seen upstream versions): do not start a release.
             git commit -m "Core update state [skip ci]"
           fi
-          git push origin HEAD:main
+          # main may have moved while the check ran (e.g. a manual push): rebase, retry a few times.
+          for i in 1 2 3 4 5; do
+            git pull --rebase origin main && git push origin HEAD:main && break
+            sleep 15
+          done
       - name: Summary
         if: always()
         run: |
