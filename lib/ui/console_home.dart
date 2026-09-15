@@ -151,7 +151,7 @@ class _ConsoleHomeState extends State<ConsoleHome> {
                       NavSettingRow(
                         icon: Icons.dns_outlined,
                         title: tr('سرورها', 'Servers'),
-                        value: digits(c.servers.length),
+                        value: '${digits(c.servers.length)} · ${serversUpdatedAgo(c.updatedAt)}',
                         onTap: _openServers,
                       ),
                       const TelegramSupportRow(),

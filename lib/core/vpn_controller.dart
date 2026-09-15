@@ -181,6 +181,7 @@ class VpnController extends ChangeNotifier {
     await checkUpdate();
     // Long-running sessions (e.g. Windows left open) still hear about new releases and get fresh servers.
     Timer.periodic(const Duration(hours: 6), (_) => checkUpdate());
+    // Server lists stay fresh while the app runs (the built-in list every 30 min; Connect refreshes a stale one).
     Timer.periodic(const Duration(minutes: 30), (_) => refresh());
     // Pre-warm: keep delays of the top servers fresh while idle, so Connect starts with the fastest ones.
     Timer(const Duration(minutes: 1), () => _prewarm());
@@ -830,13 +831,52 @@ class VpnController extends ChangeNotifier {
   DateTime? _prewarmAt;
   bool _prewarming = false;
 
+  /// When each failed delay (-1) was first seen; failures older than [_failureTtl] are forgotten so the
+  /// server is re-pinged and can come back.
+  final Map<String, DateTime> _failedAt = {};
+  static const _failureTtl = Duration(hours: 6);
+
+  /// Drops failed delays older than 6 h; returns the servers whose failure expired.
+  List<Server> _expireFailures() {
+    final now = DateTime.now();
+    final expired = <String>{};
+    for (final e in delays.entries) {
+      if (e.value > 0) {
+        _failedAt.remove(e.key);
+        continue;
+      }
+      final at = _failedAt.putIfAbsent(e.key, () => now);
+      if (now.difference(at) > _failureTtl) expired.add(e.key);
+    }
+    for (final uri in expired) {
+      delays.remove(uri);
+      _failedAt.remove(uri);
+      _badUntil.remove(uri);
+    }
+    return servers.where((s) => expired.contains(s.uri)).toList();
+  }
+
+  /// Lists older than this are refreshed in the background when Connect is pressed (the cache is used meanwhile).
+  static const _staleList = Duration(minutes: 30);
+
+  void _refreshIfStale() {
+    final at = updatedAt;
+    if (loading || (at != null && DateTime.now().difference(at) < _staleList)) return;
+    AppLog.add('servers: list older than ${_staleList.inMinutes} min, refreshing in the background');
+    unawaited(refresh());
+  }
+
   Future<void> _prewarm() async {
     final eng = engine;
     if (eng is! WindowsEngine || settings.dataSaver || _prewarming || pinging || loading || _connectRun != null) return;
     if (state != VpnState.disconnected || servers.isEmpty) return;
     _prewarming = true;
     try {
-      final pool = (await _candidates()).where((s) => !_isWarp(s) && !FreeRoutes.isFree(s)).take(30).toList();
+      final revived = _expireFailures().where((s) => !_isWarp(s) && !FreeRoutes.isFree(s));
+      final top = (await _candidates()).where((s) => !_isWarp(s) && !FreeRoutes.isFree(s)).take(30).toList();
+      final seen = top.map((s) => s.uri).toSet();
+      // Servers whose failure expired (older than 6 h) are re-pinged too, so they can come back.
+      final pool = [...top, ...revived.where((s) => seen.add(s.uri)).take(10)];
       if (pool.isEmpty || state != VpnState.disconnected) return;
       final result = await eng.prewarm(pool, _options, isCancelled: () => state != VpnState.disconnected);
       if (state != VpnState.disconnected) return; // a connect started meanwhile: results may be partial
@@ -974,6 +1014,7 @@ class VpnController extends ChangeNotifier {
     final previous = _connectRun;
     if (previous != null) await previous; // a cancelled attempt may still be unwinding
     if (state != VpnState.disconnected) return;
+    _refreshIfStale();
     final run = _connect(only);
     _connectRun = run;
     try {

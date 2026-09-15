@@ -29,6 +29,14 @@ String digits(Object value) {
   return s.replaceAllMapped(RegExp(r'[0-9]'), (m) => fa[int.parse(m[0]!)]);
 }
 
+/// "آخرین به‌روزرسانی سرورها: N دقیقه پیش" for the time the server list was last fetched.
+String serversUpdatedAgo(DateTime? at) {
+  if (at == null) return tr('سرورها هنوز به‌روزرسانی نشده‌اند', 'Servers not updated yet');
+  final minutes = DateTime.now().difference(at).inMinutes;
+  if (minutes < 1) return tr('آخرین به‌روزرسانی سرورها: همین حالا', 'Servers updated: just now');
+  return tr('آخرین به‌روزرسانی سرورها: ${digits(minutes)} دقیقه پیش', 'Servers updated: $minutes min ago');
+}
+
 const Map<String, String> _enCountries = {
   'AE': 'UAE', 'AL': 'Albania', 'AM': 'Armenia', 'AR': 'Argentina', 'AT': 'Austria',
   'AU': 'Australia', 'AZ': 'Azerbaijan', 'BE': 'Belgium', 'BG': 'Bulgaria', 'BR': 'Brazil',

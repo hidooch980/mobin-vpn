@@ -62,7 +62,8 @@ class _ServersScreenState extends State<ServersScreen> {
         final tested = list.where((s) => (c.delays[s.uri] ?? 0) > 0).length;
         return PageShell(
           title: tr('سرورها', 'Servers'),
-          subtitle: tr('${list.length} سرور · $tested پاسخ داده', '${list.length} servers · $tested responded'),
+          subtitle: '${tr('${list.length} سرور · $tested پاسخ داده', '${list.length} servers · $tested responded')} · '
+              '${serversUpdatedAgo(c.updatedAt)}',
           showBack: !widget.embedded,
           actions: [
             IconButton(
