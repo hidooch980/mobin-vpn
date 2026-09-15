@@ -1,3 +1,19 @@
 {
-  "components": {}
+  "android_dispatch": {
+    "sha": "719dd4a83ef8af53ddaa647b11b512fc265ecb9a"
+  },
+  "components": {
+    "msn-guard": {
+      "seen": "v1.9.0"
+    },
+    "psiphon-android-upstream": {
+      "seen": "806546b09cd0a72390a6ff5433b209323cd87995"
+    },
+    "tor": {
+      "applied": "15.0.23",
+      "attempts": {
+        "15.0.23": "2026-09-15T15:16:38+00:00"
+      }
+    }
+  }
 }
