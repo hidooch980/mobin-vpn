@@ -498,6 +498,11 @@ class VpnController extends ChangeNotifier {
     final groups = <String, CountryGroup>{};
     for (final s in servers) {
       groups.putIfAbsent(s.countryCode, () => CountryGroup(s.countryCode)).servers.add(s);
+      // A user config named after a country (e.g. "🇹🇷 Turkey") is also listed under that country.
+      final real = s.countryCode == manualCode ? countryCodeFromText(s.remark) : null;
+      if (real != null && real != unknownCountry) {
+        groups.putIfAbsent(real, () => CountryGroup(real)).servers.add(s);
+      }
     }
     countries = groups.values.toList();
     if (selectedCountry != null &&
@@ -891,7 +896,7 @@ class VpnController extends ChangeNotifier {
               !FreeRoutes.isFree(s) &&
               !_isBad(s) &&
               (country == null ||
-                  (country == favoritesMode ? settings.favorites.contains(s.uri) : s.countryCode == country)))
+                  (country == favoritesMode ? settings.favorites.contains(s.uri) : _inCountry(s, country))))
           .toList()
         ..sort((a, b) => delays[a.uri]!.compareTo(delays[b.uri]!));
       eng.standby = backups.take(2).toList();
@@ -1051,14 +1056,20 @@ class VpnController extends ChangeNotifier {
     return [for (final e in indexed) e.$2];
   }
 
+  /// Server [s] belongs to country [code]; user configs count under the country named in their remark.
+  static bool _inCountry(Server s, String code) =>
+      s.countryCode == code || (s.countryCode == manualCode && countryCodeFromText(s.remark) == code);
+
   /// Round-robin across countries so a pool compares many locations, not only the first one.
+  /// A user config listed under both "کانفیگ‌های من" and its country is taken once.
   static List<Server> _roundRobin(List<CountryGroup> groups, int size) {
     final pool = <Server>[];
+    final taken = <String>{};
     for (var round = 0; pool.length < size; round++) {
       var added = false;
       for (final g in groups) {
         if (round < g.servers.length && pool.length < size) {
-          pool.add(g.servers[round]);
+          if (taken.add(g.servers[round].uri)) pool.add(g.servers[round]);
           added = true;
         }
       }
@@ -1077,13 +1088,13 @@ class VpnController extends ChangeNotifier {
       return healthy.isEmpty ? favorites : healthy;
     }
     if (country != null) {
-      pool = _byFreshDelay(servers.where((s) => s.countryCode == country).take(_countryPoolSize).toList());
+      pool = _byFreshDelay(servers.where((s) => _inCountry(s, country)).take(_countryPoolSize).toList());
     } else {
       pool = _byFreshDelay(_roundRobin(countries, size));
     }
     final last = await _lastWinner();
     final lastServer = servers.where((s) => s.uri == last).firstOrNull;
-    if (lastServer != null && (country == null || lastServer.countryCode == country)) {
+    if (lastServer != null && (country == null || _inCountry(lastServer, country))) {
       pool
         ..remove(lastServer)
         ..insert(0, lastServer);
@@ -1304,7 +1315,12 @@ class VpnController extends ChangeNotifier {
           if (pool.isEmpty) throw const _UserError(warpFailedMessage);
         }
       }
-      if (pool.isEmpty) throw const _UserError('سروری برای این موقعیت پیدا نشد.');
+      if (pool.isEmpty) {
+        final country = selectedCountry;
+        throw _UserError(country != null && country != favoritesMode
+            ? 'سروری از این کشور در دسترس نیست'
+            : 'سروری برای این موقعیت پیدا نشد.');
+      }
       // UDP is dropped on this network: skip Hysteria2/TUIC/WireGuard/WARP in automatic selection.
       if (only == null &&
           (settings.transport == 'auto' || settings.transport == 'v2ray') &&
