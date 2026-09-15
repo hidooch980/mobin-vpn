@@ -1,9 +1,12 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+import '../core/amnezia.dart';
 import '../core/engine.dart';
 import '../core/server.dart';
 import '../core/vpn_controller.dart';
@@ -12,7 +15,8 @@ import 'glass.dart';
 import 'strings.dart';
 import 'style.dart';
 
-/// "My configs": add share links by pasting or scanning a QR code; they appear as their own location.
+/// "My configs": share links pasted (several lines or base64), read from a .txt/.conf file, scanned as a QR code
+/// (Android camera) or pulled from the user's own subscription URLs; they appear as their own location.
 class ImportScreen extends StatelessWidget {
   const ImportScreen({super.key, required this.controller});
 
@@ -26,6 +30,35 @@ class ImportScreen extends StatelessWidget {
     final added = await controller.addManualConfigs(text);
     if (context.mounted) {
       _toast(context, added == 0 ? tr('کانفیگ معتبری پیدا نشد', 'No valid config found') : tr('$added کانفیگ اضافه شد', '$added configs added'));
+    }
+  }
+
+  /// .txt with links, or an AmneziaWG / WireGuard .conf (saved as the personal Amnezia config).
+  Future<void> _fromFile(BuildContext context) async {
+    String text;
+    try {
+      final file = await openFile(acceptedTypeGroups: const [
+        XTypeGroup(label: 'Config', extensions: ['txt', 'conf']),
+      ]);
+      if (file == null) return;
+      text = await file.readAsString();
+    } catch (_) {
+      if (context.mounted) _toast(context, tr('خواندن فایل ممکن نشد', 'Could not read the file'));
+      return;
+    }
+    if (!context.mounted) return;
+    if (!text.contains('[Interface]')) return _add(context, text);
+    try {
+      final config = AmneziaConfig.parse(text);
+      await controller.settings.update((x) => x
+        ..amneziaConfig = jsonEncode(config.toJson())
+        ..amneziaEndpoint = '');
+      if (context.mounted) {
+        _toast(context, tr('کانفیگ AmneziaWG ذخیره شد؛ حالت «Amnezia» از آن استفاده می‌کند',
+            'AmneziaWG config saved; the Amnezia mode uses it'));
+      }
+    } on FormatException catch (e) {
+      if (context.mounted) _toast(context, e.message);
     }
   }
 
@@ -74,6 +107,15 @@ class ImportScreen extends StatelessWidget {
                             },
                           ),
                         ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _BigButton(
+                            icon: Icons.file_open_rounded,
+                            label: tr('از فایل', 'From file'),
+                            colors: [Palette.connected, Palette.accent],
+                            onTap: () => _fromFile(context),
+                          ),
+                        ),
                         if (Platform.isAndroid) ...[
                           const SizedBox(width: 12),
                           Expanded(
@@ -96,7 +138,20 @@ class ImportScreen extends StatelessWidget {
                             'Subscriptions work too: paste base64 text or several links on separate lines.'),
                         style: TextStyle(fontSize: 12, color: Palette.muted, height: 1.6),
                       ),
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 14),
+                      _SubscriptionBox(controller: controller),
+                      const SizedBox(height: 14),
+                      if (mine.isNotEmpty)
+                        Align(
+                          alignment: AlignmentDirectional.centerEnd,
+                          child: TextButton.icon(
+                            onPressed: controller.pinging ? null : () => controller.probeServers(mine),
+                            icon: controller.pinging
+                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                : const Icon(Icons.speed_rounded),
+                            label: Text(tr('تست پینگ همه', 'Ping all')),
+                          ),
+                        ),
                       if (mine.isEmpty)
                         Padding(
                           padding: EdgeInsets.symmetric(vertical: 40),
@@ -156,6 +211,7 @@ class _ConfigTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final host = Uri.tryParse(server.uri)?.host ?? '';
+    final delay = controller.delays[server.uri];
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Glass(
@@ -180,6 +236,12 @@ class _ConfigTile extends StatelessWidget {
                 Text(host, maxLines: 1, textDirection: TextDirection.ltr, style: TextStyle(fontSize: 11, color: Palette.muted)),
             ]),
           ),
+          if (delay != null)
+            Padding(
+              padding: const EdgeInsetsDirectional.only(end: 4),
+              child: Text(delay > 0 ? '${digits(delay)} ms' : tr('ناموفق', 'failed'),
+                  style: TextStyle(fontSize: 12, color: delay > 0 ? Palette.connected : Palette.danger)),
+            ),
           IconButton(
             tooltip: tr('حذف', 'Delete'),
             onPressed: () => controller.removeManualConfig(server.uri),
@@ -187,6 +249,105 @@ class _ConfigTile extends StatelessWidget {
           ),
         ]),
       ),
+    );
+  }
+}
+
+/// The user's own subscription URLs: add (downloaded once to validate), list with link counts, remove.
+/// Links are refreshed in the background every hour.
+class _SubscriptionBox extends StatefulWidget {
+  const _SubscriptionBox({required this.controller});
+
+  final VpnController controller;
+
+  @override
+  State<_SubscriptionBox> createState() => _SubscriptionBoxState();
+}
+
+class _SubscriptionBoxState extends State<_SubscriptionBox> {
+  final _url = TextEditingController();
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _url.dispose();
+    super.dispose();
+  }
+
+  Future<void> _addUrl() async {
+    final url = _url.text.trim();
+    if (url.isEmpty || _busy) return;
+    setState(() => _busy = true);
+    final count = await widget.controller.addUserSubscription(url);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (count > 0) _url.clear();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      behavior: SnackBarBehavior.floating,
+      content: Text(count > 0
+          ? tr('${digits(count)} کانفیگ از لینک اشتراک دریافت شد', '$count configs received from the subscription')
+          : tr('لینک اشتراک دریافت نشد یا کانفیگ معتبری نداشت',
+              'The subscription could not be downloaded or had no valid configs')),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.controller;
+    return Glass(
+      radius: 18,
+      padding: const EdgeInsets.all(12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text(tr('لینک اشتراک شخصی', 'My subscription links'),
+            style: TextStyle(fontWeight: FontWeight.w800, color: Palette.text)),
+        const SizedBox(height: 2),
+        Text(tr('هر ساعت خودکار به‌روز می‌شود.', 'Refreshed automatically every hour.'),
+            style: TextStyle(fontSize: 11.5, color: Palette.muted)),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(
+            child: TextField(
+              controller: _url,
+              textDirection: TextDirection.ltr,
+              style: TextStyle(color: Palette.text, fontSize: 13),
+              onSubmitted: (_) => _addUrl(),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'https://…',
+                hintStyle: TextStyle(color: Palette.muted),
+                filled: true,
+                fillColor: Palette.fill,
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(Palette.pillRadius), borderSide: BorderSide.none),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          _busy
+              ? const Padding(
+                  padding: EdgeInsets.all(10),
+                  child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
+              : IconButton(
+                  tooltip: tr('افزودن', 'Add'), onPressed: _addUrl, icon: Icon(Icons.add_link_rounded, color: Palette.accent)),
+        ]),
+        for (final url in c.settings.userSubscriptions)
+          Row(children: [
+            Expanded(
+              child: Text(url,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textDirection: TextDirection.ltr,
+                  style: TextStyle(fontSize: 12, color: Palette.text)),
+            ),
+            Text(tr('${digits(c.userSubscriptionCount(url))} کانفیگ', '${c.userSubscriptionCount(url)} configs'),
+                style: TextStyle(fontSize: 11.5, color: Palette.muted)),
+            IconButton(
+              tooltip: tr('حذف', 'Delete'),
+              onPressed: () => c.removeUserSubscription(url),
+              icon: Icon(Icons.delete_outline_rounded, color: Palette.danger, size: 20),
+            ),
+          ]),
+      ]),
     );
   }
 }

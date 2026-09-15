@@ -163,6 +163,8 @@ class VpnController extends ChangeNotifier {
       AppLog.add('engine init failed: $e');
       error = 'راه‌اندازی هسته ناموفق بود: $e';
     }
+    _userSubBodies = await UserSubscriptions.loadCached(settings.userSubscriptions);
+    _parseUserSubs();
     final cached = await repository.loadCached();
     if (cached != null) _apply(cached);
     await refresh();
@@ -183,6 +185,8 @@ class VpnController extends ChangeNotifier {
     Timer.periodic(const Duration(hours: 6), (_) => checkUpdate());
     // Server lists stay fresh while the app runs (the built-in list every 30 min; Connect refreshes a stale one).
     Timer.periodic(const Duration(minutes: 30), (_) => refresh());
+    unawaited(refreshUserSubscriptions());
+    Timer.periodic(const Duration(hours: 1), (_) => refreshUserSubscriptions());
     // Pre-warm: keep delays of the top servers fresh while idle, so Connect starts with the fastest ones.
     Timer(const Duration(minutes: 1), () => _prewarm());
     Timer.periodic(const Duration(minutes: 20), (_) => _prewarm());
@@ -452,11 +456,15 @@ class VpnController extends ChangeNotifier {
   void _apply(SubscriptionData data) {
     _data = data;
     WarpRegistry.account = WarpAccount.fromJsonString(settings.warpAccount);
+    final seen = <String>{};
     final manual = [
       for (final link in settings.manualConfigs)
         if (Server.fromUri(link) case final s?)
           Server(uri: s.uri, remark: s.remark, countryCode: manualCode, protocol: s.protocol),
-    ].where(engine.supports);
+      for (final url in settings.userSubscriptions)
+        for (final s in _userSubServers[url] ?? const <Server>[])
+          Server(uri: s.uri, remark: s.remark, countryCode: manualCode, protocol: s.protocol),
+    ].where((s) => seen.add(s.uri) && engine.supports(s));
     servers = [
       ...manual,
       ...data.servers.where((s) => settings.protocols.contains(s.protocol) && engine.supports(s)),
@@ -664,6 +672,87 @@ class VpnController extends ChangeNotifier {
     final fresh = found.where(existing.add).toList();
     if (fresh.isNotEmpty) await settings.update((x) => x.manualConfigs = [...fresh, ...x.manualConfigs]);
     return fresh.length;
+  }
+
+  /// Body and parsed servers of each user subscription URL.
+  Map<String, String> _userSubBodies = {};
+  final Map<String, List<Server>> _userSubServers = {};
+  bool _userSubsBusy = false;
+
+  void _parseUserSubs() {
+    _userSubServers
+      ..clear()
+      ..addAll({for (final e in _userSubBodies.entries) e.key: parseSubscription(e.value)});
+  }
+
+  /// Number of links last fetched from [url].
+  int userSubscriptionCount(String url) => _userSubServers[url]?.length ?? 0;
+
+  /// Re-downloads every user subscription URL (hourly and on demand); failures keep the cached links.
+  Future<void> refreshUserSubscriptions() async {
+    if (_userSubsBusy || settings.userSubscriptions.isEmpty) return;
+    _userSubsBusy = true;
+    try {
+      for (final url in settings.userSubscriptions) {
+        try {
+          _userSubBodies[url] = await UserSubscriptions.fetch(url, proxy: engine.httpProxy);
+        } catch (e) {
+          AppLog.add('user subscription: refresh failed ($e)');
+        }
+      }
+      _parseUserSubs();
+      final data = _data;
+      if (data != null) _apply(data);
+    } finally {
+      _userSubsBusy = false;
+    }
+  }
+
+  /// Adds a subscription URL after one successful download; returns the number of links (0 = not added).
+  Future<int> addUserSubscription(String url) async {
+    final u = Uri.tryParse(url.trim());
+    if (u == null || !(u.isScheme('http') || u.isScheme('https')) || u.host.isEmpty) return 0;
+    final key = u.toString();
+    try {
+      final body = await UserSubscriptions.fetch(key, proxy: engine.httpProxy);
+      _userSubBodies[key] = body;
+      _parseUserSubs();
+    } catch (e) {
+      AppLog.add('user subscription: add failed ($e)');
+      return 0;
+    }
+    if (!settings.userSubscriptions.contains(key)) {
+      await settings.update((x) => x.userSubscriptions = [...x.userSubscriptions, key]);
+    } else {
+      final data = _data;
+      if (data != null) _apply(data);
+    }
+    return userSubscriptionCount(key);
+  }
+
+  Future<void> removeUserSubscription(String url) async {
+    _userSubBodies.remove(url);
+    _userSubServers.remove(url);
+    await UserSubscriptions.forget(url);
+    await settings.update((x) => x.userSubscriptions = x.userSubscriptions.where((u) => u != url).toList());
+  }
+
+  /// Real probe of the user's configs (Windows: HTTP 204 through each server; Android: core delay test).
+  Future<void> probeServers(List<Server> list) async {
+    if (pinging || list.isEmpty) return;
+    final eng = engine;
+    if (eng is! WindowsEngine) return pingServers(list);
+    pinging = true;
+    notifyListeners();
+    try {
+      final result = await eng.probeAll(list, _options);
+      for (var i = 0; i < list.length; i++) {
+        delays[list[i].uri] = result[i];
+      }
+    } finally {
+      pinging = false;
+      notifyListeners();
+    }
   }
 
   Future<void> removeManualConfig(String uri) =>
