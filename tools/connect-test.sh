@@ -5,7 +5,7 @@
 # Gaming also has to log its chosen node and keep request latency reasonable.
 set -u
 PKG=com.mobin.mobin_vpn
-TILE=$PKG/com.msnguard.vpn.MsnGuardTileService
+TILE=$PKG/com.molido.vpn.MolidoTileService
 
 tunnel_up() { adb shell ip addr show tun0 2>/dev/null | grep -q "inet "; }
 
@@ -19,7 +19,7 @@ connect_mode() { # mode
   # Fresh process each time, so a stale tile state or a half-stopped service can't swallow the tap.
   adb shell am force-stop $PKG
   sleep 2
-  adb shell am start -W -n $PKG/com.msnguard.vpn.MainActivity --es molido_mode "$mode" >/dev/null
+  adb shell am start -W -n $PKG/com.molido.vpn.MainActivity --es molido_mode "$mode" >/dev/null
   sleep 8
   echo "saved mode: $(adb shell run-as $PKG cat shared_prefs/settings.xml 2>/dev/null | grep -o 'default_protocol">[^<]*' || echo 'n/a (release build)')"
   adb logcat -c
@@ -48,7 +48,7 @@ connect_mode() { # mode
     if echo "$code" | grep -q " 204"; then echo "page loaded through the tunnel ✅"; return 0; fi
     sleep 10
   done
-  adb logcat -d | grep -iE "msnguard|aether|shard" | tail -60
+  adb logcat -d | grep -iE "molido|aether|shard" | tail -60
   return 1
 }
 
@@ -68,12 +68,12 @@ sleep 3
 shot() { mkdir -p shots; adb exec-out screencap -p > "shots/$1.png" || true; }
 
 adb shell am force-stop $PKG
-adb shell am start -W -n $PKG/com.msnguard.vpn.MainActivity >/dev/null
+adb shell am start -W -n $PKG/com.molido.vpn.MainActivity >/dev/null
 sleep 8
 shot 1-home-disconnected
 
 connect_mode auto || { shot fail-auto; exit 1; }
-adb shell am start -W -n $PKG/com.msnguard.vpn.MainActivity >/dev/null
+adb shell am start -W -n $PKG/com.molido.vpn.MainActivity >/dev/null
 sleep 4
 shot 2-home-connected
 disconnect || true
