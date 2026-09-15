@@ -122,13 +122,13 @@ footer a{color:var(--muted)}
         <li><span class="num">۱</span><div>
           <h3>دانلود و نصب</h3>
           <p>فایل را باز کنید و «نصب» را بزنید. اگر گفت «منبع ناشناس»، اجازه دهید.</p>
-          <a class="btn primary" data-app="MobinVPN-android-arm64.apk" href="#">دانلود برای اندروید</a>
+          <a class="btn primary" data-app="MolidoVPN-android-arm64.apk" href="#">دانلود برای اندروید</a>
         </div></li>
         <li><span class="num">۲</span><div><h3>برنامه را باز کنید و دکمه‌ی بزرگ را بزنید</h3></div></li>
         <li><span class="num">۳</span><div><h3>اجازه‌ی VPN را بدهید</h3></div></li>
       </ol>
       <p class="done">تمام ✓</p>
-      <p class="small">گوشی قدیمی؟ <a data-app="MobinVPN-android-armv7.apk" href="#">دانلود نسخه‌ی گوشی‌های قدیمی</a> · <a data-gh="MobinVPN-android-arm64.apk" href="#">لینک دوم (GitHub)</a></p>
+      <p class="small">گوشی قدیمی؟ <a data-app="MolidoVPN-android-armv7.apk" href="#">دانلود نسخه‌ی گوشی‌های قدیمی</a> · <a data-gh="MolidoVPN-android-arm64.apk" href="#">لینک دوم (GitHub)</a></p>
     </section>
 
     <section class="panel" id="windows" role="tabpanel" aria-labelledby="tab-windows">
@@ -142,7 +142,7 @@ footer a{color:var(--muted)}
         <li><span class="num">۳</span><div><h3>اگر ویندوز اجازه خواست، «Yes» را بزنید</h3></div></li>
       </ol>
       <p class="done">تمام ✓</p>
-      <p class="small"><a data-app="MobinVPN-windows-x64.zip" href="#">نسخه‌ی بدون نصب (zip)</a> · <a data-gh="MolidoVPN-windows-setup.exe" href="#">لینک دوم (GitHub)</a></p>
+      <p class="small"><a data-app="MolidoVPN-windows-x64.zip" href="#">نسخه‌ی بدون نصب (zip)</a> · <a data-gh="MolidoVPN-windows-setup.exe" href="#">لینک دوم (GitHub)</a></p>
     </section>
 
     <section class="panel" id="ios" role="tabpanel" aria-labelledby="tab-ios">
@@ -328,7 +328,7 @@ show(start);
 
 // ---- hero primary button
 const mainBtn = document.getElementById('main-btn');
-if (start === 'android') { mainBtn.textContent = 'دانلود برای اندروید'; mainBtn.href = MIRROR + 'MobinVPN-android-arm64.apk'; }
+if (start === 'android') { mainBtn.textContent = 'دانلود برای اندروید'; mainBtn.href = MIRROR + 'MolidoVPN-android-arm64.apk'; }
 else if (start === 'windows') { mainBtn.textContent = 'دانلود برای ویندوز'; mainBtn.href = MIRROR + 'MolidoVPN-windows-setup.exe'; }
 else { mainBtn.textContent = 'راه‌اندازی روی آیفون'; mainBtn.href = '#steps'; }
 // downloads: also reveal the steps for that device

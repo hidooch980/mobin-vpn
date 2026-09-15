@@ -19,9 +19,9 @@
 
 | دستگاه | چه چیزی نصب کنید |
 |---|---|
-| اندروید (بیشتر گوشی‌ها) | `MobinVPN-android-arm64.apk` از [صفحهٔ Releases](https://github.com/hidooch980/mobin-vpn/releases/latest) |
-| اندروید قدیمی / مطمئن نیستید | `MobinVPN-android-armv7.apk` یا `MobinVPN-android-universal.apk` |
-| ویندوز ۱۰ و ۱۱ | `MolidoVPN-windows-setup.exe` (یا نسخهٔ بدون نصب `MobinVPN-windows-x64.zip`) |
+| اندروید (بیشتر گوشی‌ها) | `MolidoVPN-android-arm64.apk` از [صفحهٔ Releases](https://github.com/hidooch980/mobin-vpn/releases/latest) |
+| اندروید قدیمی / مطمئن نیستید | `MolidoVPN-android-armv7.apk` یا `MolidoVPN-android-universal.apk` |
+| ویندوز ۱۰ و ۱۱ | `MolidoVPN-windows-setup.exe` (یا نسخهٔ بدون نصب `MolidoVPN-windows-x64.zip`) |
 | آیفون | برنامهٔ **Hiddify** یا **Streisand** را از App Store نصب کنید و یکی از لینک‌های اشتراک زیر را اضافه کنید |
 
 راه ساده‌تر: [سایت برنامه](https://hidooch980.github.io/mobin-vpn/) را باز کنید؛ دکمهٔ مناسب دستگاه شما آنجاست.

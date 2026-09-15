@@ -76,9 +76,9 @@ jobs:
           mkdir -p ../dist
           for f in app/build/outputs/apk/release/*.apk; do
             case "$f" in
-              *arm64-v8a*)   cp "$f" ../dist/MobinVPN-android-arm64.apk ;;
-              *armeabi-v7a*) cp "$f" ../dist/MobinVPN-android-armv7.apk ;;
-              *universal*)   cp "$f" ../dist/MobinVPN-android-universal.apk ;;
+              *arm64-v8a*)   cp "$f" ../dist/MolidoVPN-android-arm64.apk ;;
+              *armeabi-v7a*) cp "$f" ../dist/MolidoVPN-android-armv7.apk ;;
+              *universal*)   cp "$f" ../dist/MolidoVPN-android-universal.apk ;;
             esac
           done
           ls -la ../dist
@@ -114,7 +114,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           script: |
-            adb install -r dist/MobinVPN-android-universal.apk
+            adb install -r dist/MolidoVPN-android-universal.apk
             adb logcat -c
             adb shell monkey -p com.mobin.mobin_vpn -c android.intent.category.LAUNCHER 1
             sleep 25
@@ -308,7 +308,7 @@ jobs:
       - name: Zip
         run: |
           New-Item -ItemType Directory dist | Out-Null
-          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath dist/MobinVPN-windows-x64.zip
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath dist/MolidoVPN-windows-x64.zip
       - name: Windows installer (Inno Setup)
         shell: pwsh
         run: |
@@ -409,13 +409,20 @@ jobs:
             ## دانلود
             | دستگاه | فایل |
             |---|---|
-            | اندروید (بیشتر گوشی‌ها) | `MobinVPN-android-arm64.apk` |
-            | اندروید قدیمی | `MobinVPN-android-armv7.apk` |
-            | اگر مطمئن نیستید | `MobinVPN-android-universal.apk` |
+            | اندروید (بیشتر گوشی‌ها) | `MolidoVPN-android-arm64.apk` |
+            | اندروید قدیمی | `MolidoVPN-android-armv7.apk` |
+            | اگر مطمئن نیستید | `MolidoVPN-android-universal.apk` |
             | ویندوز ۱۰ و ۱۱ (نصب‌کننده) | `MolidoVPN-windows-setup.exe` |
-            | ویندوز، نسخه‌ی بدون نصب | `MobinVPN-windows-x64.zip` ← از حالت فشرده خارج کنید و `mobin_vpn.exe` (MolidoVPN) را اجرا کنید |
+            | ویندوز، نسخه‌ی بدون نصب | `MolidoVPN-windows-x64.zip` ← از حالت فشرده خارج کنید و `mobin_vpn.exe` (MolidoVPN) را اجرا کنید |
 
             ## استفاده
             - دکمه‌ی بزرگ را بزنید. در حالت **هوشمند** برنامه سرورها را با اینترنت خودتان می‌سنجد و به سریع‌ترین وصل می‌شود.
             - کارت «موقعیت» برای انتخاب کشور، دکمه‌ی 🖧 برای همه‌ی سرورها و تست پینگ، دکمه‌ی ⚙ برای تنظیمات پیشرفته.
             - برنامه خودش نسخه‌ی جدید را پیدا و نصب می‌کند.
+
+      - name: Pre-warm download cache
+        continue-on-error: true
+        run: |
+          for f in MolidoVPN-android-arm64.apk MolidoVPN-android-armv7.apk MolidoVPN-android-universal.apk MolidoVPN-windows-setup.exe MolidoVPN-windows-x64.zip; do
+            curl -sS -o /dev/null --max-time 600 -w "$f %{http_code} %{size_download}\n" "https://molido-sub.hidooch980.workers.dev/app/$f" || true
+          done

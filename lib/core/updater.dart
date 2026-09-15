@@ -25,11 +25,11 @@ class Updater {
 
   /// Per-ABI APK (~50 MB) matching the running build; universal (~140 MB) only for other CPUs.
   static String get _assetName {
-    if (Platform.isWindows) return 'MobinVPN-windows-x64.zip';
+    if (Platform.isWindows) return 'MolidoVPN-windows-x64.zip';
     return switch (Abi.current()) {
-      Abi.androidArm64 => 'MobinVPN-android-arm64.apk',
-      Abi.androidArm => 'MobinVPN-android-armv7.apk',
-      _ => 'MobinVPN-android-universal.apk',
+      Abi.androidArm64 => 'MolidoVPN-android-arm64.apk',
+      Abi.androidArm => 'MolidoVPN-android-armv7.apk',
+      _ => 'MolidoVPN-android-universal.apk',
     };
   }
 

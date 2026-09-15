@@ -10,7 +10,7 @@ const REPO = 'hidooch980/mobin-vpn';
 // App updates through this worker, for networks where github.com / api.github.com are slow or filtered.
 // /app/latest.json — same shape as the GitHub "latest release" API, with download URLs pointing back here.
 // /app/<asset>      — streams that asset of the latest release.
-async function appRoute(url) {
+async function appRoute(url, request, ctx) {
   const name = url.pathname.slice('/app/'.length);
   if (name === 'latest.json') {
     const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
@@ -22,7 +22,11 @@ async function appRoute(url) {
     const body = {
       tag_name: r.tag_name,
       published_at: r.published_at,
-      assets: r.assets.map((a) => ({ name: a.name, size: a.size, browser_download_url: `${url.origin}/app/${a.name}` })),
+      // Old apps (<= rename) look for MobinVPN-* names: list each asset under both names.
+      assets: r.assets.flatMap((a) => {
+        const one = (n) => ({ name: n, size: a.size, browser_download_url: `${url.origin}/app/${n}` });
+        return a.name.startsWith('MolidoVPN-') ? [one(a.name), one(a.name.replace(/^MolidoVPN-/, 'MobinVPN-'))] : [one(a.name)];
+      }),
     };
     return new Response(JSON.stringify(body), {
       headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=300', 'access-control-allow-origin': '*' },
@@ -40,16 +44,62 @@ async function appRoute(url) {
     });
   }
   if (!/^[A-Za-z0-9._-]+\.(apk|zip|exe)$/.test(name)) return new Response('not found', { status: 404 });
-  const res = await fetch(`https://github.com/${REPO}/releases/latest/download/${name}`, { redirect: 'follow' });
-  if (!res.ok) return new Response('download unavailable', { status: 502 });
-  const headers = new Headers({
-    'content-type': name.endsWith('.apk') ? 'application/vnd.android.package-archive' : 'application/octet-stream',
-    'content-disposition': `attachment; filename="${name}"`,
-    'cache-control': 'no-store',
-  });
-  const len = res.headers.get('content-length');
-  if (len) headers.set('content-length', len);
-  return new Response(res.body, { headers });
+  return appAsset(name, request, ctx);
+}
+
+// Release downloads through Cloudflare's edge: cached per release tag in caches.default (object max 512 MB on
+// the free plan; our largest asset is ~150 MB), streamed (no worker memory limit hit), Range → 206 for resume.
+// Old names (MobinVPN-*) map to the renamed MolidoVPN-* assets so already-installed apps still update.
+async function latestTag() {
+  const res = await fetch(`https://github.com/${REPO}/releases/latest`, { redirect: 'manual', cf: { cacheTtl: 120, cacheEverything: true } });
+  return (res.headers.get('location') || '').match(/\/tag\/([^/?#]+)/)?.[1] || null;
+}
+
+async function appAsset(name, request, ctx) {
+  const file = name.replace(/^MobinVPN-/, 'MolidoVPN-');
+  const tag = await latestTag();
+  const headers = {
+    'content-type': file.endsWith('.apk') ? 'application/vnd.android.package-archive' : 'application/octet-stream',
+    'content-disposition': `attachment; filename="${file}"`,
+    'cache-control': 'public, max-age=86400',
+    'accept-ranges': 'bytes',
+    'access-control-allow-origin': '*',
+  };
+  const range = request.headers.get('range');
+  const cache = caches.default;
+  const key = tag ? `https://molido-cache.invalid/app/${tag}/${file}` : null;
+  if (key && request.method === 'GET') {
+    const hit = await cache.match(new Request(key, { headers: range ? { range } : {} }));
+    if (hit) {
+      const h = new Headers(hit.headers); h.set('x-cache', 'HIT');
+      return new Response(hit.body, { status: hit.status, headers: h });
+    }
+  }
+  const src = (n) => tag ? `https://github.com/${REPO}/releases/download/${tag}/${n}` : `https://github.com/${REPO}/releases/latest/download/${n}`;
+  const get = async (h) => {
+    let r = await fetch(src(file), { redirect: 'follow', headers: h });
+    if (r.status === 404 && file !== name) r = await fetch(src(name), { redirect: 'follow', headers: h });
+    return r;
+  };
+  const res = await get(range ? { range } : {});
+  if (!(res.status === 200 || res.status === 206)) return new Response('download unavailable', { status: 502 });
+  const out = new Headers(headers);
+  for (const k of ['content-length', 'content-range']) if (res.headers.get(k)) out.set(k, res.headers.get(k));
+  out.set('x-cache', 'MISS');
+  if (key && request.method === 'GET') {
+    // Fill the cache with a separate full fetch (a tee would buffer in worker memory for slow clients).
+    ctx.waitUntil((async () => {
+      const full = range ? await get({}) : null;
+      const body = full || null;
+      if (range && !(body && body.status === 200)) return;
+      const src2 = body || await get({});
+      if (src2.status !== 200) return;
+      const h = new Headers(headers); h.set('cache-control', 'public, max-age=31536000, immutable');
+      if (src2.headers.get('content-length')) h.set('content-length', src2.headers.get('content-length'));
+      await cache.put(key, new Response(src2.body, { status: 200, headers: h }));
+    })().catch(() => {}));
+  }
+  return new Response(request.method === 'HEAD' ? null : res.body, { status: res.status, headers: out });
 }
 
 // /remote/<file> — app config files from the android repo, for networks where GitHub is filtered.
@@ -1304,7 +1354,7 @@ export default {
     if (url.pathname.startsWith('/remote/')) return remoteRoute(url);
     if (url.pathname === '/app/notice.json') return noticeRoute(env);
     if (url.pathname === '/app/flags.json') return flagsRoute(env);
-    if (url.pathname.startsWith('/app/')) return appRoute(url);
+    if (url.pathname.startsWith('/app/')) return appRoute(url, request, ctx);
     if (url.pathname === '/warp/reg') return warpRegRoute(request);
     if (url.pathname === '/admin' || url.pathname === '/admin/') return adminPage(env);
     if (url.pathname.startsWith('/admin/api')) {
