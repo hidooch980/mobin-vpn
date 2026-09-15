@@ -40,6 +40,47 @@ class CleanIp {
   static bool _loaded = false, _scanning = false;
   static String? _network;
 
+  /// Working clean IP from the last scan, sent once with the next successful opt-in report.
+  static Map<String, Object>? _pendingShare;
+
+  static Map<String, Object>? takePendingShare() {
+    final p = _pendingShare;
+    _pendingShare = null;
+    return p;
+  }
+
+  /// Clean IPs other users on this operator reported working (/cfip); cached, empty when never reachable.
+  static Future<List<String>> _sharedIps() async {
+    final op = NetworkInfo.operatorBucket ?? 'other';
+    final key = 'cf_shared_$op';
+    SharedPreferences? prefs;
+    String? body;
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
+    try {
+      prefs = await SharedPreferences.getInstance();
+      final req = await client.getUrl(Uri.parse('https://molido-sub.hidooch980.workers.dev/cfip?op=$op'))
+          .timeout(const Duration(seconds: 5));
+      final res = await req.close().timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        body = await res.transform(utf8.decoder).join().timeout(const Duration(seconds: 5));
+        await prefs.setString(key, body);
+      }
+    } catch (_) {
+    } finally {
+      client.close(force: true);
+    }
+    try {
+      body ??= prefs?.getString(key);
+      if (body == null) return const [];
+      return [
+        for (final e in jsonDecode(body) as List)
+          if (e is Map && e['ip'] is String && isCloudflare(e['ip'] as String)) e['ip'] as String,
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
   static int _toInt(String ip) => ip.split('.').fold(0, (a, p) => (a << 8) | int.parse(p));
   static String _toIp(int v) => [24, 16, 8, 0].map((s) => (v >> s) & 255).join('.');
 
@@ -237,6 +278,7 @@ class CleanIp {
       final sni = hosts[cfHost]!;
       final ipv6 = await NetworkInfo.detectIpv6();
       final candidates = {
+        ...await _sharedIps(), // operator-shared clean IPs first
         for (var i = 0; i < _sample; i++) _randomIp(),
         if (ipv6)
           for (var i = 0; i < _sampleV6; i++) _randomIpV6(),
@@ -267,6 +309,8 @@ class CleanIp {
           ..sort((a, b) => ((a.value as Map)['ts'] as int? ?? 0).compareTo((b.value as Map)['ts'] as int? ?? 0));
         _cache.remove(oldest.first.key);
       }
+      final share = good.where((e) => !(e[0] as String).contains(':')).firstOrNull;
+      if (share != null) _pendingShare = {'ip': share[0] as String, 'ms': (share[1] as int).clamp(1, 10000)};
       await _save();
       AppLog.add('clean ip: ${good.length}/${candidates.length} Cloudflare IPs answered '
           '(best ${good.isEmpty ? '-' : '${good.first[0]} ${good.first[1]} ms'}, normal $base ms, ipv6 $ipv6) on $key');

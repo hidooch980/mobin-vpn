@@ -46,3 +46,13 @@ CREATE TABLE IF NOT EXISTS admin_fails (
   locked_until INTEGER NOT NULL,
   updated INTEGER NOT NULL
 );
+
+-- Clean Cloudflare IPs reported working, per operator bucket (pruned after 3 days).
+CREATE TABLE IF NOT EXISTS cf_ips (
+  op TEXT NOT NULL,
+  ip TEXT NOT NULL,
+  ok_count INTEGER NOT NULL,
+  ms_avg INTEGER NOT NULL,
+  updated INTEGER NOT NULL,
+  PRIMARY KEY (op, ip)
+);

@@ -133,6 +133,13 @@ async function reportRoute(request, env, ctx) {
   if (r.mode !== undefined && r.mode !== null && (typeof r.mode !== 'string' || !MODE_RE.test(r.mode))) return bad();
   const ms = r.ms;
   if (!(ms === null || ms === undefined || (Number.isInteger(ms) && ms >= 1 && ms <= 60000))) return bad();
+  // Optional working clean Cloudflare IP {ip, ms}, shared per operator via /cfip.
+  let cf = null;
+  if (r.cfip !== undefined && r.cfip !== null) {
+    const c = r.cfip;
+    if (!c || typeof c !== 'object' || !isCfIpv4(c.ip) || !Number.isInteger(c.ms) || c.ms < 1 || c.ms > 10000) return bad();
+    cf = { ip: c.ip, ms: c.ms };
+  }
 
   if (limited(request.headers.get('cf-connecting-ip') || 'unknown')) return new Response(null, { status: 204, headers: CORS });
 
@@ -169,8 +176,72 @@ async function reportRoute(request, env, ctx) {
     ).bind(day, node, r.app, net, r.ok ? 1 : 0, r.ok ? 0 : 1, hasMs ? ms : 0, hasMs);
   const writes = [upsert(r.node, netKey)];
   if (r.mode && !r.node.startsWith('mode:')) writes.push(upsert(`mode:${r.mode}`, `${netKey}|m`));
+  if (cf && r.ok) {
+    await ensureCfSchema(env);
+    writes.push(
+      env.DB.prepare(
+        `INSERT INTO cf_ips (op, ip, ok_count, ms_avg, updated) VALUES (?1, ?2, 1, ?3, ?4)
+         ON CONFLICT(op, ip) DO UPDATE SET ok_count = ok_count + 1,
+           ms_avg = (ms_avg * 3 + excluded.ms_avg) / 4, updated = excluded.updated`
+      ).bind(r.op || 'other', cf.ip, cf.ms, Date.now())
+    );
+  }
   await env.DB.batch(writes);
   return new Response(null, { status: 204, headers: CORS });
+}
+
+// Cloudflare IPv4 ranges (https://www.cloudflare.com/ips-v4); none overlap private space.
+const CF_V4 = [
+  '173.245.48.0/20', '103.21.244.0/22', '103.22.200.0/22', '103.31.4.0/22', '141.101.64.0/18',
+  '108.162.192.0/18', '190.93.240.0/20', '188.114.96.0/20', '197.234.240.0/22', '198.41.128.0/17',
+  '162.158.0.0/15', '104.16.0.0/13', '104.24.0.0/14', '172.64.0.0/13', '131.0.72.0/22',
+];
+const ipv4Int = (ip) => ip.split('.').reduce((a, p) => a * 256 + Number(p), 0);
+function isCfIpv4(ip) {
+  if (typeof ip !== 'string' || !/^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/.test(ip)) return false;
+  if (/^(10\.|127\.|0\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip)) return false;
+  const v = ipv4Int(ip);
+  return CF_V4.some((r) => {
+    const [base, bits] = r.split('/');
+    const size = 2 ** (32 - Number(bits));
+    const start = ipv4Int(base);
+    return v >= start && v < start + size;
+  });
+}
+
+let cfSchemaReady = false;
+async function ensureCfSchema(env) {
+  if (cfSchemaReady) return;
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS cf_ips (op TEXT NOT NULL, ip TEXT NOT NULL, ok_count INTEGER NOT NULL, ms_avg INTEGER NOT NULL, updated INTEGER NOT NULL, PRIMARY KEY (op, ip))'
+  ).run();
+  cfSchemaReady = true;
+}
+
+// Top clean Cloudflare IPs reported working on this operator in the last 3 days (global when none), cached 5 min.
+async function cfipRoute(request, env, ctx) {
+  const opParam = new URL(request.url).searchParams.get('op');
+  const op = OPS.has(opParam) ? opParam : '';
+  const key = new Request(new URL(`/cfip?op=${op}`, request.url).toString());
+  const hit = await caches.default.match(key);
+  if (hit) return hit;
+  let out = [];
+  try {
+    await ensureCfSchema(env);
+    const since = Date.now() - 3 * 86400000;
+    const query = (byOp) =>
+      env.DB.prepare(
+        `SELECT ip, SUM(ok_count) ok, CAST(AVG(ms_avg) AS INTEGER) ms FROM cf_ips
+         WHERE updated > ?1 ${byOp ? 'AND op = ?2' : ''} GROUP BY ip ORDER BY ok * 1000 / (ms + 50) DESC LIMIT 10`
+      ).bind(...(byOp ? [since, op] : [since]));
+    if (op) out = (await query(true).all()).results;
+    if (!out.length) out = (await query(false).all()).results;
+  } catch {}
+  const res = new Response(JSON.stringify(out.map((r) => ({ ip: r.ip, ms: r.ms, n: r.ok }))), {
+    headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=300', ...CORS },
+  });
+  ctx.waitUntil(caches.default.put(key, res.clone()));
+  return res;
 }
 
 function summarize(s) {
@@ -1204,6 +1275,11 @@ export default {
         )
         .catch(() => {})
     );
+    ctx.waitUntil(
+      ensureCfSchema(env)
+        .then(() => env.DB.prepare('DELETE FROM cf_ips WHERE updated < ?1').bind(Date.now() - 3 * 86400000).run())
+        .catch(() => {})
+    );
   },
 
   async fetch(request, env, ctx) {
@@ -1213,6 +1289,7 @@ export default {
     if (url.pathname === '/report') return reportRoute(request, env, ctx);
     if (url.pathname === '/owner/configs') return ownerConfigsRoute(env, ctx);
     if (url.pathname === '/scores') return scoresRoute(request, env, ctx);
+    if (url.pathname === '/cfip') return cfipRoute(request, env, ctx);
     if (url.pathname.startsWith('/remote/')) return remoteRoute(url);
     if (url.pathname === '/app/notice.json') return noticeRoute(env);
     if (url.pathname === '/app/flags.json') return flagsRoute(env);

@@ -6,6 +6,7 @@ import 'package:cryptography/cryptography.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'app_log.dart';
+import 'cf_clean_ip.dart';
 import 'network_info.dart';
 
 /// Opt-in anonymous server quality reports and the shared server scores.
@@ -59,6 +60,7 @@ class ServerReports {
         'ver': await _appVersion(),
         'op': ?NetworkInfo.operatorBucket,
         'mode': ?mode,
+        'cfip': ?(ok ? CleanIp.takePendingShare() : null),
       });
       final req = await client.postUrl(Uri.parse('$_base/report')).timeout(const Duration(seconds: 10));
       req.headers.contentType = ContentType.json;
