@@ -311,9 +311,10 @@ function brand(lines) {
   });
 }
 
-async function subRoute(url, env) {
+async function subRoute(url, env, ctx) {
   const n = Number(url.pathname.split('/')[2]);
   if (!Number.isInteger(n) || n < 1 || n > SUB_LINKS) return new Response('use /sub/1 … /sub/5', { status: 404 });
+  const owner = ownerLines(env, ctx);
   const get = (u) =>
     fetch(u, { cf: { cacheTtl: 300, cacheEverything: true } })
       .then((r) => (r.ok ? r.text() : ''))
@@ -364,7 +365,7 @@ async function subRoute(url, env) {
   while (lines.length < SUB_MIN && cdnOthers.length) lines.push(cdnOthers.shift());
   if (!lines.length) return new Response('server list unavailable, try again shortly', { status: 502 });
   const clean = await dropIranFailed(await rankByReports(lines, scores), scores, SUB_MIN);
-  return listResponse(brand(clean.slice(0, SUB_MAX)), `MolidoVPN ${n}`);
+  return listResponse(brand(mergeOwner(await owner, clean.slice(0, SUB_MAX))), `MolidoVPN ${n}`);
 }
 
 function listResponse(lines, title) {
@@ -383,7 +384,8 @@ function listResponse(lines, title) {
   });
 }
 
-async function iosRoute(url, env) {
+async function iosRoute(url, env, ctx) {
+  const owner = ownerLines(env, ctx);
   const get = (u) =>
     fetch(u, { cf: { cacheTtl: 300, cacheEverything: true } })
       .then((r) => (r.ok ? r.text() : ''))
@@ -415,7 +417,7 @@ async function iosRoute(url, env) {
   // enough others exist, then cap for the iOS memory limit.
   const scores = await reportScores(env);
   const rankedOut = await rankByReports(out, scores);
-  const lines = brand((await dropIranFailed(rankedOut, scores, 20)).slice(0, IOS_MAX));
+  const lines = brand(mergeOwner(await owner, (await dropIranFailed(rankedOut, scores, 20)).slice(0, IOS_MAX)));
   if (url.pathname.startsWith('/hiddify')) lines.unshift('warp://auto#MolidoVPN%20WARP', 'warp://p2@auto#MolidoVPN%20WARP%20in%20WARP');
   if (!lines.length) return new Response('server list unavailable, try again shortly', { status: 502 });
 
@@ -434,10 +436,356 @@ async function iosRoute(url, env) {
   });
 }
 
+// ---------------------------------------------------------------------------------------------------
+// Owner items: subscription links and single configs the owner adds from /admin. They are placed first
+// in every list (/, /lite, /ios, /hiddify, /sub/1..5) and reach all users on their next list refresh.
+// ---------------------------------------------------------------------------------------------------
+const OWNER_SCHEMES = new Set(['vless', 'vmess', 'trojan', 'ss', 'hysteria2', 'hy2', 'tuic', 'wireguard']);
+const OWNER_MAX_ITEMS = 300; // rows in owner_items
+const OWNER_MAX_LINES = 150; // owner configs merged into one list
+const OWNER_SUB_MAX_LINES = 100; // configs taken from one owner sub link
+const OWNER_CONFIG_MAX_LEN = 4096;
+const OWNER_URL_MAX_LEN = 2048;
+const OWNER_NOTE_MAX_LEN = 200;
+const OWNER_SUB_TTL = 600; // seconds
+const ADMIN_MAX_FAILS = 5;
+const ADMIN_LOCK_MS = 15 * 60000;
+
+let ownerSchemaReady = false;
+async function ensureOwnerSchema(env) {
+  if (ownerSchemaReady) return;
+  await env.DB.batch([
+    env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS owner_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind TEXT NOT NULL CHECK (kind IN ('sub', 'config')),
+        value TEXT NOT NULL,
+        note TEXT NOT NULL DEFAULT '',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL
+      )`
+    ),
+    env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS admin_fails (ip_hash TEXT PRIMARY KEY, fails INTEGER NOT NULL, locked_until INTEGER NOT NULL, updated INTEGER NOT NULL)'
+    ),
+  ]);
+  ownerSchemaReady = true;
+}
+
+const lineCore = (line) => line.split('#')[0].trim();
+
+function validConfig(line) {
+  if (typeof line !== 'string') return false;
+  const t = line.trim();
+  if (!t || t.length > OWNER_CONFIG_MAX_LEN || /\s/.test(t)) return false;
+  const i = t.indexOf('://');
+  if (i <= 0 || t.length <= i + 3) return false;
+  return OWNER_SCHEMES.has(t.slice(0, i).toLowerCase());
+}
+
+function validSubUrl(value) {
+  if (typeof value !== 'string' || value.length > OWNER_URL_MAX_LEN) return false;
+  try {
+    const u = new URL(value.trim());
+    return u.protocol === 'https:' && !!u.hostname && !u.username && !u.password;
+  } catch {
+    return false;
+  }
+}
+
+async function sha256Hex(text) {
+  const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Configs from one owner sub link, cached ~10 min in caches.default. Never throws.
+async function fetchOwnerSub(link, ctx) {
+  try {
+    const cache = caches.default;
+    const key = new Request(`https://owner-sub.molido.internal/${await sha256Hex(link)}`);
+    const hit = await cache.match(key);
+    if (hit) return (await hit.text()).split('\n').filter(Boolean);
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 8000);
+    let body = '';
+    try {
+      const res = await fetch(link, { signal: ac.signal, redirect: 'follow', headers: { 'user-agent': 'v2rayNG/1.9' } });
+      if (res.ok) body = (await res.text()).slice(0, 2_000_000);
+    } finally {
+      clearTimeout(timer);
+    }
+    const lines = decodeList(body)
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(validConfig)
+      .slice(0, OWNER_SUB_MAX_LINES);
+    if (lines.length) {
+      const res = new Response(lines.join('\n'), { headers: { 'cache-control': `public, max-age=${OWNER_SUB_TTL}` } });
+      ctx.waitUntil(cache.put(key, res));
+    }
+    return lines;
+  } catch {
+    return [];
+  }
+}
+
+// All enabled owner configs (single configs first, then sub-link configs), deduped. Never throws.
+async function ownerLines(env, ctx) {
+  try {
+    await ensureOwnerSchema(env);
+    const { results } = await env.DB.prepare('SELECT kind, value FROM owner_items WHERE enabled = 1 ORDER BY id').all();
+    const configs = results.filter((r) => r.kind === 'config').map((r) => r.value);
+    const subs = await Promise.all(results.filter((r) => r.kind === 'sub').map((r) => fetchOwnerSub(r.value, ctx)));
+    const seen = new Set();
+    const out = [];
+    for (const line of [...configs, ...subs.flat()]) {
+      const core = lineCore(line);
+      if (!validConfig(line) || seen.has(core)) continue;
+      seen.add(core);
+      out.push(line.trim());
+      if (out.length >= OWNER_MAX_LINES) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+// Owner configs first, then the normal list without duplicates of them.
+function mergeOwner(owner, lines) {
+  if (!owner.length) return lines;
+  const seen = new Set(owner.map(lineCore));
+  return [...owner, ...lines.filter((l) => !seen.has(lineCore(l)))];
+}
+
+const ADMIN_HEADERS = {
+  'cache-control': 'no-store',
+  'x-content-type-options': 'nosniff',
+  'x-frame-options': 'DENY',
+  'referrer-policy': 'no-referrer',
+};
+const adminJson = (obj, status = 200) =>
+  new Response(JSON.stringify(obj), { status, headers: { 'content-type': 'application/json; charset=utf-8', ...ADMIN_HEADERS } });
+
+async function timingSafeKeyEqual(a, b) {
+  const [x, y] = await Promise.all([a, b].map((s) => crypto.subtle.digest('SHA-256', new TextEncoder().encode(s))));
+  const ua = new Uint8Array(x), ub = new Uint8Array(y);
+  let diff = 0;
+  for (let i = 0; i < ua.length; i++) diff |= ua[i] ^ ub[i];
+  return diff === 0;
+}
+
+// Returns null when authorized, otherwise the error response.
+async function adminAuth(request, env) {
+  if (!env.ADMIN_KEY) return adminJson({ error: 'ADMIN_KEY not set. Run: npx wrangler secret put ADMIN_KEY' }, 503);
+  await ensureOwnerSchema(env);
+  const ip = request.headers.get('cf-connecting-ip') || 'unknown';
+  // Salted with the admin key so stored hashes cannot be reversed to IPs; rows are removed after a day.
+  const ipHash = await sha256Hex(`molido-admin|${env.ADMIN_KEY}|${ip}`);
+  const now = Date.now();
+  const row = await env.DB.prepare('SELECT fails, locked_until FROM admin_fails WHERE ip_hash = ?1').bind(ipHash).first();
+  if (row && row.locked_until > now) {
+    return adminJson({ error: 'locked', retry_after_s: Math.ceil((row.locked_until - now) / 1000) }, 429);
+  }
+  const auth = request.headers.get('authorization') || '';
+  const given = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  if (given && (await timingSafeKeyEqual(given, env.ADMIN_KEY))) {
+    if (row) await env.DB.prepare('DELETE FROM admin_fails WHERE ip_hash = ?1').bind(ipHash).run();
+    return null;
+  }
+  const fails = (row ? row.fails : 0) + 1;
+  const lockedUntil = fails >= ADMIN_MAX_FAILS ? now + ADMIN_LOCK_MS : 0;
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO admin_fails (ip_hash, fails, locked_until, updated) VALUES (?1, ?2, ?3, ?4)
+       ON CONFLICT(ip_hash) DO UPDATE SET fails = excluded.fails, locked_until = excluded.locked_until, updated = excluded.updated`
+    ).bind(ipHash, lockedUntil ? 0 : fails, lockedUntil, now),
+    env.DB.prepare('DELETE FROM admin_fails WHERE updated < ?1').bind(now - 86400000),
+  ]);
+  return adminJson({ error: lockedUntil ? 'locked' : 'unauthorized' }, lockedUntil ? 429 : 401);
+}
+
+async function adminApi(request, env, url) {
+  if (request.method === 'OPTIONS') return new Response(null, { status: 405, headers: ADMIN_HEADERS });
+  const denied = await adminAuth(request, env);
+  if (denied) return denied;
+  const path = url.pathname.replace(/\/+$/, '');
+  const DB = env.DB;
+
+  if (path === '/admin/api/items' && request.method === 'GET') {
+    const { results } = await DB.prepare('SELECT id, kind, value, note, enabled, created_at FROM owner_items ORDER BY id DESC').all();
+    return adminJson({ items: results });
+  }
+
+  const readBody = async () => {
+    const text = await request.text();
+    if (text.length > 200_000) return null;
+    try {
+      const b = JSON.parse(text);
+      return b && typeof b === 'object' && !Array.isArray(b) ? b : null;
+    } catch {
+      return null;
+    }
+  };
+
+  if (path === '/admin/api/items' && request.method === 'POST') {
+    const b = await readBody();
+    if (!b || (b.kind !== 'sub' && b.kind !== 'config') || typeof b.value !== 'string') return adminJson({ error: 'bad request' }, 400);
+    const note = typeof b.note === 'string' ? b.note.trim().slice(0, OWNER_NOTE_MAX_LEN) : '';
+    const { n } = await DB.prepare('SELECT COUNT(*) n FROM owner_items').first();
+    const created = new Date().toISOString();
+    if (b.kind === 'sub') {
+      const link = b.value.trim();
+      if (!validSubUrl(link)) return adminJson({ error: 'invalid link (must be https, max 2048 chars)' }, 400);
+      if (n >= OWNER_MAX_ITEMS) return adminJson({ error: 'too many items' }, 400);
+      await DB.prepare('INSERT INTO owner_items (kind, value, note, enabled, created_at) VALUES (?1, ?2, ?3, 1, ?4)')
+        .bind('sub', link, note, created)
+        .run();
+      return adminJson({ added: 1, rejected: 0 });
+    }
+    const lines = b.value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const valid = [...new Set(lines.filter(validConfig))];
+    const room = Math.max(0, OWNER_MAX_ITEMS - n);
+    const toAdd = valid.slice(0, room);
+    if (toAdd.length) {
+      await DB.batch(
+        toAdd.map((line) =>
+          DB.prepare('INSERT INTO owner_items (kind, value, note, enabled, created_at) VALUES (?1, ?2, ?3, 1, ?4)').bind('config', line, note, created)
+        )
+      );
+    }
+    return adminJson({ added: toAdd.length, rejected: lines.length - toAdd.length }, toAdd.length ? 200 : 400);
+  }
+
+  const m = path.match(/^\/admin\/api\/items\/(\d{1,12})$/);
+  if (m) {
+    const id = Number(m[1]);
+    if (request.method === 'DELETE') {
+      await DB.prepare('DELETE FROM owner_items WHERE id = ?1').bind(id).run();
+      return adminJson({ ok: true });
+    }
+    if (request.method === 'PATCH') {
+      const b = await readBody();
+      if (!b || typeof b.enabled !== 'boolean') return adminJson({ error: 'bad request' }, 400);
+      await DB.prepare('UPDATE owner_items SET enabled = ?1 WHERE id = ?2').bind(b.enabled ? 1 : 0, id).run();
+      return adminJson({ ok: true });
+    }
+  }
+  return adminJson({ error: 'not found' }, 404);
+}
+
+function adminPage(env) {
+  const keySet = !!env.ADMIN_KEY;
+  const html = `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>پنل مدیریت MolidoVPN</title>
+<style>
+:root{--bg:#f4f6fb;--card:#fff;--text:#1b2030;--mute:#6b7285;--line:#dde2ee;--accent:#3b5bdb;--danger:#d6336c;--ok:#2b8a3e}
+@media (prefers-color-scheme:dark){:root{--bg:#10131b;--card:#191d29;--text:#e8ebf3;--mute:#9aa1b5;--line:#2a3042;--accent:#748ffc;--danger:#f06595;--ok:#69db7c}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 Tahoma,"Segoe UI",system-ui,sans-serif;padding:16px}
+main{max-width:720px;margin:0 auto}h1{font-size:20px;margin:0 0 12px}h2{font-size:16px;margin:0 0 8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+input,textarea,select{width:100%;font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px;margin:4px 0 10px}
+textarea{min-height:120px;direction:ltr;text-align:left;font-family:ui-monospace,Consolas,monospace;font-size:13px}
+button{font:inherit;border:0;border-radius:8px;padding:8px 14px;background:var(--accent);color:#fff;cursor:pointer}
+button.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}button.danger{background:var(--danger)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.mute{color:var(--mute);font-size:13px}
+.item{border-top:1px solid var(--line);padding:10px 0}.item:first-child{border-top:0}
+.val{direction:ltr;text-align:left;font-family:ui-monospace,Consolas,monospace;font-size:12px;word-break:break-all;margin:4px 0}
+.badge{font-size:12px;border-radius:6px;padding:1px 8px;border:1px solid var(--line)}.on{color:var(--ok)}.off{color:var(--danger)}
+#msg{min-height:1.4em}code{direction:ltr;display:inline-block;background:var(--bg);padding:2px 6px;border-radius:6px}
+</style></head><body><main>
+<h1>پنل مدیریت MolidoVPN</h1>
+${
+  keySet
+    ? ''
+    : `<div class="card"><h2>کلید مدیریت تنظیم نشده است</h2><p>برای فعال شدن پنل، در پوشه <code>cloudflare</code> این دستور را اجرا کنید و یک کلید طولانی و محرمانه وارد کنید:</p><p><code>npx wrangler secret put ADMIN_KEY</code></p></div>`
+}
+<div class="card" id="login"${keySet ? '' : ' hidden'}>
+<h2>ورود</h2><label>کلید مدیریت<input id="key" type="password" autocomplete="current-password"></label>
+<button id="loginBtn">ورود</button></div>
+<div id="panel" hidden>
+<div class="card"><h2>افزودن</h2>
+<label>نوع<select id="kind"><option value="config">کانفیگ (یک یا چند خط)</option><option value="sub">لینک اشتراک (https)</option></select></label>
+<label>مقدار<textarea id="value" placeholder="vless://...&#10;trojan://..."></textarea></label>
+<label>یادداشت (اختیاری)<input id="note" maxlength="200"></label>
+<div class="row"><button id="addBtn">افزودن</button><button class="ghost" id="logoutBtn">خروج</button></div></div>
+<div class="card"><h2>موارد <span class="mute" id="count"></span></h2><div id="list"></div></div>
+</div>
+<p id="msg" class="mute"></p>
+</main>
+<script>
+(function(){
+var $=function(id){return document.getElementById(id)};
+var key='';try{key=sessionStorage.getItem('mk')||''}catch(e){}
+function msg(t){$('msg').textContent=t||''}
+function api(method,path,body){
+  var o={method:method,headers:{'Authorization':'Bearer '+key}};
+  if(body){o.headers['content-type']='application/json';o.body=JSON.stringify(body)}
+  return fetch('/admin/api'+path,o).then(function(r){return r.json().catch(function(){return {}}).then(function(j){j._s=r.status;return j})});
+}
+function err(j){
+  if(j._s===401){logout();return 'کلید اشتباه است'}
+  if(j._s===429){logout();return 'تلاش‌های ناموفق زیاد؛ چند دقیقه بعد دوباره امتحان کنید'}
+  if(j._s===503)return 'کلید مدیریت روی سرور تنظیم نشده است';
+  return j.error||('خطا '+j._s);
+}
+function logout(){key='';try{sessionStorage.removeItem('mk')}catch(e){}$('panel').hidden=true;$('login').hidden=false}
+function load(){
+  return api('GET','/items').then(function(j){
+    if(j._s!==200){msg(err(j));return}
+    $('login').hidden=true;$('panel').hidden=false;
+    var list=$('list');list.textContent='';$('count').textContent='('+j.items.length+')';
+    j.items.forEach(function(it){
+      var d=document.createElement('div');d.className='item';
+      var h=document.createElement('div');h.className='row';
+      var b1=document.createElement('span');b1.className='badge';b1.textContent=it.kind==='sub'?'لینک اشتراک':'کانفیگ';
+      var b2=document.createElement('span');b2.className='badge '+(it.enabled?'on':'off');b2.textContent=it.enabled?'فعال':'غیرفعال';
+      var n=document.createElement('span');n.className='mute';n.textContent=(it.note?it.note+' · ':'')+String(it.created_at).slice(0,10);
+      h.append(b1,b2,n);
+      var v=document.createElement('div');v.className='val';v.textContent=it.value.length>300?it.value.slice(0,300)+'…':it.value;
+      var a=document.createElement('div');a.className='row';
+      var t=document.createElement('button');t.className='ghost';t.textContent=it.enabled?'غیرفعال کن':'فعال کن';
+      t.onclick=function(){api('PATCH','/items/'+it.id,{enabled:!it.enabled}).then(function(r){r._s===200?load():msg(err(r))})};
+      var del=document.createElement('button');del.className='danger';del.textContent='حذف';
+      del.onclick=function(){if(confirm('حذف شود؟'))api('DELETE','/items/'+it.id).then(function(r){r._s===200?load():msg(err(r))})};
+      a.append(t,del);d.append(h,v,a);list.append(d);
+    });
+  }).catch(function(){msg('خطای شبکه')});
+}
+$('loginBtn').onclick=function(){key=$('key').value.trim();if(!key)return;try{sessionStorage.setItem('mk',key)}catch(e){}$('key').value='';msg('');load()};
+$('key').onkeydown=function(e){if(e.key==='Enter')$('loginBtn').click()};
+$('logoutBtn').onclick=function(){logout();msg('')};
+$('addBtn').onclick=function(){
+  var body={kind:$('kind').value,value:$('value').value,note:$('note').value};
+  if(!body.value.trim())return;
+  api('POST','/items',body).then(function(j){
+    if(j._s===200){$('value').value='';$('note').value='';msg('افزوده شد: '+j.added+(j.rejected?' · نامعتبر/رد شده: '+j.rejected:''));load()}
+    else msg(j.added===0?'هیچ کانفیگ معتبری پیدا نشد (نامعتبر: '+j.rejected+')':err(j));
+  }).catch(function(){msg('خطای شبکه')});
+};
+if(key&&${keySet})load();
+})();
+</script></body></html>`;
+  return new Response(html, {
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      'content-security-policy':
+        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'",
+      ...ADMIN_HEADERS,
+    },
+  });
+}
+
 export default {
   async scheduled(event, env, ctx) {
     const cutoff = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
     ctx.waitUntil(env.DB.prepare('DELETE FROM reports WHERE day < ?1').bind(cutoff).run());
+    ctx.waitUntil(
+      ensureOwnerSchema(env)
+        .then(() => env.DB.prepare('DELETE FROM admin_fails WHERE updated < ?1').bind(Date.now() - 86400000).run())
+        .catch(() => {})
+    );
   },
 
   async fetch(request, env, ctx) {
@@ -449,15 +797,25 @@ export default {
     if (url.pathname.startsWith('/remote/')) return remoteRoute(url);
     if (url.pathname.startsWith('/app/')) return appRoute(url);
     if (url.pathname === '/warp/reg') return warpRegRoute(request);
-    if (url.pathname.startsWith('/sub/')) return subRoute(url, env);
+    if (url.pathname === '/admin' || url.pathname === '/admin/') return adminPage(env);
+    if (url.pathname.startsWith('/admin/api')) {
+      try {
+        return await adminApi(request, env, url);
+      } catch {
+        return adminJson({ error: 'server error' }, 500);
+      }
+    }
+    if (url.pathname.startsWith('/admin')) return adminJson({ error: 'not found' }, 404);
+    if (url.pathname.startsWith('/sub/')) return subRoute(url, env, ctx);
     if (url.pathname.startsWith('/lite') || url.pathname.startsWith('/ios') || url.pathname.startsWith('/hiddify'))
-      return iosRoute(url, env);
+      return iosRoute(url, env, ctx);
     const sources = [FULL, MIRROR('sub_base64.txt')];
+    const owner = ownerLines(env, ctx);
 
     for (const source of sources) {
       const res = await fetch(source, { cf: { cacheTtl: 300, cacheEverything: true } }).catch(() => null);
       if (!res || !res.ok) continue;
-      const branded = brand(decodeList(await res.text()).split('\n').filter((l) => l.includes('://')));
+      const branded = brand(mergeOwner(await owner, decodeList(await res.text()).split('\n').filter((l) => l.includes('://'))));
       const bytes = new TextEncoder().encode(branded.join('\n'));
       let bin = '';
       for (const b of bytes) bin += String.fromCharCode(b);
