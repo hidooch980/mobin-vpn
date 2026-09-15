@@ -58,6 +58,7 @@ class AppSettings extends ChangeNotifier {
 
   // Extras
   bool warp = false; // chain Cloudflare WARP behind the server
+  bool v2rayOverPsiphon = true; // Windows automatic mode: best V2Ray servers dialed through Psiphon
   String warpAccount = ''; // JSON of WarpAccount, created on first use
   String amneziaConfig = ''; // Windows: JSON of the imported AmneziaConfig (secret: never in backups or logs)
   String amneziaEndpoint = ''; // last AmneziaWG endpoint that passed traffic, tried first
@@ -112,6 +113,7 @@ class AppSettings extends ChangeNotifier {
     dataSaver = p.getBool('s_dataSaver') ?? dataSaver;
     excludedApps = (p.getStringList('s_excludedApps') ?? const []).toSet();
     warp = p.getBool('s_warp') ?? warp;
+    v2rayOverPsiphon = p.getBool('s_v2rayOverPsiphon') ?? v2rayOverPsiphon;
     warpAccount = p.getString('s_warpAccount') ?? warpAccount;
     amneziaConfig = p.getString('s_amneziaConfig') ?? amneziaConfig;
     amneziaEndpoint = p.getString('s_amneziaEndpoint') ?? amneziaEndpoint;
@@ -162,6 +164,7 @@ class AppSettings extends ChangeNotifier {
       p.setBool('s_dataSaver', dataSaver),
       p.setStringList('s_excludedApps', excludedApps.toList()),
       p.setBool('s_warp', warp),
+      p.setBool('s_v2rayOverPsiphon', v2rayOverPsiphon),
       p.setString('s_warpAccount', warpAccount),
       p.setString('s_amneziaConfig', amneziaConfig),
       p.setString('s_amneziaEndpoint', amneziaEndpoint),
@@ -203,6 +206,7 @@ class AppSettings extends ChangeNotifier {
         'fragment': fragment,
         'multiPath': multiPath,
         'dataSaver': dataSaver,
+        'v2rayOverPsiphon': v2rayOverPsiphon,
         'poolSize': poolSize,
         'timeoutSeconds': timeoutSeconds,
         'testUrl': testUrl,
@@ -244,6 +248,7 @@ class AppSettings extends ChangeNotifier {
         ..fragment = pick<bool>('fragment') ?? s.fragment
         ..multiPath = pick<bool>('multiPath') ?? s.multiPath
         ..dataSaver = pick<bool>('dataSaver') ?? s.dataSaver
+        ..v2rayOverPsiphon = pick<bool>('v2rayOverPsiphon') ?? s.v2rayOverPsiphon
         ..poolSize = pick<int>('poolSize') ?? s.poolSize
         ..timeoutSeconds = pick<int>('timeoutSeconds') ?? s.timeoutSeconds
         ..testUrl = pick<String>('testUrl') ?? s.testUrl

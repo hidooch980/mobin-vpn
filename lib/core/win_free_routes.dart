@@ -26,7 +26,7 @@ class WinFreeRoutes {
 
   // ---------------------------------------------------------------- smart chain (through WARP)
 
-  static const _chainPrefix = 'viawarp:';
+  static const _chainPrefix = 'viawarp:', _psiphonChainPrefix = 'viapsiphon:';
 
   /// Psiphon whose own connections leave through a local WARP SOCKS proxy (UpstreamProxyUrl).
   static final psiphonOverWarp =
@@ -36,16 +36,26 @@ class WinFreeRoutes {
   static Server viaWarp(Server s) =>
       Server(uri: '$_chainPrefix${s.uri}', remark: '${s.remark} + WARP', countryCode: s.countryCode, protocol: s.protocol);
 
-  static bool isChain(Server s) => s.uri.startsWith(_chainPrefix);
+  /// "V2Ray over Psiphon": [s] dialed through the local Psiphon SOCKS port, so the exit is the V2Ray server
+  /// (outside Iran) even where the server's IP is filtered.
+  static Server viaPsiphon(Server s) => Server(
+      uri: '$_psiphonChainPrefix${s.uri}', remark: '${s.remark} + Psiphon', countryCode: s.countryCode, protocol: s.protocol);
 
-  static Server innerOf(Server s) => Server(
-      uri: s.uri.substring(_chainPrefix.length),
-      remark: s.remark.replaceFirst(' + WARP', ''),
-      countryCode: s.countryCode,
-      protocol: s.protocol);
+  static bool isChain(Server s) => s.uri.startsWith(_chainPrefix) || isPsiphonChain(s);
+
+  static bool isPsiphonChain(Server s) => s.uri.startsWith(_psiphonChainPrefix);
+
+  static Server innerOf(Server s) {
+    final psiphon = isPsiphonChain(s);
+    return Server(
+        uri: s.uri.substring((psiphon ? _psiphonChainPrefix : _chainPrefix).length),
+        remark: s.remark.replaceFirst(psiphon ? ' + Psiphon' : ' + WARP', ''),
+        countryCode: s.countryCode,
+        protocol: s.protocol);
+  }
 
   /// Chain routes that need the registered WARP identity (and working UDP).
-  static bool needsWarp(Server s) => isChain(s) || s.uri == psiphonOverWarp.uri;
+  static bool needsWarp(Server s) => s.uri.startsWith(_chainPrefix) || s.uri == psiphonOverWarp.uri;
 
   Process? _proc;
 

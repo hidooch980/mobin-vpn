@@ -26,6 +26,7 @@ import 'usage_stats.dart';
 import 'warp.dart';
 import 'win_free_routes.dart';
 import 'windows_engine.dart';
+import 'xray_bridge.dart';
 
 class CountryGroup {
   CountryGroup(this.code);
@@ -426,6 +427,7 @@ class VpnController extends ChangeNotifier {
         // server / Psiphon), then Tor.
         _ when _iranOrder => [
             ...pool.where((s) => !_isWarp(s)),
+            ..._psiphonChains(pool),
             if (transportAvailable('psiphon')) FreeRoutes.psiphon,
             ...warpServers.take(4),
             ...warpServersV6.take(2),
@@ -440,6 +442,7 @@ class VpnController extends ChangeNotifier {
             ...pool.where((s) => !_isWarp(s)),
             ...warpServers.take(4),
             ...warpServersV6.take(2),
+            ..._psiphonChains(pool),
             if (transportAvailable('psiphon')) FreeRoutes.psiphon,
             // Smart chain (Windows) before Tor: two V2Ray servers dialed inside WARP, then Psiphon over WARP.
             if (Platform.isWindows) ...[
@@ -449,6 +452,23 @@ class VpnController extends ChangeNotifier {
             ],
           ],
       };
+
+  /// "V2Ray over Psiphon" (Windows, automatic mode): the 3 best V2Ray servers (fastest recent ping first) dialed
+  /// through Psiphon, tried right before Psiphon alone so the exit stays outside Iran.
+  List<Server> _psiphonChains(List<Server> pool) {
+    if (!Platform.isWindows || !settings.v2rayOverPsiphon || settings.transport != 'auto') return const [];
+    final list = pool
+        .where((s) =>
+            !_isWarp(s) &&
+            !FreeRoutes.isFree(s) &&
+            !WinFreeRoutes.isChain(s) &&
+            !UdpProbe.udpOnly(s) &&
+            !isXhttpLink(s.uri))
+        .toList();
+    final pinged = list.where((s) => (delays[s.uri] ?? -1) > 0).toList()
+      ..sort((a, b) => delays[a.uri]!.compareTo(delays[b.uri]!));
+    return [for (final s in (pinged.isNotEmpty ? pinged : list).take(3)) WinFreeRoutes.viaPsiphon(s)];
+  }
 
   /// Whether a route choice ('auto', 'v2ray', 'warp', 'psiphon', 'tor') works on this platform.
   /// The UI uses this instead of a hard-coded "coming soon" flag.

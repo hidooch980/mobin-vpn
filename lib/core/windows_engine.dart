@@ -39,7 +39,7 @@ class WindowsEngine implements VpnEngine {
   /// WARP endpoint of the last working WARP connection ("host:port"); chains and multi-path dial it.
   String _warpEndpoint = WarpAccount.endpoints.first;
 
-  static const _chainWarpTag = 'chain-warp';
+  static const _chainWarpTag = 'chain-warp', _chainPsiphonTag = 'chain-psiphon';
   int? _proxyPort;
 
   /// Status line while Psiphon / Tor is starting (set by the controller).
@@ -316,6 +316,20 @@ class WindowsEngine implements VpnEngine {
       }
       outbound = {'type': 'socks', 'server': '127.0.0.1', 'server_port': socks, 'version': '5'};
       onPhase?.call('راه‌اندازی تونل ${server.displayName}…');
+    } else if (WinFreeRoutes.isPsiphonChain(server)) {
+      // V2Ray over Psiphon: the V2Ray server is dialed through Psiphon's local SOCKS port (exit = V2Ray server).
+      final inner = _core.outbound(WinFreeRoutes.innerOf(server));
+      if (inner == null) return false;
+      final socks = await _free.start('psiphon', isCancelled: isCancelled, onPhase: onPhase);
+      if (socks == null) {
+        await _free.stop();
+        return false;
+      }
+      onPhase?.call('اتصال ${WinFreeRoutes.innerOf(server).displayName} از روی Psiphon…');
+      outbound = {...inner, 'detour': _chainPsiphonTag};
+      extraOutbounds = [
+        {'type': 'socks', 'tag': _chainPsiphonTag, 'server': '127.0.0.1', 'server_port': socks, 'version': '5'},
+      ];
     } else if (chain) {
       // Smart chain: the V2Ray server is dialed inside WARP (its IP is never contacted from this network).
       final inner = _core.outbound(WinFreeRoutes.innerOf(server));
@@ -375,7 +389,10 @@ class WindowsEngine implements VpnEngine {
     final proc = await _core.start(_core.connectConfig(outbound, port, api, multiPath == options.multiPath ? options : options.withoutMultiPath,
         tun: options.tunMode,
         mtu: mtu,
-        directProcesses: [if (free) ...WinFreeRoutes.processNames, if (_xray.available) XrayBridge.processName],
+        directProcesses: [
+          if (free || WinFreeRoutes.isPsiphonChain(server)) ...WinFreeRoutes.processNames,
+          if (_xray.available) XrayBridge.processName,
+        ],
         standby: backupOutbounds,
         warpMember: warpMember,
         extraOutbounds: extraOutbounds));

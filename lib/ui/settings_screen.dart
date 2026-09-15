@@ -125,6 +125,15 @@ class SettingsScreen extends StatelessWidget {
                 value: s.autoReconnect,
                 onChanged: (v) => s.update((x) => x.autoReconnect = v),
               ),
+              if (Platform.isWindows)
+                SwitchSettingRow(
+                  icon: Icons.alt_route_rounded,
+                  title: tr('V2Ray از روی Psiphon', 'V2Ray over Psiphon'),
+                  subtitle: tr('در حالت خودکار اگر سرورهای V2Ray مستقیم وصل نشدند، از داخل Psiphon به آن‌ها وصل می‌شود (خروجی خارج از ایران)',
+                      'In automatic mode, when V2Ray servers fail directly, they are dialed through Psiphon (exit outside Iran)'),
+                  value: s.v2rayOverPsiphon,
+                  onChanged: (v) => s.update((x) => x.v2rayOverPsiphon = v),
+                ),
               SwitchSettingRow(
                 icon: Icons.schedule_rounded,
                 title: tr('زمان‌بندی اتصال', 'Scheduled connection'),
