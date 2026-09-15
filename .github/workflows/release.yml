@@ -158,6 +158,26 @@ jobs:
           gh release download "$TAG" -R SagerNet/sing-box -p "sing-box-${VER}-windows-amd64.zip" -O sb.zip
           unzip -q sb.zip
           cp "sing-box-${VER}-windows-amd64/sing-box.exe" build/windows/x64/runner/Release/
+      - name: Bundle Xray-core for XHTTP servers (pinned, SHA-256 verified)
+        shell: pwsh
+        env:
+          # sing-box 1.12 has no XHTTP transport; the app runs XHTTP nodes through a local Xray SOCKS inbound.
+          XRAY_VERSION: 'v26.3.27'
+          XRAY_SHA256: d004c39288ce9ada487c6f398c7c545f7d749e44bdfdd59dbc9f865afba4e1ad
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          $rel = 'build/windows/x64/runner/Release'
+          Invoke-WebRequest "https://github.com/XTLS/Xray-core/releases/download/$env:XRAY_VERSION/Xray-windows-64.zip" -OutFile xray.zip
+          $h = (Get-FileHash xray.zip -Algorithm SHA256).Hash.ToLower()
+          if ($h -ne $env:XRAY_SHA256) { throw "Xray SHA-256 mismatch: $h" }
+          Expand-Archive xray.zip -DestinationPath xray-unzip
+          New-Item -ItemType Directory -Force "$rel/xray" | Out-Null
+          foreach ($f in 'xray.exe', 'geoip.dat', 'geosite.dat', 'LICENSE') {
+            if (Test-Path "xray-unzip/$f") { Copy-Item "xray-unzip/$f" "$rel/xray/" }
+          }
+          & "$rel/xray/xray.exe" version
+          if ($LASTEXITCODE -ne 0) { throw 'xray.exe does not run' }
       - name: Bundle Psiphon and Tor (pinned, SHA-256 verified)
         shell: pwsh
         env:

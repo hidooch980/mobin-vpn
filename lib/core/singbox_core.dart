@@ -12,11 +12,15 @@ import 'singbox_outbound.dart';
 /// A sing-box (1.12) binary driven as a child process: config generation, validation, parallel delay tests
 /// through the Clash API, and a local mixed (HTTP+SOCKS) proxy. Shared by the Windows and Android engines.
 class SingboxCore {
-  SingboxCore({required this.binary, required this.workDir, required this.label, this.detectInterface = true});
+  SingboxCore(
+      {required this.binary, required this.workDir, required this.label, this.detectInterface = true, this.fallback});
 
   final String binary;
   final Directory workDir;
   final String label;
+
+  /// Outbound for links sing-box cannot dial itself (Windows: XHTTP through the local Xray bridge), or null.
+  final Json? Function(String uri)? fallback;
 
   /// `auto_detect_interface` needs netlink access, which Android apps do not have.
   final bool detectInterface;
@@ -29,7 +33,9 @@ class SingboxCore {
 
   // WARP routes depend on the (later registered) identity, so they are not cached.
   Json? outbound(Server s) =>
-      s.uri.startsWith('warp://') ? parseOutbound(s.uri) : _outbounds.putIfAbsent(s.uri, () => parseOutbound(s.uri));
+      s.uri.startsWith('warp://')
+          ? parseOutbound(s.uri)
+          : _outbounds.putIfAbsent(s.uri, () => parseOutbound(s.uri) ?? fallback?.call(s.uri));
 
   static Future<int> freePort() async {
     final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);

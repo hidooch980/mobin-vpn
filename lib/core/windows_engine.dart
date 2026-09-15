@@ -19,6 +19,7 @@ import 'singbox_outbound.dart';
 import 'warp.dart';
 import 'win_free_routes.dart';
 import 'win_system_proxy.dart';
+import 'xray_bridge.dart';
 
 const _proxyOwnedKey = 'win_proxy_owned';
 
@@ -28,6 +29,9 @@ class WindowsEngine implements VpnEngine {
   final _traffic = StreamController<TrafficStat>.broadcast();
   late SingboxCore _core;
   late WinFreeRoutes _free;
+
+  /// Local Xray-core for XHTTP servers (sing-box 1.12 has no XHTTP transport).
+  late XrayBridge _xray;
 
   /// Second sing-box process: local SOCKS → WARP, upstream of "Psiphon + WARP".
   late SingboxCore _warpHelper;
@@ -177,10 +181,16 @@ class WindowsEngine implements VpnEngine {
   @override
   Future<void> init() async {
     final base = await getApplicationSupportDirectory();
+    _xray = XrayBridge(
+      binary: '${File(Platform.resolvedExecutable).parent.path}\\xray\\xray.exe',
+      workDir: Directory('${base.path}\\core\\xray')..createSync(recursive: true),
+    );
+    await _xray.cleanupStale();
     _core = SingboxCore(
       binary: '${File(Platform.resolvedExecutable).parent.path}\\sing-box.exe',
       workDir: Directory('${base.path}\\core')..createSync(recursive: true),
       label: 'windows',
+      fallback: _xray.socksOutbound,
     );
     _warpHelper = SingboxCore(
       binary: '${File(Platform.resolvedExecutable).parent.path}\\sing-box.exe',
@@ -203,9 +213,17 @@ class WindowsEngine implements VpnEngine {
 
   @override
   Future<List<int>> pingAll(List<Server> servers, EngineOptions options,
-          {void Function(int done)? onProgress, bool Function()? isCancelled, void Function(int index, int delay)? onResult}) =>
-      _core.pingAll(servers, options.forPing,
-          onProgress: onProgress, isCancelled: isCancelled, onResult: onResult, abort: this.isCancelled);
+          {void Function(int done)? onProgress, bool Function()? isCancelled, void Function(int index, int delay)? onResult}) async {
+    await _xrayFor(servers);
+    return _core.pingAll(servers, options.forPing,
+        onProgress: onProgress, isCancelled: isCancelled, onResult: onResult, abort: this.isCancelled);
+  }
+
+  /// Starts (or extends) the Xray bridge for the XHTTP servers among [servers].
+  Future<void> _xrayFor(Iterable<Server> servers) async {
+    final uris = [for (final s in servers) if (isXhttpLink(s.uri) && _core.outbound(s) != null) s.uri];
+    if (uris.isNotEmpty) await _xray.ensure(uris);
+  }
 
   /// Failed real connections per server uri (this session), for [evasive] retries.
   final _failures = <String, int>{};
@@ -259,12 +277,16 @@ class WindowsEngine implements VpnEngine {
 
   /// "Test servers from my internet": real HTTP 204 probes, 12 at a time (no WARP hop).
   Future<List<int>> probeAll(List<Server> servers, EngineOptions options,
-          {void Function(int done)? onProgress, bool Function()? isCancelled}) =>
-      _core.probeAll(servers, options.forPing, onProgress: onProgress, isCancelled: isCancelled, concurrency: 12);
+          {void Function(int done)? onProgress, bool Function()? isCancelled}) async {
+    await _xrayFor(servers);
+    return _core.probeAll(servers, options.forPing, onProgress: onProgress, isCancelled: isCancelled, concurrency: 12);
+  }
 
   /// Background re-ping while idle: few parallel tests so the PC and UI stay responsive.
-  Future<List<int>> prewarm(List<Server> servers, EngineOptions options, {bool Function()? isCancelled}) =>
-      _core.pingAll(servers, options.forPing, isCancelled: isCancelled, concurrency: 4);
+  Future<List<int>> prewarm(List<Server> servers, EngineOptions options, {bool Function()? isCancelled}) async {
+    await _xrayFor(servers);
+    return _core.pingAll(servers, options.forPing, isCancelled: isCancelled, concurrency: 4);
+  }
 
   @override
   Future<bool> connect(Server server, EngineOptions options) async {
@@ -307,6 +329,7 @@ class WindowsEngine implements VpnEngine {
       outbound = _core.outbound(server);
     }
     if (outbound == null) return false;
+    await _xrayFor([if (chain) WinFreeRoutes.innerOf(server) else server, ...standby]);
     // Reality: a remembered working SNI, or the SNI being tried in a retry.
     final realityBase = !free && RealitySni.isReality(outbound) ? outbound : null;
     String? sniUsed;
@@ -352,7 +375,7 @@ class WindowsEngine implements VpnEngine {
     final proc = await _core.start(_core.connectConfig(outbound, port, api, multiPath == options.multiPath ? options : options.withoutMultiPath,
         tun: options.tunMode,
         mtu: mtu,
-        directProcesses: free ? WinFreeRoutes.processNames : const [],
+        directProcesses: [if (free) ...WinFreeRoutes.processNames, if (_xray.available) XrayBridge.processName],
         standby: backupOutbounds,
         warpMember: warpMember,
         extraOutbounds: extraOutbounds));
