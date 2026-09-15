@@ -41,4 +41,4 @@ must be uninstalled before installing the next).
 Local: `flutter pub get && flutter test && flutter run -d windows` (copy `sing-box.exe` next to the built exe).
 
 ## Licenses
-The Android app is based on the open-source MSN-GUARD project (AGPL-3.0); its source code: https://github.com/hidooch980/molidovpn-android
+The Android app is a modified version of an open-source AGPL-3.0 project; its source code: https://github.com/hidooch980/molidovpn-android

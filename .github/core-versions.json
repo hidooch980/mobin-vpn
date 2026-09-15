@@ -3,7 +3,7 @@
     "sha": "719dd4a83ef8af53ddaa647b11b512fc265ecb9a"
   },
   "components": {
-    "msn-guard": {
+    "android-upstream": {
       "seen": "v1.9.0"
     },
     "psiphon-android-upstream": {

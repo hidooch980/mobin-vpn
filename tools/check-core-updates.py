@@ -20,7 +20,7 @@ Safety policy (auto-apply only non-breaking updates, never pre-releases):
   Tor        newest stable Tor Browser version on dist.torproject.org
   Psiphon    newer commit touching windows/psiphon-tunnel-core-i686.exe
   AmneziaWG  newer stable release
-  MSN-GUARD  (Rust core / Android mirror upstream) never merged automatically, only reported
+  Upstream core (Rust core / Android mirror) never merged automatically, only reported
 
 Outputs a JSON summary (--summary) consumed by the workflow:
   {"mobin_commit": "...", "review": [...], "report": [...], "errors": [...]}
@@ -251,7 +251,7 @@ def check_psiphon(ctx: Ctx) -> None:
         record(ctx.state, "psiphon", sha, ctx.now)
     else:
         print(f"Psiphon (Windows): {cur[:7]} is current")
-    # Android AAR comes from the MSN-GUARD mirror (different build/version scheme): report only.
+    # Android AAR comes from the upstream core mirror (different build/version scheme): report only.
     a = gh_api(f"repos/{repo}/commits?path=android&per_page=1")
     if a:
         asha = a[0]["sha"]
@@ -298,7 +298,7 @@ def check_tor(ctx: Ctx) -> None:
     ctx.mobin_changes.append(f"Tor {cur} → {latest}")
     record(ctx.state, "tor", latest, ctx.now)
     ctx.report.append(f"- Android: Tor {latest} is out; `libtor.so` / `libobfs4proxy.so` come from the "
-                      "MSN-GUARD mirror and are not rebuilt automatically.")
+                      "upstream core mirror and are not rebuilt automatically.")
 
 
 def check_amneziawg(ctx: Ctx) -> None:
@@ -324,13 +324,18 @@ def check_amneziawg(ctx: Ctx) -> None:
     record(ctx.state, "amneziawg", latest, ctx.now)
 
 
-def check_msn_guard(ctx: Ctx) -> None:
-    rels = stable_releases("mbm110/MSN-GUARD")
+UPSTREAM_CORE_REPO = "mbm110/MSN-GUARD"
+
+
+def check_upstream_core(ctx: Ctx) -> None:
+    rels = stable_releases(UPSTREAM_CORE_REPO)
     latest = newest_stable([r["tag_name"] for r in rels])
-    comp = ctx.state.setdefault("components", {}).setdefault("msn-guard", {})
+    comps = ctx.state.setdefault("components", {})
+    legacy = comps.pop("msn-guard", None)  # old state key name; carry its value over
+    comp = comps.setdefault("android-upstream", legacy or {})
     seen = comp.get("seen")
     if latest and (seen is None or is_newer(latest, seen)):
-        ctx.report.append(f"- MSN-GUARD (Rust core / Android mirror upstream) released {latest}"
+        ctx.report.append(f"- Upstream core (Rust core / Android mirror) released {latest}"
                           f" (last seen: {seen or 'none'}). Not merged automatically: review the code "
                           "and license before porting core changes or refreshing mirrored binaries.")
         comp["seen"] = latest
@@ -362,7 +367,7 @@ def main() -> int:
 
     ctx = Ctx(args)
     errors = []
-    for check in (check_xray, check_singbox, check_psiphon, check_tor, check_amneziawg, check_msn_guard):
+    for check in (check_xray, check_singbox, check_psiphon, check_tor, check_amneziawg, check_upstream_core):
         try:
             check(ctx)
         except Exception as e:  # one broken upstream must not block the others

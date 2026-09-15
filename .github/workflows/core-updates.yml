@@ -11,7 +11,7 @@ name: Core updates
 #
 # Policy and details: tools/check-core-updates.py. Applied versions, attempts and the last dispatched
 # Android commit live in .github/core-versions.json; a version is attempted at most once per 24 h.
-# MSN-GUARD (Rust core upstream) changes are never merged automatically, only reported in an issue.
+# Upstream core (Rust core / Android) changes are never merged automatically, only reported in an issue.
 
 on:
   schedule:
