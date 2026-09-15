@@ -81,7 +81,7 @@ class AmneziaConfig {
     if (endpoints.isEmpty) throw const FormatException('Endpoint معتبری در بخش‌های [Peer] نیست');
     final obfuscation = <String, String>{
       for (final k in obfuscationKeys)
-        if (iface[k.toLowerCase()] case final v?) k: v,
+        k: ?iface[k.toLowerCase()],
     };
     for (final k in const ['Jc', 'Jmin', 'Jmax', 'S1', 'S2', 'S3', 'S4']) {
       final v = obfuscation[k];
