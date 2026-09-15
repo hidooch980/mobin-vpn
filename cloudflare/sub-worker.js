@@ -93,6 +93,7 @@ const NETS = new Set(['wifi', 'cellular', 'other']);
 const APPS = new Set(['android', 'windows']);
 // Iranian operator bucket, stored inside the net column as "<net>|<op>" so the table keeps its key.
 const OPS = new Set(['mci', 'irancell', 'tci', 'rightel', 'shatel', 'other']);
+const MODE_RE = /^[a-z0-9_-]{1,20}$/;
 const LIMIT_PER_MIN = 60;
 const hits = new Map(); // in-memory only (per isolate): client-ip -> {minute, n}
 
@@ -127,6 +128,9 @@ async function reportRoute(request, env, ctx) {
   if (typeof r.ver !== 'string' || r.ver.length > 32) return bad();
   if (r.op !== undefined && r.op !== null && !OPS.has(r.op)) return bad();
   const netKey = r.op ? `${r.net}|${r.op}` : r.net;
+  // Optional connection mode (newer apps): also counted under "mode:<mode>" in a row marked "|m" so daily
+  // totals do not count it twice while per-operator mode stats and scores can use it.
+  if (r.mode !== undefined && r.mode !== null && (typeof r.mode !== 'string' || !MODE_RE.test(r.mode))) return bad();
   const ms = r.ms;
   if (!(ms === null || ms === undefined || (Number.isInteger(ms) && ms >= 1 && ms <= 60000))) return bad();
 
@@ -157,13 +161,15 @@ async function reportRoute(request, env, ctx) {
 
   const day = new Date().toISOString().slice(0, 10);
   const hasMs = Number.isInteger(ms) ? 1 : 0;
-  await env.DB.prepare(
-    `INSERT INTO reports (day, node, app, net, ok, fail, ms_sum, ms_n) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-     ON CONFLICT(day, node, app, net) DO UPDATE SET ok = ok + excluded.ok, fail = fail + excluded.fail,
-       ms_sum = ms_sum + excluded.ms_sum, ms_n = ms_n + excluded.ms_n`
-  )
-    .bind(day, r.node, r.app, netKey, r.ok ? 1 : 0, r.ok ? 0 : 1, hasMs ? ms : 0, hasMs)
-    .run();
+  const upsert = (node, net) =>
+    env.DB.prepare(
+      `INSERT INTO reports (day, node, app, net, ok, fail, ms_sum, ms_n) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+       ON CONFLICT(day, node, app, net) DO UPDATE SET ok = ok + excluded.ok, fail = fail + excluded.fail,
+         ms_sum = ms_sum + excluded.ms_sum, ms_n = ms_n + excluded.ms_n`
+    ).bind(day, node, r.app, net, r.ok ? 1 : 0, r.ok ? 0 : 1, hasMs ? ms : 0, hasMs);
+  const writes = [upsert(r.node, netKey)];
+  if (r.mode && !r.node.startsWith('mode:')) writes.push(upsert(`mode:${r.mode}`, `${netKey}|m`));
+  await env.DB.batch(writes);
   return new Response(null, { status: 204, headers: CORS });
 }
 
@@ -171,6 +177,7 @@ function summarize(s) {
   return {
     ok: s.ok,
     fail: s.fail,
+    n: s.ok + s.fail,
     ms: s.ms_n ? Math.round(s.ms_sum / s.ms_n) : null,
     score: Math.round(((s.ok + 1) / (s.ok + s.fail + 2)) * 1000) / 1000,
   };
@@ -178,7 +185,8 @@ function summarize(s) {
 
 async function scoresRoute(request, env, ctx) {
   const cache = caches.default;
-  // ?op=mci|irancell|… limits the scores to reports from that operator.
+  // ?op=mci|irancell|… limits the scores to reports from that operator ("mode:<name>" keys included, so apps
+  // can rank connection modes per operator; each entry carries n = reports, apps fall back to global when low).
   const opParam = new URL(request.url).searchParams.get('op');
   const op = OPS.has(opParam) ? opParam : '';
   const key = new Request(new URL(`/scores?op=${op}`, request.url).toString());
@@ -188,7 +196,7 @@ async function scoresRoute(request, env, ctx) {
   const since = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
   const { results } = await env.DB.prepare(
     `SELECT node, net, SUM(ok) ok, SUM(fail) fail, SUM(ms_sum) ms_sum, SUM(ms_n) ms_n
-     FROM reports WHERE day >= ?1 AND (?2 = '' OR net LIKE '%|' || ?2) GROUP BY node, net`
+     FROM reports WHERE day >= ?1 AND (?2 = '' OR net LIKE '%|' || ?2 OR net LIKE '%|' || ?2 || '|m') GROUP BY node, net`
   )
     .bind(since, op)
     .all();
@@ -495,6 +503,8 @@ async function ensureOwnerSchema(env) {
     env.DB.prepare(
       'CREATE TABLE IF NOT EXISTS owner_tests (fp TEXT PRIMARY KEY, ok INTEGER NOT NULL, ms INTEGER, tested_at INTEGER NOT NULL, fail_streak INTEGER NOT NULL DEFAULT 0)'
     ),
+    // Owner settings set in /admin: 'notice' (announcement) and 'flags' (remote app config), JSON values.
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS owner_kv (k TEXT PRIMARY KEY, v TEXT NOT NULL, updated INTEGER NOT NULL)'),
   ]);
   // Columns added after the first release; ALTER fails harmlessly when they already exist.
   for (const col of ['always_show INTEGER NOT NULL DEFAULT 0', 'due_at INTEGER NOT NULL DEFAULT 0']) {
@@ -774,6 +784,48 @@ async function adminApi(request, env, url, ctx) {
     }
   };
 
+  if (path === '/admin/api/stats' && request.method === 'GET') return adminJson(await adminStats(env));
+
+  if (path === '/admin/api/notice' && request.method === 'GET') return adminJson({ notice: (await kvGet(env, 'notice')) || null });
+  if (path === '/admin/api/notice' && request.method === 'PUT') {
+    const b = await readBody();
+    if (!b || typeof b.text !== 'string') return adminJson({ error: 'bad request' }, 400);
+    const text = b.text.trim().slice(0, NOTICE_TEXT_MAX);
+    const link = typeof b.link === 'string' ? b.link.trim() : '';
+    if (link && !validSubUrl(link)) return adminJson({ error: 'لینک باید با https:// شروع شود' }, 400);
+    const expires = b.expires_at === null || b.expires_at === undefined || b.expires_at === '' ? null : Number(b.expires_at);
+    if (expires !== null && !(Number.isInteger(expires) && expires > 0)) return adminJson({ error: 'bad expiry' }, 400);
+    const prev = (await kvGet(env, 'notice')) || {};
+    const next = {
+      text,
+      link,
+      link_label: typeof b.link_label === 'string' ? b.link_label.trim().slice(0, 40) : '',
+      type: b.type === 'warning' ? 'warning' : 'info',
+      enabled: b.enabled === true && !!text,
+      expires_at: expires,
+    };
+    // A new id (shown again to users who dismissed the old one) only when the content changes.
+    const same = prev.id && prev.text === next.text && prev.link === next.link && prev.link_label === next.link_label && prev.type === next.type;
+    next.id = same ? prev.id : Date.now().toString(36);
+    await kvSet(env, 'notice', next);
+    return adminJson({ notice: next });
+  }
+
+  if (path === '/admin/api/flags' && request.method === 'GET')
+    return adminJson({ flags: normalizeFlags(await kvGet(env, 'flags')), modes: APP_MODES });
+  if (path === '/admin/api/flags' && request.method === 'PUT') {
+    const b = await readBody();
+    if (!b || !Array.isArray(b.disabled) || typeof b.default_mode !== 'string') return adminJson({ error: 'bad request' }, 400);
+    const keys = Object.keys(APP_MODES);
+    if (b.disabled.some((m) => !keys.includes(m))) return adminJson({ error: 'unknown mode' }, 400);
+    if (new Set(b.disabled).size >= keys.length) return adminJson({ error: 'حداقل یک حالت اتصال باید فعال بماند' }, 400);
+    if (b.default_mode !== 'auto' && (!keys.includes(b.default_mode) || b.disabled.includes(b.default_mode)))
+      return adminJson({ error: 'حالت پیش‌فرض نباید غیرفعال باشد' }, 400);
+    const flags = normalizeFlags(b);
+    await kvSet(env, 'flags', flags);
+    return adminJson({ flags });
+  }
+
   if (path === '/admin/api/items' && request.method === 'POST') {
     const b = await readBody();
     if (!b || (b.kind !== 'sub' && b.kind !== 'config') || typeof b.value !== 'string') return adminJson({ error: 'bad request' }, 400);
@@ -826,6 +878,137 @@ async function adminApi(request, env, url, ctx) {
   return adminJson({ error: 'not found' }, 404);
 }
 
+// ---------------------------------------------------------------------------------------------------
+// Announcement (/app/notice.json), remote app flags (/app/flags.json) and anonymous stats for /admin.
+// ---------------------------------------------------------------------------------------------------
+// Modes the owner can switch off. 'auto' and the user's own configs can never be disabled.
+const APP_MODES = {
+  warp: 'WARP / WireGuard',
+  masque: 'MASQUE',
+  gool: 'WARP-on-WARP',
+  amnezia: 'AmneziaWG',
+  psiphon: 'Psiphon',
+  tor: 'Tor',
+  dns: 'DNS (بدون تونل)',
+  shard: 'SHARD',
+  v2ray: 'V2Ray',
+};
+const NOTICE_TEXT_MAX = 500;
+const PUBLIC_JSON = {
+  'content-type': 'application/json; charset=utf-8',
+  'cache-control': 'public, max-age=60',
+  'access-control-allow-origin': '*',
+};
+
+async function kvGet(env, k) {
+  await ensureOwnerSchema(env);
+  const row = await env.DB.prepare('SELECT v FROM owner_kv WHERE k = ?1').bind(k).first();
+  if (!row) return null;
+  try {
+    return JSON.parse(row.v);
+  } catch {
+    return null;
+  }
+}
+
+async function kvSet(env, k, value) {
+  await ensureOwnerSchema(env);
+  await env.DB.prepare(
+    'INSERT INTO owner_kv (k, v, updated) VALUES (?1, ?2, ?3) ON CONFLICT(k) DO UPDATE SET v = excluded.v, updated = excluded.updated'
+  )
+    .bind(k, JSON.stringify(value), Date.now())
+    .run();
+}
+
+// Stored flags -> always-valid flags (unknown modes dropped; never all disabled; default not disabled).
+function normalizeFlags(f) {
+  const keys = Object.keys(APP_MODES);
+  const disabled = f && Array.isArray(f.disabled) ? [...new Set(f.disabled.filter((m) => keys.includes(m)))] : [];
+  if (disabled.length >= keys.length) return { v: 1, default_mode: 'auto', disabled: [] };
+  let def = f && typeof f.default_mode === 'string' ? f.default_mode : 'auto';
+  if (def !== 'auto' && (!keys.includes(def) || disabled.includes(def))) def = 'auto';
+  return { v: 1, default_mode: def, disabled };
+}
+
+function activeNotice(n, now = Date.now()) {
+  if (!n || !n.enabled || typeof n.text !== 'string' || !n.text.trim()) return null;
+  if (n.expires_at && n.expires_at <= now) return null;
+  return {
+    id: String(n.id || ''),
+    text: n.text,
+    type: n.type === 'warning' ? 'warning' : 'info',
+    link: n.link || '',
+    link_label: n.link_label || '',
+    expires_at: n.expires_at || null,
+  };
+}
+
+// Public, cached ~60 s. {} when there is no active announcement.
+async function noticeRoute(env) {
+  let body = {};
+  try {
+    body = activeNotice(await kvGet(env, 'notice')) || {};
+  } catch {}
+  return new Response(JSON.stringify(body), { headers: PUBLIC_JSON });
+}
+
+// Public, cached ~60 s. Defaults (everything enabled, automatic) when nothing is set or D1 fails.
+async function flagsRoute(env) {
+  let flags = normalizeFlags(null);
+  let notice = false;
+  try {
+    flags = normalizeFlags(await kvGet(env, 'flags'));
+    notice = !!activeNotice(await kvGet(env, 'notice'));
+  } catch {}
+  return new Response(JSON.stringify({ ...flags, notice }), { headers: PUBLIC_JSON });
+}
+
+const STAT_OPS = ['mci', 'irancell', 'tci', 'other'];
+const statOp = (net) => {
+  const op = String(net).split('|')[1] || '';
+  return STAT_OPS.includes(op) && op !== 'other' ? op : 'other';
+};
+const statMode = (node) => {
+  const m = String(node).slice(5);
+  return m === 'wireguard' ? 'warp' : m;
+};
+
+// Last 14 days, from the anonymous reports table only (no IPs exist there).
+async function adminStats(env) {
+  const since = new Date(Date.now() - 13 * 86400000).toISOString().slice(0, 10);
+  const [days, nets, modes] = await Promise.all([
+    env.DB.prepare(
+      `SELECT day, SUM(ok) ok, SUM(fail) fail FROM reports WHERE day >= ?1 AND net NOT LIKE '%|m' GROUP BY day ORDER BY day`
+    ).bind(since).all(),
+    env.DB.prepare(`SELECT net, SUM(ok) ok, SUM(fail) fail FROM reports WHERE day >= ?1 AND net NOT LIKE '%|m' GROUP BY net`)
+      .bind(since)
+      .all(),
+    env.DB.prepare(`SELECT node, net, SUM(ok) ok, SUM(fail) fail FROM reports WHERE day >= ?1 AND node LIKE 'mode:%' GROUP BY node, net`)
+      .bind(since)
+      .all(),
+  ]);
+  const ops = Object.fromEntries(STAT_OPS.map((o) => [o, { ok: 0, fail: 0, modes: {} }]));
+  for (const r of nets.results) {
+    const o = ops[statOp(r.net)];
+    o.ok += r.ok;
+    o.fail += r.fail;
+  }
+  for (const r of modes.results) {
+    const o = ops[statOp(r.net)];
+    const m = (o.modes[statMode(r.node)] ||= { ok: 0, fail: 0 });
+    m.ok += r.ok;
+    m.fail += r.fail;
+  }
+  const operators = STAT_OPS.map((op) => {
+    const o = ops[op];
+    const list = Object.entries(o.modes)
+      .map(([mode, s]) => ({ mode, ok: s.ok, fail: s.fail, n: s.ok + s.fail, score: (s.ok + 1) / (s.ok + s.fail + 2) }))
+      .sort((a, b) => (b.n >= 5) - (a.n >= 5) || b.score - a.score || b.n - a.n);
+    return { op, ok: o.ok, fail: o.fail, best_mode: list[0] || null, modes: list };
+  });
+  return { days: days.results, operators };
+}
+
 function adminPage(env) {
   const keySet = !!env.ADMIN_KEY;
   const html = `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8">
@@ -845,6 +1028,9 @@ button.ghost{background:transparent;color:var(--text);border:1px solid var(--lin
 .item{border-top:1px solid var(--line);padding:10px 0}.item:first-child{border-top:0}
 .val{direction:ltr;text-align:left;font-family:ui-monospace,Consolas,monospace;font-size:12px;word-break:break-all;margin:4px 0}
 .badge{font-size:12px;border-radius:6px;padding:1px 8px;border:1px solid var(--line)}.on{color:var(--ok)}.off{color:var(--danger)}
+table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0}th,td{text-align:right;padding:5px 4px;border-top:1px solid var(--line);vertical-align:middle}
+.bar{height:8px;border-radius:4px;background:var(--line);min-width:60px;overflow:hidden}.bar>i{display:block;height:100%;background:var(--ok)}
+.tbl{overflow-x:auto}
 #msg{min-height:1.4em}code{direction:ltr;display:inline-block;background:var(--bg);padding:2px 6px;border-radius:6px}
 </style></head><body><main>
 <h1>پنل مدیریت MolidoVPN</h1>
@@ -857,6 +1043,23 @@ ${
 <h2>ورود</h2><label>کلید مدیریت<input id="key" type="password" autocomplete="current-password"></label>
 <button id="loginBtn">ورود</button></div>
 <div id="panel" hidden>
+<div class="card"><h2>اطلاعیه همگانی</h2>
+<p class="mute">پیامی که بالای صفحه اصلی هر دو برنامه (اندروید و ویندوز) نشان داده می‌شود. کاربر می‌تواند آن را ببندد؛ با تغییر متن دوباره نمایش داده می‌شود.</p>
+<label>متن (فارسی)<textarea id="nText" maxlength="500" style="direction:rtl;text-align:right;font-family:inherit;min-height:80px"></textarea></label>
+<div class="row"><label style="flex:2">لینک (اختیاری، https)<input id="nLink" dir="ltr" placeholder="https://t.me/Molido_Vpn"></label>
+<label style="flex:1">متن دکمه لینک<input id="nLabel" maxlength="40" placeholder="بیشتر"></label></div>
+<div class="row"><label style="flex:1">نوع<select id="nType"><option value="info">اطلاع‌رسانی</option><option value="warning">هشدار</option></select></label>
+<label style="flex:1">تاریخ انقضا (اختیاری)<input id="nExp" type="datetime-local"></label></div>
+<label class="row"><input id="nOn" type="checkbox" style="width:auto;margin:0"> نمایش اطلاعیه به کاربران</label>
+<div class="row" style="margin-top:8px"><button id="nSave">ذخیره اطلاعیه</button><span class="mute" id="nState"></span></div></div>
+<div class="card"><h2>تنظیمات راه دور برنامه‌ها</h2>
+<p class="mute">حالت‌های تیک‌خورده در همه برنامه‌ها غیرفعال می‌شوند (در حالت خودکار رد می‌شوند و در انتخاب حالت خاکستری‌اند). حداقل یک حالت باید فعال بماند. تغییرات حداکثر در چند دقیقه به برنامه‌ها می‌رسد.</p>
+<label>حالت پیش‌فرض برای کاربرانی که خودشان حالتی انتخاب نکرده‌اند<select id="fDef"></select></label>
+<div id="fModes" class="row" style="gap:14px"></div>
+<div class="row" style="margin-top:10px"><button id="fSave">ذخیره تنظیمات</button></div></div>
+<div class="card"><h2>آمار ناشناس (۱۴ روز اخیر)</h2>
+<p class="mute">فقط از گزارش‌های ناشناسی که کاربران خودشان فعال کرده‌اند؛ هیچ IP یا اطلاعات شخصی ذخیره نمی‌شود.</p>
+<div class="row"><button class="ghost" id="sLoad">به‌روزرسانی آمار</button></div><div id="stats"></div></div>
 <div class="card"><h2>افزودن</h2>
 <label>نوع<select id="kind"><option value="config">کانفیگ (یک یا چند خط)</option><option value="sub">لینک اشتراک (https)</option></select></label>
 <label>مقدار<textarea id="value" placeholder="vless://...&#10;trojan://..."></textarea></label>
@@ -882,11 +1085,11 @@ function err(j){
   if(j._s===503)return 'کلید مدیریت روی سرور تنظیم نشده است';
   return j.error||('خطا '+j._s);
 }
-function logout(){key='';try{sessionStorage.removeItem('mk')}catch(e){}$('panel').hidden=true;$('login').hidden=false}
+function logout(){key='';extrasLoaded=false;try{sessionStorage.removeItem('mk')}catch(e){}$('panel').hidden=true;$('login').hidden=false}
 function load(){
   return api('GET','/items').then(function(j){
     if(j._s!==200){msg(err(j));return}
-    $('login').hidden=true;$('panel').hidden=false;
+    $('login').hidden=true;$('panel').hidden=false;loadExtras();
     var list=$('list');list.textContent='';$('count').textContent='('+j.items.length+')';
     j.items.forEach(function(it){
       var d=document.createElement('div');d.className='item';
@@ -921,6 +1124,45 @@ function load(){
     });
   }).catch(function(){msg('خطای شبکه')});
 }
+var OPN={mci:'همراه اول (MCI)',irancell:'ایرانسل',tci:'مخابرات (TCI)',other:'سایر (وای‌فای و اپراتورهای دیگر)'};
+var MODES={};
+function el(tag,text,cls){var e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e}
+function pct(ok,fail){var n=ok+fail;return n?Math.round(100*ok/n):0}
+function bar(p){var b=el('div','','bar'),i=el('i');i.style.width=p+'%';b.append(i);return b}
+function localDt(ms){var d=new Date(ms-new Date(ms).getTimezoneOffset()*60000);return d.toISOString().slice(0,16)}
+function loadNotice(){api('GET','/notice').then(function(j){if(j._s!==200)return;var n=j.notice||{};
+  $('nText').value=n.text||'';$('nLink').value=n.link||'';$('nLabel').value=n.link_label||'';$('nType').value=n.type==='warning'?'warning':'info';
+  $('nExp').value=n.expires_at?localDt(n.expires_at):'';$('nOn').checked=!!n.enabled;
+  $('nState').textContent=n.enabled?(n.expires_at&&n.expires_at<Date.now()?'منقضی شده':'در حال نمایش'):'خاموش'})}
+$('nSave').onclick=function(){var exp=$('nExp').value?new Date($('nExp').value).getTime():null;
+  api('PUT','/notice',{text:$('nText').value,link:$('nLink').value,link_label:$('nLabel').value,type:$('nType').value,enabled:$('nOn').checked,expires_at:exp}).then(function(r){if(r._s===200){msg('اطلاعیه ذخیره شد');loadNotice()}else msg(err(r))})};
+function loadFlags(){api('GET','/flags').then(function(j){if(j._s!==200)return;MODES=j.modes||{};var f=j.flags;
+  var sel=$('fDef');sel.textContent='';var o=el('option','خودکار (پیشنهاد)');o.value='auto';sel.append(o);
+  var box=$('fModes');box.textContent='';box.append(el('span','غیرفعال کردن:','mute'));
+  Object.keys(MODES).forEach(function(m){var op=el('option',MODES[m]);op.value=m;sel.append(op);
+    var l=el('label','','row');var c=el('input');c.type='checkbox';c.style.width='auto';c.style.margin='0';c.value=m;c.checked=f.disabled.indexOf(m)>=0;l.append(c,document.createTextNode(MODES[m]));box.append(l)});
+  sel.value=f.default_mode})}
+$('fSave').onclick=function(){var dis=[].slice.call($('fModes').querySelectorAll('input:checked')).map(function(c){return c.value});
+  if(dis.length>=Object.keys(MODES).length){msg('حداقل یک حالت اتصال باید فعال بماند');return}
+  api('PUT','/flags',{default_mode:$('fDef').value,disabled:dis}).then(function(r){if(r._s===200){msg('تنظیمات ذخیره شد');loadFlags()}else msg(err(r))})};
+function loadStats(){var box=$('stats');box.textContent='در حال بارگذاری…';api('GET','/stats').then(function(j){box.textContent='';if(j._s!==200){box.textContent=err(j);return}
+  var tot=j.days.reduce(function(a,d){return a+d.ok+d.fail},0);
+  if(!tot){box.append(el('p','هنوز گزارشی در این بازه ثبت نشده است.','mute'));return}
+  box.append(el('h2','تلاش‌های اتصال روزانه'));var w=el('div','','tbl'),t=el('table'),h=el('tr');['روز','تلاش','موفق','درصد موفقیت',''].forEach(function(x){h.append(el('th',x))});t.append(h);
+  var max=Math.max.apply(null,j.days.map(function(d){return d.ok+d.fail}));
+  j.days.forEach(function(d){var r=el('tr'),n=d.ok+d.fail,c=el('td');var b=bar(Math.round(100*n/max));b.firstChild.style.background='var(--accent)';c.append(b);
+    r.append(el('td',new Date(d.day+'T12:00:00Z').toLocaleDateString('fa-IR',{month:'short',day:'numeric'})),el('td',n.toLocaleString('fa-IR')),el('td',d.ok.toLocaleString('fa-IR')),el('td',pct(d.ok,d.fail).toLocaleString('fa-IR')+'٪'),c);t.append(r)});
+  w.append(t);box.append(w);
+  box.append(el('h2','بر اساس اپراتور'));w=el('div','','tbl');t=el('table');h=el('tr');['اپراتور','گزارش','موفقیت','','بهترین حالت اتصال'].forEach(function(x){h.append(el('th',x))});t.append(h);
+  j.operators.forEach(function(o){var r=el('tr'),n=o.ok+o.fail,c=el('td');c.append(bar(pct(o.ok,o.fail)));var b=o.best_mode;
+    var bt=b?(MODES[b.mode]||b.mode)+' · '+pct(b.ok,b.fail).toLocaleString('fa-IR')+'٪ از '+b.n.toLocaleString('fa-IR')+(b.n<5?' (داده کم)':''):'—';
+    r.append(el('td',OPN[o.op]||o.op),el('td',n.toLocaleString('fa-IR')),el('td',n?pct(o.ok,o.fail).toLocaleString('fa-IR')+'٪':'—'),c,el('td',bt));t.append(r)});
+  w.append(t);box.append(w);
+  box.append(el('p','«بهترین حالت» فقط از گزارش‌هایی که نوع اتصال را دارند (نسخه‌های جدید) محاسبه می‌شود؛ حالت‌هایی با کمتر از ۵ گزارش در اولویت نیستند.','mute'));
+}).catch(function(){box.textContent='خطای شبکه'})}
+$('sLoad').onclick=loadStats;
+var extrasLoaded=false;
+function loadExtras(){if(extrasLoaded)return;extrasLoaded=true;loadNotice();loadFlags();loadStats()}
 $('loginBtn').onclick=function(){key=$('key').value.trim();if(!key)return;try{sessionStorage.setItem('mk',key)}catch(e){}$('key').value='';msg('');load()};
 $('key').onkeydown=function(e){if(e.key==='Enter')$('loginBtn').click()};
 $('logoutBtn').onclick=function(){logout();msg('')};
@@ -969,6 +1211,8 @@ export default {
     if (url.pathname === '/owner/configs') return ownerConfigsRoute(env, ctx);
     if (url.pathname === '/scores') return scoresRoute(request, env, ctx);
     if (url.pathname.startsWith('/remote/')) return remoteRoute(url);
+    if (url.pathname === '/app/notice.json') return noticeRoute(env);
+    if (url.pathname === '/app/flags.json') return flagsRoute(env);
     if (url.pathname.startsWith('/app/')) return appRoute(url);
     if (url.pathname === '/warp/reg') return warpRegRoute(request);
     if (url.pathname === '/admin' || url.pathname === '/admin/') return adminPage(env);
