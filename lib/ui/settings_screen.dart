@@ -596,6 +596,7 @@ class SettingsScreen extends StatelessWidget {
 
             SectionHeader(tr('درباره', 'About')),
             CardGroup(children: [
+              const ShareFriendsRow(),
               NavSettingRow(
                 icon: Icons.code_rounded,
                 title: tr('کد برنامه در گیت‌هاب', 'Source code on GitHub'),

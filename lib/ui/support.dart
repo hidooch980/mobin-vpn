@@ -4,10 +4,62 @@ import 'dart:io';
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../core/app_log.dart';
 import 'strings.dart';
 import 'widgets.dart';
+
+const siteUrl = 'https://hidooch980.github.io/mobin-vpn/';
+
+/// "معرفی به دوستان": QR code of the website plus copy link.
+Future<void> showShareDialog(BuildContext context) => showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(tr('معرفی به دوستان', 'Tell your friends')),
+        content: SizedBox(
+          width: 300,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(
+              tr('دوستانتان با اسکن این کد یا باز کردن لینک، MolidoVPN را نصب می‌کنند.',
+                  'Friends can scan this code or open the link to install MolidoVPN.'),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 14),
+            Container(
+              color: Colors.white,
+              padding: const EdgeInsets.all(8),
+              child: QrImageView(data: siteUrl, size: 220, backgroundColor: Colors.white),
+            ),
+            const SizedBox(height: 10),
+            const SelectableText(siteUrl, textDirection: TextDirection.ltr, textAlign: TextAlign.center),
+          ]),
+        ),
+        actions: [
+          TextButton.icon(
+            onPressed: () {
+              Clipboard.setData(const ClipboardData(text: siteUrl));
+              ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(tr('لینک کپی شد', 'Link copied'))));
+            },
+            icon: const Icon(Icons.copy_rounded, size: 18),
+            label: Text(tr('کپی لینک', 'Copy link')),
+          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(tr('بستن', 'Close'))),
+        ],
+      ),
+    );
+
+/// Row that opens [showShareDialog]; on the simple home and in Settings → About.
+class ShareFriendsRow extends StatelessWidget {
+  const ShareFriendsRow({super.key});
+
+  @override
+  Widget build(BuildContext context) => NavSettingRow(
+        icon: Icons.qr_code_2_rounded,
+        title: tr('معرفی به دوستان', 'Tell your friends'),
+        onTap: () => showShareDialog(context),
+      );
+}
 
 const telegramHandle = '@Molido_Vpn';
 const telegramUrl = 'https://t.me/Molido_Vpn';

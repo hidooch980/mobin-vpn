@@ -35,6 +35,7 @@ class AppSettings extends ChangeNotifier {
   String androidCore = 'auto'; // auto | xray | singbox
   String connectMode = 'direct'; // direct (like v2rayNG, no ping) | test (ping first, pick fastest)
   String transport = 'auto'; // auto (V2Ray servers, WARP, then Psiphon) | v2ray | warp | psiphon | tor | dns (Windows: gaming DNS only, no proxy)
+  bool transportChosen = false; // the user picked a route themselves (else the owner's default route applies)
   bool autoReconnect = true;
   bool connectOnLaunch = true; // "اتصال خودکار": connect once servers load (also after Windows startup)
   bool anonymousReports = false; // opt-in anonymous server quality reports
@@ -87,6 +88,8 @@ class AppSettings extends ChangeNotifier {
     androidCore = p.getString('s_androidCore') ?? androidCore;
     connectMode = p.getString('s_connectMode') ?? connectMode;
     transport = p.getString('s_transport') ?? transport;
+    // Existing users who already picked a non-automatic route count as having chosen.
+    transportChosen = p.getBool('s_transportChosen') ?? (transport != 'auto');
     autoReconnect = p.getBool('s_autoReconnect') ?? autoReconnect;
     connectOnLaunch = p.getBool('s_autoConnect') ?? connectOnLaunch;
     anonymousReports = p.getBool('s_anonReports') ?? anonymousReports;
@@ -151,6 +154,7 @@ class AppSettings extends ChangeNotifier {
       p.setString('s_androidCore', androidCore),
       p.setString('s_connectMode', connectMode),
       p.setString('s_transport', transport),
+      p.setBool('s_transportChosen', transportChosen),
       p.setBool('s_autoReconnect', autoReconnect),
       p.setBool('s_autoConnect', connectOnLaunch),
       p.setBool('s_anonReports', anonymousReports),

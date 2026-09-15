@@ -16,6 +16,7 @@ import 'free_routes.dart';
 import 'engine.dart';
 import 'network_info.dart';
 import 'outline.dart';
+import 'remote_config.dart';
 import 'reports.dart';
 import 'server.dart';
 import 'settings.dart';
@@ -129,8 +130,44 @@ class VpnController extends ChangeNotifier {
         dataSaver: settings.dataSaver,
       );
 
+  /// Home-screen announcement from the owner panel; null when none or dismissed.
+  AppNotice? get notice => RemoteConfig.notice;
+
+  Future<void> dismissNotice() async {
+    await RemoteConfig.dismissNotice();
+    notifyListeners();
+  }
+
+  /// Applies the owner's flags: a disabled route falls back to automatic, and users who never picked a
+  /// route follow the owner's default route (when this platform has it).
+  void _applyRemoteFlags() {
+    final t = settings.transport;
+    var target = t;
+    if (!settings.transportChosen) {
+      final def = RemoteConfig.defaultMode;
+      target = def != 'auto' && (def == 'v2ray' || def == 'warp' || transportAvailable(def)) ? def : 'auto';
+    }
+    if (target != 'auto' && RemoteConfig.isDisabled(target)) target = 'auto';
+    if (target != t && state == VpnState.disconnected) {
+      AppLog.add('remote config: route $t -> $target');
+      unawaited(settings.update((s) => s.transport = target));
+    }
+  }
+
+  /// Fetches flags and the announcement (throttled inside); never throws.
+  Future<void> refreshRemoteConfig({bool force = false}) async {
+    try {
+      if (await RemoteConfig.refresh(proxy: engine.httpProxy, force: force)) {
+        _applyRemoteFlags();
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
   Future<void> init() async {
-    await Future.wait([settings.load(), usage.load()]);
+    await Future.wait([settings.load(), usage.load(), RemoteConfig.loadCached()]);
+    _applyRemoteFlags();
+    unawaited(refreshRemoteConfig(force: true));
     settings.addListener(() {
       final data = _data;
       if (data != null) _apply(data);
@@ -222,6 +259,9 @@ class VpnController extends ChangeNotifier {
       _scoresOp = op ?? '';
       final scores = await ServerReports.fetchScores(proxy: engine.httpProxy, op: op);
       if (scores == null || scores.isEmpty) return;
+      _modeScore
+        ..clear()
+        ..addEntries(scores.entries.where((e) => e.key.startsWith('mode:')));
       _scoreByUri.clear();
       for (final s in servers) {
         final node = _isWarp(s) ? ServerReports.warpNode : await ServerReports.fingerprint(s.uri);
@@ -242,7 +282,7 @@ class VpnController extends ChangeNotifier {
         final node = _isWarp(server) ? ServerReports.warpNode : await ServerReports.fingerprint(server.uri);
         var delay = ms != null && ms > 0 ? ms : null;
         if (ok && delay == null) delay = await measureConnection();
-        await ServerReports.send(node: node, ok: ok, ms: delay, proxy: ok ? engine.httpProxy : null);
+        await ServerReports.send(node: node, ok: ok, ms: delay, proxy: ok ? engine.httpProxy : null, mode: _routeOf(server));
       } catch (_) {}
     }());
   }
@@ -424,8 +464,42 @@ class VpnController extends ChangeNotifier {
   /// WARP routes and the smart-chain routes built on WARP.
   bool _needsWarp(Server s) => _isWarp(s) || WinFreeRoutes.needsWarp(s);
 
-  /// Applies the route setting to a candidate pool.
-  List<Server> _byTransport(List<Server> pool) => switch (settings.transport) {
+  /// Route of a server for reports and the owner's disabled-mode flags: warp, psiphon, tor or v2ray.
+  String _routeOf(Server s) {
+    if (WinFreeRoutes.isPsiphonChain(s)) return 'psiphon';
+    if (WinFreeRoutes.needsWarp(s) || _isWarp(s)) return 'warp';
+    if (FreeRoutes.isFree(s)) return FreeRoutes.routeOf(s);
+    return 'v2ray';
+  }
+
+  /// False when the owner switched off this server's route (chains: when any of their legs is off).
+  bool _routeAllowed(Server s) {
+    final off = RemoteConfig.disabled;
+    if (off.isEmpty) return true;
+    if (WinFreeRoutes.isPsiphonChain(s)) return !off.contains('psiphon') && !off.contains('v2ray');
+    if (s.uri == WinFreeRoutes.psiphonOverWarp.uri) return !off.contains('psiphon') && !off.contains('warp');
+    if (WinFreeRoutes.isChain(s)) return !off.contains('warp') && !off.contains('v2ray');
+    return !off.contains(_routeOf(s));
+  }
+
+  /// Shared success score per route ("mode:<route>") for this operator; used to order free routes.
+  final Map<String, double> _modeScore = {};
+
+  /// Psiphon has clearly done better than WARP on this operator (enough shared reports on both).
+  bool get _psiphonBeforeWarp {
+    final p = _modeScore['mode:psiphon'], w = _modeScore['mode:warp'];
+    return p != null && w != null && p > w + 0.1;
+  }
+
+  /// Applies the route setting to a candidate pool, minus routes the owner disabled (all kept if that
+  /// would leave nothing to try).
+  List<Server> _byTransport(List<Server> pool) {
+    final all = _byTransportAll(pool);
+    final allowed = all.where(_routeAllowed).toList();
+    return allowed.isEmpty ? all : allowed;
+  }
+
+  List<Server> _byTransportAll(List<Server> pool) => switch (settings.transport) {
         'warp' => warpServers,
         'psiphon' when transportAvailable('psiphon') => [FreeRoutes.psiphon],
         'tor' when transportAvailable('tor') => [FreeRoutes.tor],
@@ -433,6 +507,19 @@ class VpnController extends ChangeNotifier {
         // From Iran WARP exits in Iran: V2Ray, then Psiphon, then WARP and the chains (their exit is the V2Ray
         // server / Psiphon), then Tor.
         _ when _iranOrder => [
+            ...pool.where((s) => !_isWarp(s)),
+            ..._psiphonChains(pool),
+            if (transportAvailable('psiphon')) FreeRoutes.psiphon,
+            ...warpServers.take(4),
+            ...warpServersV6.take(2),
+            if (Platform.isWindows) ...[
+              for (final s in pool.where((x) => !_isWarp(x) && !UdpProbe.udpOnly(x)).take(2)) WinFreeRoutes.viaWarp(s),
+              WinFreeRoutes.psiphonOverWarp,
+              FreeRoutes.tor,
+            ],
+          ],
+        // Operator reports say Psiphon beats WARP here: same routes, Psiphon block first.
+        _ when _psiphonBeforeWarp => [
             ...pool.where((s) => !_isWarp(s)),
             ..._psiphonChains(pool),
             if (transportAvailable('psiphon')) FreeRoutes.psiphon,
@@ -1252,6 +1339,10 @@ class VpnController extends ChangeNotifier {
     if (previous != null) await previous; // a cancelled attempt may still be unwinding
     if (state != VpnState.disconnected) return;
     _refreshIfStale();
+    // Automatic mode honours the owner's latest disabled routes; a slow or blocked fetch never holds the connect.
+    if (only == null && settings.transport == 'auto') {
+      await refreshRemoteConfig().timeout(const Duration(seconds: 3), onTimeout: () {});
+    }
     final run = _connect(only);
     _connectRun = run;
     try {

@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../core/engine.dart';
 import '../core/network_info.dart';
 import '../core/settings.dart';
+import '../core/remote_config.dart';
 import '../core/vpn_controller.dart';
 import 'flag_badge.dart';
 import 'location_sheet.dart';
@@ -151,6 +152,7 @@ class _ConsoleHomeState extends State<ConsoleHome> {
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
                   children: [
                     _Header(controller: c, onSettings: _openSettings),
+                    if (c.notice case final notice?) _NoticeBanner(notice: notice, onClose: c.dismissNotice),
                     if (c.update != null) _UpdateLine(controller: c),
                     const SizedBox(height: 14),
                     Center(child: _Squircle(controller: c)),
@@ -159,7 +161,7 @@ class _ConsoleHomeState extends State<ConsoleHome> {
                       const SizedBox(height: 16),
                       _LocationCard(controller: c),
                       const SizedBox(height: 12),
-                      const CardGroup(children: [TelegramSupportRow()]),
+                      const CardGroup(children: [TelegramSupportRow(), ShareFriendsRow()]),
                     ] else ...[
                     _Status(controller: c, latency: lastMs),
                     const SizedBox(height: 12),
@@ -191,6 +193,57 @@ class _ConsoleHomeState extends State<ConsoleHome> {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// Owner announcement from the panel: small dismissible card, always right-to-left (the text is Persian).
+class _NoticeBanner extends StatelessWidget {
+  const _NoticeBanner({required this.notice, required this.onClose});
+
+  final AppNotice notice;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = notice.warning ? Colors.amber : Palette.accent;
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Container(
+          padding: const EdgeInsetsDirectional.fromSTEB(14, 8, 4, 8),
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: accent.withValues(alpha: 0.45)),
+          ),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 3),
+              child: Icon(notice.warning ? Icons.warning_amber_rounded : Icons.campaign_outlined, size: 18, color: accent),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(notice.text, style: TextStyle(fontSize: 13, height: 1.5, color: Palette.text)),
+                if (notice.link.isNotEmpty)
+                  TextButton(
+                    style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 30)),
+                    onPressed: () => openLink(notice.link),
+                    child: Text(notice.linkLabel.isEmpty ? 'باز کردن لینک' : notice.linkLabel),
+                  ),
+              ]),
+            ),
+            IconButton(
+              tooltip: tr('بستن اطلاعیه', 'Close announcement'),
+              visualDensity: VisualDensity.compact,
+              onPressed: onClose,
+              icon: Icon(Icons.close_rounded, size: 18, color: Palette.muted),
+            ),
+          ]),
+        ),
       ),
     );
   }
@@ -856,7 +909,18 @@ class _ModeChips extends StatelessWidget {
     final locked = c.state != VpnState.disconnected;
     final transport = c.settings.transport;
 
-    void setRoute(String value) => c.settings.update((s) => s.transport = value);
+    bool off(String route) => RemoteConfig.isDisabled(route);
+    void setRoute(String value) {
+      if (off(value)) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+            content: Text(tr('این حالت موقتاً توسط پشتیبانی غیرفعال شده است', 'This mode is temporarily turned off by support'))));
+        return;
+      }
+      c.settings.update((s) {
+        s.transport = value;
+        s.transportChosen = true;
+      });
+    }
 
     final chips = <Widget>[
       _ModeChip(
@@ -870,25 +934,32 @@ class _ModeChips extends StatelessWidget {
               },
       ),
       if (VpnController.transportAvailable('dns'))
-        _ModeChip(label: 'DNS', selected: transport == 'dns', onTap: locked ? null : () => setRoute('dns')),
-      _ModeChip(label: 'V2Ray', selected: transport == 'v2ray', onTap: locked ? null : () => setRoute('v2ray')),
-      _ModeChip(label: 'WARP', selected: transport == 'warp', onTap: locked ? null : () => setRoute('warp')),
+        _ModeChip(label: 'DNS', off: off('dns'), selected: transport == 'dns', onTap: locked ? null : () => setRoute('dns')),
+      _ModeChip(label: 'V2Ray', off: off('v2ray'), selected: transport == 'v2ray', onTap: locked ? null : () => setRoute('v2ray')),
+      _ModeChip(label: 'WARP', off: off('warp'), selected: transport == 'warp', onTap: locked ? null : () => setRoute('warp')),
       if (VpnController.transportAvailable('amnezia'))
         _ModeChip(
           label: 'Amnezia',
+          off: off('amnezia'),
           selected: transport == 'amnezia',
           onTap: locked
               ? null
               // No import needed: without a personal config the app's own WARP identity is used.
               : () => setRoute('amnezia'),
         ),
-      _ModeChip(label: 'Psiphon', selected: transport == 'psiphon', onTap: locked ? null : () => setRoute('psiphon')),
-      _ModeChip(label: 'Tor', selected: transport == 'tor', onTap: locked ? null : () => setRoute('tor')),
+      _ModeChip(label: 'Psiphon', off: off('psiphon'), selected: transport == 'psiphon', onTap: locked ? null : () => setRoute('psiphon')),
+      _ModeChip(label: 'Tor', off: off('tor'), selected: transport == 'tor', onTap: locked ? null : () => setRoute('tor')),
     ];
     const perRow = 3;
     return Opacity(
       opacity: locked ? 0.5 : 1,
       child: Column(children: [
+        if (RemoteConfig.disabled.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(tr('حالت‌های کم‌رنگ موقتاً غیرفعال‌اند', 'Faded modes are temporarily turned off'),
+                style: TextStyle(fontSize: 11.5, color: Palette.muted)),
+          ),
         for (var r = 0; r < chips.length; r += perRow) ...[
           if (r > 0) const SizedBox(height: 8),
           Row(children: [
@@ -904,11 +975,14 @@ class _ModeChips extends StatelessWidget {
 }
 
 class _ModeChip extends StatelessWidget {
-  const _ModeChip({required this.label, required this.selected, required this.onTap});
+  const _ModeChip({required this.label, required this.selected, required this.onTap, this.off = false});
 
   final String label;
   final bool selected;
   final VoidCallback? onTap;
+
+  /// Switched off from the owner panel: faded, tap explains.
+  final bool off;
 
   @override
   Widget build(BuildContext context) {
@@ -916,6 +990,11 @@ class _ModeChip extends StatelessWidget {
       borderRadius: BorderRadius.circular(Palette.pillRadius),
       side: BorderSide(color: selected ? Palette.accent : Palette.raised, width: selected ? 1.4 : 1),
     );
+    if (off) return Opacity(opacity: 0.4, child: _chip(shape));
+    return _chip(shape);
+  }
+
+  Widget _chip(ShapeBorder shape) {
     return Semantics(
       button: true,
       selected: selected,

@@ -43,8 +43,9 @@ class ServerReports {
     }
   }
 
-  /// Fire-and-forget; never throws. [node] is a fingerprint or [warpNode].
-  static Future<void> send({required String node, required bool ok, int? ms, String? proxy}) async {
+  /// Fire-and-forget; never throws. [node] is a fingerprint or [warpNode]; [mode] is the route (v2ray, warp,
+  /// psiphon, tor, amnezia, dns) so the owner's stats can show the best mode per operator.
+  static Future<void> send({required String node, required bool ok, int? ms, String? proxy, String? mode}) async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
     if (proxy != null) client.findProxy = (_) => 'PROXY $proxy';
     try {
@@ -57,6 +58,7 @@ class ServerReports {
         'app': Platform.isWindows ? 'windows' : Platform.operatingSystem,
         'ver': await _appVersion(),
         'op': ?NetworkInfo.operatorBucket,
+        'mode': ?mode,
       });
       final req = await client.postUrl(Uri.parse('$_base/report')).timeout(const Duration(seconds: 10));
       req.headers.contentType = ContentType.json;
@@ -70,9 +72,26 @@ class ServerReports {
     }
   }
 
-  /// Fingerprint -> score (0..1), or null when the endpoint is unreachable.
-  /// [op]: ISP bucket (see [NetworkInfo.operatorBucket]) so scores reflect the user's operator.
+  /// Reports needed before an operator's own score is trusted over the global one.
+  static const minOperatorReports = 5;
+
+  /// Fingerprint (or "mode:<route>") -> score (0..1), or null when the endpoint is unreachable.
+  /// [op]: ISP bucket (see [NetworkInfo.operatorBucket]) so scores reflect the user's operator; entries with
+  /// fewer than [minOperatorReports] reports for that operator use the global score instead.
   static Future<Map<String, double>?> fetchScores({String? proxy, String? op}) async {
+    final global = await _fetchScores(proxy, null);
+    if (op == null) return global?.map((k, v) => MapEntry(k, v.$1));
+    final mine = await _fetchScores(proxy, op);
+    if (mine == null && global == null) return null;
+    final out = <String, double>{for (final e in (global ?? const {}).entries) e.key: e.value.$1};
+    for (final e in (mine ?? const {}).entries) {
+      if (e.value.$2 >= minOperatorReports || !out.containsKey(e.key)) out[e.key] = e.value.$1;
+    }
+    return out;
+  }
+
+  /// Node -> (score, reports).
+  static Future<Map<String, (double, int)>?> _fetchScores(String? proxy, String? op) async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
     if (proxy != null) client.findProxy = (_) => 'PROXY $proxy';
     try {
@@ -82,11 +101,13 @@ class ServerReports {
       if (res.statusCode != 200) return null;
       final json = jsonDecode(await res.transform(utf8.decoder).join().timeout(const Duration(seconds: 10)));
       if (json is! Map) return null;
-      final out = <String, double>{};
+      final out = <String, (double, int)>{};
       for (final e in json.entries) {
         final v = e.value;
-        final score = v is Map ? v['score'] : null;
-        if (score is num) out['${e.key}'] = score.toDouble();
+        if (v is! Map) continue;
+        final score = v['score'], ok = v['ok'], fail = v['fail'];
+        final n = v['n'] is num ? (v['n'] as num).toInt() : (ok is num ? ok.toInt() : 0) + (fail is num ? fail.toInt() : 0);
+        if (score is num) out['${e.key}'] = (score.toDouble(), n);
       }
       return out;
     } catch (_) {
