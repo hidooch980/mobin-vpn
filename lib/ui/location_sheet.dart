@@ -39,7 +39,7 @@ class _LocationSheetState extends State<_LocationSheet> {
     Navigator.of(context).pop();
     final c = widget.controller;
     // Countries and favorites need the V2Ray server list; a serverless route (WARP only) would ignore them.
-    if (code != null && (c.settings.transport == 'warp' || c.settings.transport == 'psiphon' || c.settings.transport == 'tor' || c.settings.transport == 'dns')) {
+    if (code != null && (c.settings.transport == 'warp' || c.settings.transport == 'psiphon' || c.settings.transport == 'tor' || c.settings.transport == 'dns' || c.settings.transport == 'amnezia')) {
       c.settings.update((x) => x.transport = 'auto');
     }
     c.selectCountry(code);

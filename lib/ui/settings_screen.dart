@@ -13,6 +13,7 @@ import '../core/speed_test.dart';
 import '../core/vpn_controller.dart';
 import '../core/win_startup.dart';
 import '../core/windows_engine.dart';
+import 'amnezia_import.dart';
 import 'apps_screen.dart';
 import 'help_screen.dart';
 import 'import_screen.dart';
@@ -386,6 +387,13 @@ class SettingsScreen extends StatelessWidget {
                 value: tr('${s.manualConfigs.length} کانفیگ', '${s.manualConfigs.length} configs'),
                 onTap: () => _push(context, ImportScreen(controller: controller)),
               ),
+              if (Platform.isWindows)
+                NavSettingRow(
+                  icon: Icons.vpn_key_outlined,
+                  title: tr('وارد کردن کانفیگ Amnezia', 'Import Amnezia config'),
+                  value: s.amneziaConfig.isEmpty ? tr('وارد نشده', 'Not imported') : tr('وارد شده', 'Imported'),
+                  onTap: () => showAmneziaImport(context, s),
+                ),
               NavSettingRow(
                 icon: Icons.add_link_rounded,
                 title: tr('لینک اشتراک دلخواه', 'Custom subscription link'),

@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'amnezia.dart';
 import 'app_log.dart';
 import 'cf_clean_ip.dart';
 import 'engine.dart';
@@ -141,6 +143,7 @@ class WindowsEngine implements VpnEngine {
   @override
   Future<bool> healthCheck(EngineOptions options) async {
     if (_dnsOnly) return _core.process != null && await _systemLookupOk();
+    if (_awgActive) return await _cfTrace(const Duration(seconds: 4)) != null;
     final port = _proxyPort;
     return port != null &&
         _core.process != null &&
@@ -189,6 +192,9 @@ class WindowsEngine implements VpnEngine {
       dataDir: Directory('${base.path}\\free')..createSync(recursive: true),
     );
     await _free.cleanupStale();
+    _awgDir = Directory('${base.path}\\awg')..createSync(recursive: true);
+    // A previous run may have been killed while the AmneziaWG tunnel service was installed.
+    if ((await SharedPreferences.getInstance()).getBool(_awgActiveKey) ?? false) await _awgUninstall();
     unawaited(RealitySni.load());
     unawaited(_core.updateIranRuleSets());
     await _releaseProxy(); // a previous run may have been killed while connected
@@ -474,6 +480,114 @@ class WindowsEngine implements VpnEngine {
     return true;
   }
 
+  /// The AmneziaWG tunnel service is installed by this app (removed on disconnect and at the next start).
+  bool _awgActive = false;
+  late Directory _awgDir;
+  static const _awgTunnel = 'MolidoAWG';
+  static const _awgActiveKey = 'awg_active';
+
+  /// User-facing reason of the last failed AmneziaWG start, or null.
+  String? amneziaError;
+
+  /// Exit country (Cloudflare trace) of the running AmneziaWG tunnel, or null.
+  String? amneziaExitCountry;
+
+  String get _awgExe => '${File(Platform.resolvedExecutable).parent.path}\\amneziawg\\amneziawg.exe';
+
+  /// Cloudflare /cdn-cgi/trace without a proxy as key/value pairs, or null on failure.
+  static Future<Map<String, String>?> _cfTrace(Duration timeout) async {
+    final client = HttpClient()..connectionTimeout = timeout;
+    try {
+      final req = await client.getUrl(Uri.parse('https://www.cloudflare.com/cdn-cgi/trace')).timeout(timeout);
+      final res = await req.close().timeout(timeout);
+      final body = await res.transform(utf8.decoder).join().timeout(timeout);
+      if (res.statusCode != 200) return null;
+      return {
+        for (final line in const LineSplitter().convert(body))
+          if (line.indexOf('=') case final i when i > 0) line.substring(0, i): line.substring(i + 1).trim(),
+      };
+    } catch (_) {
+      return null;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<void> _awgUninstall() async {
+    try {
+      if (File(_awgExe).existsSync()) {
+        final r = await Process.run(_awgExe, ['/uninstalltunnelservice', _awgTunnel]).timeout(const Duration(seconds: 20));
+        AppLog.add('amnezia: tunnel service removed (exit ${r.exitCode})');
+      }
+    } catch (e) {
+      AppLog.add('amnezia: removing the tunnel service failed ($e)');
+    }
+    final conf = File('${_awgDir.path}\\$_awgTunnel.conf');
+    try {
+      if (conf.existsSync()) conf.deleteSync();
+    } catch (_) {}
+    _awgActive = false;
+    await (await SharedPreferences.getInstance()).remove(_awgActiveKey);
+  }
+
+  /// AmneziaWG (junk obfuscation included) through the bundled amneziawg.exe tunnel service. Needs administrator.
+  /// Tries [preferred] first, then every endpoint of [config] for 8 s each; returns the working endpoint or null.
+  Future<String?> connectAmnezia(AmneziaConfig config, EngineOptions options, {String? preferred}) async {
+    if (!isAdmin) throw const AdminRequiredError();
+    amneziaError = null;
+    amneziaExitCountry = null;
+    await disconnect();
+    if (!File(_awgExe).existsSync()) {
+      AppLog.add('amnezia: amneziawg.exe not found next to the app');
+      amneziaError = 'amneziawg.exe کنار برنامه پیدا نشد؛ نسخه‌ی کامل برنامه را نصب کنید.';
+      return null;
+    }
+    final order = [
+      if (preferred != null && config.endpoints.contains(preferred)) preferred,
+      ...config.endpoints.where((e) => e != preferred),
+    ];
+    AppLog.add('amnezia: ${order.length} endpoint(s), junk ${config.hasJunk ? 'on' : 'off'}');
+    final conf = File('${_awgDir.path}\\$_awgTunnel.conf');
+    for (final endpoint in order) {
+      if (isCancelled()) break;
+      onPhase?.call('AmneziaWG: $endpoint');
+      AppLog.add('amnezia: trying $endpoint');
+      await conf.writeAsString(config.toConf(endpoint), flush: true);
+      _awgActive = true;
+      await (await SharedPreferences.getInstance()).setBool(_awgActiveKey, true);
+      ProcessResult? result;
+      try {
+        result = await Process.run(_awgExe, ['/installtunnelservice', conf.path]).timeout(const Duration(seconds: 20));
+      } catch (e) {
+        AppLog.add('amnezia: installing the tunnel service failed ($e)');
+      }
+      if (result == null || result.exitCode != 0) {
+        if (result != null) AppLog.add('amnezia: install exit ${result.exitCode} ${'${result.stderr}'.trim()}');
+        await _awgUninstall();
+        continue;
+      }
+      // A plain request could still leave through the ISP while routes come up: WARP configs must show warp=on.
+      final until = DateTime.now().add(const Duration(seconds: 8));
+      Map<String, String>? trace;
+      while (!isCancelled() && DateTime.now().isBefore(until)) {
+        final t = await _cfTrace(const Duration(seconds: 3));
+        if (t != null && (!config.isWarp || t['warp'] == 'on' || t['warp'] == 'plus')) {
+          trace = t;
+          break;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      }
+      if (trace != null) {
+        amneziaExitCountry = trace['loc'];
+        AppLog.add('amnezia: connected via $endpoint (exit ${trace['loc'] ?? '?'})');
+        return endpoint;
+      }
+      AppLog.add('amnezia: no traffic via $endpoint within 8 s');
+      await _awgUninstall();
+    }
+    return null;
+  }
+
   Future<void> _releaseProxy() async {
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool(_proxyOwnedKey) ?? false) {
@@ -490,6 +604,7 @@ class WindowsEngine implements VpnEngine {
     _activeIndex = 0;
     _multiPath = false;
     _dnsOnly = false;
+    if (_awgActive) await _awgUninstall();
     await _releaseProxy();
     await _core.stop();
     await _free.stop();

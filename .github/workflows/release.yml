@@ -215,6 +215,30 @@ jobs:
           & "$rel/tor/tor.exe" --version
           if ($LASTEXITCODE -ne 0) { throw 'tor.exe does not run' }
           Get-ChildItem "$rel/psiphon", "$rel/tor"
+      - name: Bundle AmneziaWG (pinned MSI, SHA-256 verified)
+        shell: pwsh
+        env:
+          AWG_VERSION: '3.1.0'
+          AWG_MSI_SHA256: a1b48ea8699cd347832a3691d832004574ef8ad65bcf887611ac8acb99b7de8b
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          $rel = 'build/windows/x64/runner/Release'
+          $msi = "amneziawg-amd64-$env:AWG_VERSION.msi"
+          Invoke-WebRequest "https://github.com/amnezia-vpn/amneziawg-windows-client/releases/download/$env:AWG_VERSION/$msi" -OutFile $msi
+          $h = (Get-FileHash $msi -Algorithm SHA256).Hash.ToLower()
+          if ($h -ne $env:AWG_MSI_SHA256) { throw "AmneziaWG MSI SHA-256 mismatch: $h" }
+          # Administrative install only unpacks the files (nothing is installed on the runner).
+          $out = Join-Path $PWD 'awg-msi'
+          $p = Start-Process msiexec.exe -ArgumentList '/a', (Resolve-Path $msi).Path, '/qn', "TARGETDIR=$out" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "msiexec /a failed: $($p.ExitCode)" }
+          $exe = Get-ChildItem $out -Recurse -Filter amneziawg.exe | Select-Object -First 1
+          if (-not $exe) { throw 'amneziawg.exe missing from the MSI' }
+          New-Item -ItemType Directory -Force "$rel/amneziawg" | Out-Null
+          Get-ChildItem $exe.DirectoryName -File | Where-Object { $_.Extension -in '.exe', '.dll' } | Copy-Item -Destination "$rel/amneziawg/"
+          $sig = Get-AuthenticodeSignature $exe.FullName
+          Write-Host "amneziawg.exe signature: $($sig.Status) $($sig.SignerCertificate.Subject)"
+          Get-ChildItem "$rel/amneziawg"
       - name: Validate the config shapes the app generates (TUN, fragment, DNS)
         shell: bash
         run: |

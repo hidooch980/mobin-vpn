@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'account.dart';
+import 'amnezia.dart';
 import 'android_engine.dart';
 import 'app_log.dart';
 import 'cf_clean_ip.dart';
@@ -443,7 +444,7 @@ class VpnController extends ChangeNotifier {
   /// The UI uses this instead of a hard-coded "coming soon" flag.
   static bool transportAvailable(String t) => switch (t) {
         'psiphon' || 'tor' => Platform.isAndroid || Platform.isWindows,
-        'dns' => Platform.isWindows,
+        'dns' || 'amnezia' => Platform.isWindows,
         _ => true,
       };
 
@@ -1025,6 +1026,40 @@ class VpnController extends ChangeNotifier {
         }
         _checkCancel();
         dnsOnlyNote = 'DNS گیمینگ فعال است: $name';
+        current = null;
+        currentDelay = null;
+        connectedAt = DateTime.now();
+        state = VpnState.connected;
+        phase = null;
+        notifyListeners();
+        return;
+      }
+      // AmneziaWG (Windows): the imported config runs as an amneziawg.exe tunnel service, endpoints tried in order.
+      if (settings.transport == 'amnezia' && only == null) {
+        if (eng is! WindowsEngine) throw const _UserError('AmneziaWG فقط در ویندوز در دسترس است.');
+        final config = AmneziaConfig.fromJsonString(settings.amneziaConfig);
+        if (config == null) {
+          throw const _UserError('کانفیگ Amnezia وارد نشده است. از تنظیمات «وارد کردن کانفیگ Amnezia» را بزنید.');
+        }
+        phase = 'اتصال AmneziaWG…';
+        notifyListeners();
+        String? endpoint;
+        try {
+          endpoint = await eng.connectAmnezia(config, options,
+              preferred: settings.amneziaEndpoint.isEmpty ? null : settings.amneziaEndpoint);
+        } on AdminRequiredError {
+          throw const _UserError(
+              'AmneziaWG دسترسی Administrator می‌خواهد. از تنظیمات «اجرای دوباره به‌عنوان ادمین» را بزنید.');
+        }
+        _checkCancel();
+        final working = endpoint;
+        if (working == null) {
+          throw _UserError(eng.amneziaError ?? 'هیچ‌کدام از Endpointهای Amnezia وصل نشد. جزئیات در گزارش خطا.');
+        }
+        if (working != settings.amneziaEndpoint) await settings.update((x) => x.amneziaEndpoint = working);
+        // WARP exits in the user's own country: warn like other WARP routes.
+        exitInIran = _checkExit && eng.amneziaExitCountry == 'IR';
+        dnsOnlyNote = 'AmneziaWG · $working';
         current = null;
         currentDelay = null;
         connectedAt = DateTime.now();

@@ -59,6 +59,8 @@ class AppSettings extends ChangeNotifier {
   // Extras
   bool warp = false; // chain Cloudflare WARP behind the server
   String warpAccount = ''; // JSON of WarpAccount, created on first use
+  String amneziaConfig = ''; // Windows: JSON of the imported AmneziaConfig (secret: never in backups or logs)
+  String amneziaEndpoint = ''; // last AmneziaWG endpoint that passed traffic, tried first
   bool launchAtStartup = false; // Windows
   bool scheduleEnabled = false; // connect when the time range starts, disconnect when it ends
   String scheduleFrom = '08:00', scheduleTo = '23:00'; // HH:MM, local time; may cross midnight
@@ -110,6 +112,8 @@ class AppSettings extends ChangeNotifier {
     excludedApps = (p.getStringList('s_excludedApps') ?? const []).toSet();
     warp = p.getBool('s_warp') ?? warp;
     warpAccount = p.getString('s_warpAccount') ?? warpAccount;
+    amneziaConfig = p.getString('s_amneziaConfig') ?? amneziaConfig;
+    amneziaEndpoint = p.getString('s_amneziaEndpoint') ?? amneziaEndpoint;
     launchAtStartup = p.getBool('s_launchAtStartup') ?? launchAtStartup;
     scheduleEnabled = p.getBool('s_scheduleEnabled') ?? scheduleEnabled;
     scheduleFrom = p.getString('s_scheduleFrom') ?? scheduleFrom;
@@ -157,6 +161,8 @@ class AppSettings extends ChangeNotifier {
       p.setStringList('s_excludedApps', excludedApps.toList()),
       p.setBool('s_warp', warp),
       p.setString('s_warpAccount', warpAccount),
+      p.setString('s_amneziaConfig', amneziaConfig),
+      p.setString('s_amneziaEndpoint', amneziaEndpoint),
       p.setBool('s_launchAtStartup', launchAtStartup),
       p.setBool('s_scheduleEnabled', scheduleEnabled),
       p.setString('s_scheduleFrom', scheduleFrom),

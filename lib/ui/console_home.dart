@@ -8,6 +8,7 @@ import '../core/engine.dart';
 import '../core/network_info.dart';
 import '../core/settings.dart';
 import '../core/vpn_controller.dart';
+import 'amnezia_import.dart';
 import 'flag_badge.dart';
 import 'location_sheet.dart';
 import 'servers_screen.dart';
@@ -473,7 +474,7 @@ class _Status extends StatelessWidget {
     final connected = c.state == VpnState.connected;
     final detail = switch (c.state) {
       VpnState.connected => c.current == null
-          ? (c.dnsOnlyNote ?? '')
+          ? '${c.dnsOnlyNote ?? ''}${c.exitInIran ? ' · ${tr(VpnController.exitIranMessage, 'Exit is in Iran; some services (like Gemini) will not work')}' : ''}'
           : '${c.activeMember != null ? '${serverTitle(c.current!)} · ${tr('مسیر فعال', 'active path')}: ${c.activeMember}' : c.switchedToBackup ? '${serverTitle(c.current!)} · ${tr('به سرور پشتیبان منتقل شد', 'switched to backup server')}' : serverTitle(c.current!)}'
               '${c.exitInIran ? ' · ${tr(VpnController.exitIranMessage, 'Exit is in Iran; some services (like Gemini) will not work')}' : ''}',
       VpnState.connecting => c.phase ?? '',
@@ -526,6 +527,7 @@ String _routeShort(String transport) => switch (transport) {
       'psiphon' => 'Psiphon',
       'tor' => 'Tor',
       'dns' => 'DNS',
+      'amnezia' => 'Amnezia',
       _ => tr('خودکار', 'Auto'),
     };
 
@@ -689,6 +691,18 @@ class _ModeChips extends StatelessWidget {
         _ModeChip(label: 'DNS', selected: transport == 'dns', onTap: locked ? null : () => setRoute('dns')),
       _ModeChip(label: 'V2Ray', selected: transport == 'v2ray', onTap: locked ? null : () => setRoute('v2ray')),
       _ModeChip(label: 'WARP', selected: transport == 'warp', onTap: locked ? null : () => setRoute('warp')),
+      if (VpnController.transportAvailable('amnezia'))
+        _ModeChip(
+          label: 'Amnezia',
+          selected: transport == 'amnezia',
+          onTap: locked
+              ? null
+              : () async {
+                  // No imported config yet: ask for it first.
+                  if (c.settings.amneziaConfig.isEmpty && !await showAmneziaImport(context, c.settings)) return;
+                  setRoute('amnezia');
+                },
+        ),
       _ModeChip(label: 'Psiphon', selected: transport == 'psiphon', onTap: locked ? null : () => setRoute('psiphon')),
       _ModeChip(label: 'Tor', selected: transport == 'tor', onTap: locked ? null : () => setRoute('tor')),
     ];
