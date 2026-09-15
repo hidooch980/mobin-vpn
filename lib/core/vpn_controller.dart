@@ -14,6 +14,7 @@ import 'countries.dart';
 import 'free_routes.dart';
 import 'engine.dart';
 import 'network_info.dart';
+import 'outline.dart';
 import 'reports.dart';
 import 'server.dart';
 import 'settings.dart';
@@ -186,7 +187,11 @@ class VpnController extends ChangeNotifier {
     // Server lists stay fresh while the app runs (the built-in list every 30 min; Connect refreshes a stale one).
     Timer.periodic(const Duration(minutes: 30), (_) => refresh());
     unawaited(refreshUserSubscriptions());
-    Timer.periodic(const Duration(hours: 1), (_) => refreshUserSubscriptions());
+    unawaited(_resolveOutline());
+    Timer.periodic(const Duration(hours: 1), (_) {
+      refreshUserSubscriptions();
+      _resolveOutline();
+    });
     // Pre-warm: keep delays of the top servers fresh while idle, so Connect starts with the fastest ones.
     Timer(const Duration(minutes: 1), () => _prewarm());
     Timer.periodic(const Duration(minutes: 20), (_) => _prewarm());
@@ -459,7 +464,7 @@ class VpnController extends ChangeNotifier {
     final seen = <String>{};
     final manual = [
       for (final link in settings.manualConfigs)
-        if (Server.fromUri(link) case final s?)
+        if (Server.fromUri(OutlineKeys.isDynamic(link) ? _outline[link] ?? '' : link) case final s?)
           Server(uri: s.uri, remark: s.remark, countryCode: manualCode, protocol: s.protocol),
       for (final url in settings.userSubscriptions)
         for (final s in _userSubServers[url] ?? const <Server>[])
@@ -665,9 +670,35 @@ class VpnController extends ChangeNotifier {
         x.favorites = next;
       });
 
-  /// Adds share links (one per line, or a base64 subscription body). Returns how many were new and valid.
+  /// Outline dynamic keys (ssconf://) resolved to their current ss:// link.
+  final Map<String, String> _outline = {};
+
+  /// Fetches every ssconf:// key again (hourly): Outline servers may rotate the address or password.
+  Future<void> _resolveOutline() async {
+    final keys = settings.manualConfigs.where(OutlineKeys.isDynamic).toList();
+    if (keys.isEmpty) return;
+    for (final key in keys) {
+      final ss = await OutlineKeys.resolve(key, proxy: engine.httpProxy);
+      if (ss != null) _outline[key] = ss;
+    }
+    final data = _data;
+    if (data != null) _apply(data);
+  }
+
+  /// Adds share links (one per line, or a base64 subscription body) and Outline ssconf:// keys.
+  /// Returns how many were new and valid.
   Future<int> addManualConfigs(String text) async {
-    final found = parseSubscription(text).where(engine.supports).map((s) => s.uri);
+    final dynamicKeys = <String>[];
+    for (final line in const LineSplitter().convert(text)) {
+      final key = line.trim();
+      if (!OutlineKeys.isDynamic(key)) continue;
+      final ss = await OutlineKeys.resolve(key, proxy: engine.httpProxy);
+      AppLog.add('outline: dynamic key ${ss == null ? 'could not be fetched' : 'resolved'}');
+      if (ss == null) continue;
+      _outline[key] = ss;
+      dynamicKeys.add(key);
+    }
+    final found = [...parseSubscription(text).where(engine.supports).map((s) => s.uri), ...dynamicKeys];
     final existing = settings.manualConfigs.toSet();
     final fresh = found.where(existing.add).toList();
     if (fresh.isNotEmpty) await settings.update((x) => x.manualConfigs = [...fresh, ...x.manualConfigs]);
@@ -756,7 +787,7 @@ class VpnController extends ChangeNotifier {
   }
 
   Future<void> removeManualConfig(String uri) =>
-      settings.update((x) => x.manualConfigs = x.manualConfigs.where((u) => u != uri).toList());
+      settings.update((x) => x.manualConfigs = x.manualConfigs.where((u) => u != uri && _outline[u] != uri).toList());
 
   static const warpFailedMessage = 'ثبت WARP از اینترنت شما ممکن نشد (سرور ثبت Cloudflare در ایران مسدود است). '
       'مسیر «V2Ray» یا «Psiphon» را انتخاب کنید؛ پس از یک اتصال موفق، WARP خودکار از داخل تونل ثبت می‌شود.';
