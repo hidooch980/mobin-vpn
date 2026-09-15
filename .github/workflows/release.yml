@@ -374,6 +374,29 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - uses: actions/checkout@v4
+        with:
+          path: win
+          fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          repository: hidooch980/molidovpn-android
+          path: native
+          fetch-depth: 0
+      - name: Changelog (never fails the release)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SINCE=$(gh release view -R ${{ github.repository }} --json publishedAt -q .publishedAt 2>/dev/null || echo "3 days ago")
+          python3 win/tools/changelog.py "$VERSION" "$SINCE" win native dist/changelog.json notes.md || true
+      - name: Changelog fallback
+        id: notes
+        run: |
+          [ -s dist/changelog.json ] || echo "{\"version\":\"$VERSION\",\"items\":[{\"text\":\"بهبود پایداری و سرعت\",\"platform\":\"all\"}]}" > dist/changelog.json
+          [ -s notes.md ] || printf '## تغییرات این نسخه\n- بهبود پایداری و سرعت\n\n' > notes.md
+          cat notes.md
+          { echo 'md<<CLEOF'; cat notes.md; echo CLEOF; } >> "$GITHUB_OUTPUT"
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -382,6 +405,7 @@ jobs:
           make_latest: true
           files: dist/*
           body: |
+            ${{ steps.notes.outputs.md }}
             ## دانلود
             | دستگاه | فایل |
             |---|---|

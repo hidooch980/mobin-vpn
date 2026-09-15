@@ -9,6 +9,7 @@ import '../core/network_info.dart';
 import '../core/settings.dart';
 import '../core/remote_config.dart';
 import '../core/vpn_controller.dart';
+import '../core/whats_new.dart';
 import 'flag_badge.dart';
 import 'location_sheet.dart';
 import 'onboarding.dart';
@@ -36,6 +37,7 @@ class _ConsoleHomeState extends State<ConsoleHome> {
   final _latency = <int>[];
   VpnState? _lastState;
   Timer? _probe, _netTimer;
+  WhatsNew? _whatsNew;
 
   VpnController get c => widget.controller;
 
@@ -43,6 +45,9 @@ class _ConsoleHomeState extends State<ConsoleHome> {
   void initState() {
     super.initState();
     c.addListener(_onController);
+    unawaited(WhatsNew.check().then((w) {
+      if (mounted && w != null) setState(() => _whatsNew = w);
+    }));
     unawaited(network.refresh());
     _netTimer = Timer.periodic(const Duration(minutes: 2), (_) => network.refresh(proxy: c.engine.httpProxy));
     if (AppNav.tab == 2) {
@@ -152,6 +157,7 @@ class _ConsoleHomeState extends State<ConsoleHome> {
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
                   children: [
                     _Header(controller: c, onSettings: _openSettings),
+                    if (_whatsNew case final w?) _WhatsNewCard(info: w, onClose: () => setState(() => _whatsNew = null)),
                     if (c.notice case final notice?) _NoticeBanner(notice: notice, onClose: c.dismissNotice),
                     if (c.update != null) _UpdateLine(controller: c),
                     const SizedBox(height: 14),
@@ -193,6 +199,46 @@ class _ConsoleHomeState extends State<ConsoleHome> {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// "What's new" after an update, once; right-to-left Persian card.
+class _WhatsNewCard extends StatelessWidget {
+  const _WhatsNewCard({required this.info, required this.onClose});
+
+  final WhatsNew info;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Container(
+          padding: const EdgeInsetsDirectional.fromSTEB(14, 10, 14, 4),
+          decoration: BoxDecoration(
+            color: Palette.accent.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Palette.accent.withValues(alpha: 0.45)),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('✨ به‌روزرسانی نسخهٔ ${info.version}',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Palette.text)),
+            const SizedBox(height: 6),
+            for (final item in info.items)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 3),
+                child: Text('• $item', style: TextStyle(fontSize: 13, height: 1.5, color: Palette.text)),
+              ),
+            Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: TextButton(onPressed: onClose, child: const Text('باشه')),
+            ),
+          ]),
+        ),
       ),
     );
   }

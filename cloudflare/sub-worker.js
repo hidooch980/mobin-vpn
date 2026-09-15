@@ -28,6 +28,17 @@ async function appRoute(url) {
       headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=300', 'access-control-allow-origin': '*' },
     });
   }
+  if (name === 'changelog.json') {
+    const v = (url.searchParams.get('v') || '').replace(/^v/, '');
+    const path = /^[0-9.]+$/.test(v) ? `download/v${v}` : 'latest/download';
+    const res = await fetch(`https://github.com/${REPO}/releases/${path}/changelog.json`, {
+      redirect: 'follow', cf: { cacheTtl: 3600, cacheEverything: true },
+    });
+    if (!res.ok) return new Response('{"items":[]}', { status: 404, headers: { 'content-type': 'application/json' } });
+    return new Response(await res.text(), {
+      headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=3600', 'access-control-allow-origin': '*' },
+    });
+  }
   if (!/^[A-Za-z0-9._-]+\.(apk|zip|exe)$/.test(name)) return new Response('not found', { status: 404 });
   const res = await fetch(`https://github.com/${REPO}/releases/latest/download/${name}`, { redirect: 'follow' });
   if (!res.ok) return new Response('download unavailable', { status: 502 });
