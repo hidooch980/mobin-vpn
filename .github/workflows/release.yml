@@ -371,7 +371,7 @@ jobs:
           path: dist/*
 
   release:
-    needs: [android, windows]
+    needs: [android, android-smoke, windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
