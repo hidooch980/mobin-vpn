@@ -21,6 +21,7 @@
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
+.subbtns{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:8px}
 .support{margin:18px 0 0;padding:14px 16px;background:var(--raised);border-radius:14px;text-align:center;font-size:15px}
 html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:Vazirmatn,Tahoma,system-ui,sans-serif;line-height:1.9}
@@ -155,6 +156,9 @@ footer a{color:var(--muted)}
           <h3>سرورها را اضافه کنید</h3>
           <p>این صفحه را در Safari باز کنید و دکمه را بزنید. اگر پرسید، «Open» را بزنید.</p>
           <a class="btn primary" id="add-hiddify" href="#">افزودن سرورها به Hiddify</a>
+          <p>برای سرورهای بیشتر، هر کدام از این لینک‌ها را هم اضافه کنید (هر لینک سرورهای متفاوت دارد):</p>
+          <div class="subbtns" id="sub-buttons"></div>
+          <p class="small">هر لینک ۵۰ تا ۱۰۰ سرور تست‌شده دارد و خودکار به‌روز می‌شود. اگر یکی کار نکرد، لینک دیگری را امتحان کنید.</p>
         </div></li>
         <li><span class="num">۳</span><div><h3>در Hiddify دکمه‌ی اتصال را بزنید و «Allow» را انتخاب کنید</h3></div></li>
       </ol>
@@ -348,6 +352,16 @@ const links = {
   v2rayng: u => `v2rayng://install-config?url=${encodeURIComponent(u)}#${NAME}`,
 };
 document.getElementById('add-hiddify').href = links.hiddify(HIDDIFY);
+{
+  const box = document.getElementById('sub-buttons');
+  for (let i = 1; i <= 5; i++) {
+    const a = document.createElement('a');
+    a.className = 'btn outline sm';
+    a.href = links.hiddify(`${WORKER}/sub/${i}`);
+    a.textContent = `لینک ساب ${fa(i)}`;
+    box.append(a);
+  }
+}
 document.getElementById('add-streisand').href = links.streisand(LITE);
 document.getElementById('add-karing').href = links.karing(LITE);
 document.getElementById('full-url').textContent = FULL;
