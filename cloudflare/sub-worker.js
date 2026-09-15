@@ -259,6 +259,58 @@ async function rankByReports(lines, scores) {
     .map((x) => x.line);
 }
 
+// Drop servers that only ever failed from inside Iran, as long as at least [min] others remain.
+async function dropIranFailed(lines, scores, min) {
+  if (!scores.size) return lines;
+  const failed = await Promise.all(
+    lines.map(async (line) => {
+      const s = scores.get(await nodeFingerprint(line));
+      return !!s && s.ok === 0 && s.fail > 0;
+    })
+  );
+  const kept = lines.filter((_, i) => !failed[i]);
+  return kept.length >= min ? kept : lines;
+}
+
+// Every config is shown as "<location flag> MolidoVPN NN" (flag taken from the tested name; 🌐 when unknown).
+function brand(lines) {
+  const counters = new Map();
+  return lines.map((line) => {
+    const hash = line.indexOf('#');
+    const core = hash >= 0 ? line.slice(0, hash) : line;
+    if (!core.includes('://') || core.startsWith('warp://')) return line;
+    let name = '';
+    try {
+      name = hash >= 0 ? decodeURIComponent(line.slice(hash + 1)) : '';
+    } catch {
+      name = line.slice(hash + 1);
+    }
+    let flag = (name.match(/\p{Regional_Indicator}{2}/u) || [])[0];
+    if (!flag && core.startsWith('vmess://')) {
+      try {
+        flag = (JSON.parse(atob(core.slice(8))).ps || '').match(/\p{Regional_Indicator}{2}/u)?.[0];
+      } catch {}
+    }
+    flag = flag || '🌐';
+    const n = (counters.get(flag) || 0) + 1;
+    counters.set(flag, n);
+    const label = `${flag} MolidoVPN ${String(n).padStart(2, '0')}`;
+    if (core.startsWith('vmess://')) {
+      try {
+        const j = JSON.parse(atob(core.slice(8)));
+        j.ps = label;
+        const bytes = new TextEncoder().encode(JSON.stringify(j));
+        let bin = '';
+        for (const b of bytes) bin += String.fromCharCode(b);
+        return `vmess://${btoa(bin)}`;
+      } catch {
+        return `${core}#${encodeURIComponent(label)}`;
+      }
+    }
+    return `${core}#${encodeURIComponent(label)}`;
+  });
+}
+
 async function subRoute(url, env) {
   const n = Number(url.pathname.split('/')[2]);
   if (!Number.isInteger(n) || n < 1 || n > SUB_LINKS) return new Response('use /sub/1 … /sub/5', { status: 404 });
@@ -311,7 +363,8 @@ async function subRoute(url, env) {
   const lines = [...cdnShare, ...mine];
   while (lines.length < SUB_MIN && cdnOthers.length) lines.push(cdnOthers.shift());
   if (!lines.length) return new Response('server list unavailable, try again shortly', { status: 502 });
-  return listResponse((await rankByReports(lines, scores)).slice(0, SUB_MAX), `MolidoVPN ${n}`);
+  const clean = await dropIranFailed(await rankByReports(lines, scores), scores, SUB_MIN);
+  return listResponse(brand(clean.slice(0, SUB_MAX)), `MolidoVPN ${n}`);
 }
 
 function listResponse(lines, title) {
@@ -362,7 +415,7 @@ async function iosRoute(url, env) {
   // enough others exist, then cap for the iOS memory limit.
   const scores = await reportScores(env);
   const rankedOut = await rankByReports(out, scores);
-  const lines = rankedOut.slice(0, IOS_MAX);
+  const lines = brand((await dropIranFailed(rankedOut, scores, 20)).slice(0, IOS_MAX));
   if (url.pathname.startsWith('/hiddify')) lines.unshift('warp://auto#MolidoVPN%20WARP', 'warp://p2@auto#MolidoVPN%20WARP%20in%20WARP');
   if (!lines.length) return new Response('server list unavailable, try again shortly', { status: 502 });
 
@@ -404,7 +457,11 @@ export default {
     for (const source of sources) {
       const res = await fetch(source, { cf: { cacheTtl: 300, cacheEverything: true } }).catch(() => null);
       if (!res || !res.ok) continue;
-      return new Response(await res.text(), {
+      const branded = brand(decodeList(await res.text()).split('\n').filter((l) => l.includes('://')));
+      const bytes = new TextEncoder().encode(branded.join('\n'));
+      let bin = '';
+      for (const b of bytes) bin += String.fromCharCode(b);
+      return new Response(btoa(bin), {
         headers: {
           'content-type': 'text/plain; charset=utf-8',
           'profile-title': 'base64:' + btoa('MolidoVPN'),
