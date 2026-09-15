@@ -38,7 +38,7 @@ class SettingsScreen extends StatelessWidget {
     change();
   }
 
-  static const _androidNotice = 'The Android app is based on the open-source MSN-GUARD project (AGPL-3.0). '
+  static const _androidNotice = 'The Android app is based on an open-source project (AGPL-3.0). '
       'Source: https://github.com/hidooch980/molidovpn-android';
 
   void _toast(BuildContext context, String text) {
