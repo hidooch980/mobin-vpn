@@ -555,6 +555,11 @@ class SettingsScreen extends StatelessWidget {
                   _toast(context, tr('لینک کپی شد', 'Link copied'));
                 },
               ),
+              NavSettingRow(
+                icon: Icons.favorite_outline_rounded,
+                title: tr('حمایت مالی', 'Donate'),
+                onTap: () => showDonateDialog(context),
+              ),
               const TelegramSupportRow(),
               NavSettingRow(
                 icon: Icons.gavel_rounded,

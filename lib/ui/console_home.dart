@@ -216,6 +216,11 @@ class _Header extends StatelessWidget {
       ),
       const Spacer(),
       IconButton(
+        tooltip: tr('حمایت مالی', 'Donate'),
+        onPressed: () => showDonateDialog(context),
+        icon: const Icon(Icons.favorite_rounded, color: Colors.pinkAccent, size: 20),
+      ),
+      IconButton(
         tooltip: tr('تنظیمات', 'Settings'),
         onPressed: onSettings,
         icon: Icon(Icons.settings_rounded, color: Palette.text),

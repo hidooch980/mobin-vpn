@@ -47,6 +47,9 @@ h2.sec{font-size:20px;margin:30px 0 6px}
 .btn.sm{font-size:14px;padding:9px 10px;border-radius:11px}
 .btn small{font-weight:500;font-size:12.5px;opacity:.85}
 a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:8px}
+.donate{display:flex;flex-direction:column;gap:10px}
+.donate .card b{color:var(--ink)}
+.donate .acts{display:flex;gap:8px;flex-wrap:wrap}
 .tg{display:flex;justify-content:center;margin:4px 0 14px}
 .alt{font-size:13px;color:var(--muted);text-align:center;margin:-4px 0 0}
 .alt a{color:var(--accent)}
@@ -330,6 +333,12 @@ footer a{color:var(--muted)}
     </div>
   </section>
 
+  <section id="donate" aria-labelledby="donate-title">
+    <h2 class="sec" id="donate-title">حمایت از MolidoVPN</h2>
+    <p class="lead" id="donate-text">در حال بارگذاری…</p>
+    <div class="donate" id="donate-items"></div>
+  </section>
+
   <section id="faq" aria-labelledby="faq-title">
     <h2 class="sec" id="faq-title">سؤال‌های رایج</h2>
     <details><summary>رایگان است؟</summary><p>بله، کاملاً رایگان و بدون تبلیغ. برای خانواده و دوستان ساخته شده است.</p></details>
@@ -452,6 +461,45 @@ subs.forEach((s, i) => {
   });
   list.append(card);
 });
+
+// ---- donate (same remote JSON as the apps)
+(async () => {
+  const text = document.getElementById('donate-text'), box = document.getElementById('donate-items');
+  const urls = ['https://raw.githubusercontent.com/hidooch980/molidovpn-android/main/remote/donate.json',
+                'https://cdn.jsdelivr.net/gh/hidooch980/molidovpn-android@main/remote/donate.json'];
+  let d = null;
+  for (const u of urls) {
+    try { const r = await fetch(u, { cache: 'no-store' }); if (r.ok) { d = await r.json(); break; } } catch {}
+  }
+  const items = d && Array.isArray(d.items) ? d.items : [];
+  if (!d || (!d.text_fa && !items.length)) {
+    text.textContent = 'برای حمایت به ';
+    const a = document.createElement('a'); a.href = 'https://t.me/Molido_Vpn'; a.rel = 'noopener'; a.dir = 'ltr'; a.textContent = '@Molido_Vpn';
+    text.append(a, ' پیام دهید');
+    return;
+  }
+  if (d.title_fa) document.getElementById('donate-title').textContent = d.title_fa;
+  text.textContent = d.text_fa || '';
+  for (const it of items) {
+    const card = document.createElement('div'); card.className = 'card';
+    if (it.label) { const b = document.createElement('b'); b.textContent = it.label; card.append(b); }
+    if (it.value) { const c = document.createElement('code'); c.textContent = it.value; card.append(c); }
+    const row = document.createElement('div'); row.className = 'acts';
+    if (it.value) {
+      const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'btn outline'; btn.textContent = 'کپی';
+      btn.addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(it.value); toast('کپی شد'); } catch { toast('کپی نشد'); }
+      });
+      row.append(btn);
+    }
+    if (typeof it.url === 'string' && /^(https?:|tg:)/i.test(it.url)) {
+      const a = document.createElement('a'); a.className = 'btn primary'; a.href = it.url; a.rel = 'noopener'; a.textContent = 'باز کردن';
+      row.append(a);
+    }
+    if (row.children.length) card.append(row);
+    box.append(card);
+  }
+})();
 </script>
 </body>
 </html>
