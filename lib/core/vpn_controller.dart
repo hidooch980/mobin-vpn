@@ -482,7 +482,7 @@ class VpnController extends ChangeNotifier {
     return !off.contains(_routeOf(s));
   }
 
-  /// Shared success score per route ("mode:<route>") for this operator; used to order free routes.
+  /// Shared success score per route (`mode:<route>`) for this operator; used to order free routes.
   final Map<String, double> _modeScore = {};
 
   /// Psiphon has clearly done better than WARP on this operator (enough shared reports on both).
@@ -664,6 +664,10 @@ class VpnController extends ChangeNotifier {
   Future<void> selectCountry(String? code) async {
     if (code == selectedCountry) return;
     selectedCountry = code;
+    // WARP, Psiphon, Tor, Amnezia and DNS cannot exit in a chosen country: use the country's V2Ray servers.
+    if (code != null && code != favoritesMode && settings.transport != 'auto' && settings.transport != 'v2ray') {
+      await settings.update((s) => s.transport = 'auto');
+    }
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     code == null ? await prefs.remove(_countryKey) : await prefs.setString(_countryKey, code);
@@ -1370,10 +1374,31 @@ class VpnController extends ChangeNotifier {
     notifyListeners();
     var options = _options;
     exitInIran = false;
+    // A chosen country (automatic or V2Ray route): only servers from that country, and the exit must be there.
+    // Never WARP, Psiphon, Tor, Amnezia or an Iran exit instead.
+    final country = selectedCountry;
+    final countryMode = only == null &&
+        country != null &&
+        country != favoritesMode &&
+        (settings.transport == 'auto' || settings.transport == 'v2ray');
+    final noCountryServer = countryMode && country != null
+        ? 'سرور سالمی از ${countryName(country)} پیدا نشد؛ کشور دیگری انتخاب کنید یا «خودکار» را بزنید'
+        : '';
+    if (engine case final WindowsEngine eng) eng.allowWarpMember = !countryMode;
     // Automatic mode: a route that exits in Iran is set aside (not reported as bad); the first is kept if all do.
     final autoExit = only == null && settings.transport == 'auto';
     Server? irFallback;
     Future<bool> exitOk(Server server) async {
+      if (countryMode) {
+        final proxy = engine.httpProxy;
+        final loc = proxy == null ? null : await NetworkInfo.traceCountry(proxy);
+        AppLog.add('exit check: ${server.displayName} loc=${loc ?? '?'} wanted=$country');
+        if (loc == null || loc == country) return true;
+        AppLog.add('connect: ${server.displayName} exits in $loc, not $country; trying the next $country server');
+        _badUntil[server.uri] = DateTime.now().add(const Duration(minutes: 10));
+        await engine.disconnect();
+        return false;
+      }
       if (!await _exitIsIran(server)) return true;
       if (!autoExit) {
         exitInIran = true;
@@ -1481,7 +1506,14 @@ class VpnController extends ChangeNotifier {
           error = 'ثبت WARP ناموفق بود؛ این بار بدون WARP وصل می‌شویم.';
         }
       }
-      final List<Server> pool = only != null ? [only] : _byTransport(await _candidates());
+      final List<Server> pool = only != null
+          ? [only]
+          : countryMode
+              ? (await _candidates())
+                  .where((s) => !_needsWarp(s) && !FreeRoutes.isFree(s) && !WinFreeRoutes.isChain(s))
+                  .toList()
+              : _byTransport(await _candidates());
+      if (countryMode && pool.isEmpty) throw _UserError(noCountryServer);
       if (pool.any(_needsWarp) && WarpRegistry.account == null) {
         // Automatic mode only tries the direct API and the worker relay; an explicit WARP choice tries every way.
         final quick = only == null && settings.transport != 'warp';
@@ -1585,6 +1617,7 @@ class VpnController extends ChangeNotifier {
         AppLog.add('connect: direct attempts failed, testing the other servers');
         pool.removeWhere(tried.contains);
         if (pool.isEmpty) {
+          if (countryMode) throw _UserError(noCountryServer);
           if (only == null && await _amneziaAuto(options)) return;
           _checkCancel();
           if (await useIrFallback()) return;
@@ -1667,6 +1700,7 @@ class VpnController extends ChangeNotifier {
         await _rememberWinner(server.uri);
         return;
       }
+      if (countryMode) throw _UserError(noCountryServer);
       if (await _amneziaAuto(options)) return;
       _checkCancel();
       if (await useIrFallback()) return;

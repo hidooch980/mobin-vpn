@@ -139,6 +139,9 @@ class WindowsEngine implements VpnEngine {
 
   /// Pre-tested backup servers for the next [connect] (set by the controller); switched to by [failover].
   List<Server> standby = const [];
+
+  /// False while a specific country is chosen: the multi-path group must not fail over to WARP.
+  bool allowWarpMember = true;
   List<Server> _activeStandby = const [];
   int _activeIndex = 0;
   int? _api;
@@ -380,7 +383,7 @@ class WindowsEngine implements VpnEngine {
     // Multi-path: a direct WARP endpoint joins the urltest group when the identity exists.
     final multiPath = options.multiPath && !free && !chain;
     final warpMember =
-        multiPath && !_plainRetry && WarpRegistry.account != null ? parseOutbound('warp://$_warpEndpoint') : null;
+        multiPath && allowWarpMember && !_plainRetry && WarpRegistry.account != null ? parseOutbound('warp://$_warpEndpoint') : null;
     _multiPath = multiPath;
     _memberNames = {
       'proxy-0': server.displayName,

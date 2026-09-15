@@ -75,7 +75,7 @@ class ServerReports {
   /// Reports needed before an operator's own score is trusted over the global one.
   static const minOperatorReports = 5;
 
-  /// Fingerprint (or "mode:<route>") -> score (0..1), or null when the endpoint is unreachable.
+  /// Fingerprint (or `mode:<route>`) -> score (0..1), or null when the endpoint is unreachable.
   /// [op]: ISP bucket (see [NetworkInfo.operatorBucket]) so scores reflect the user's operator; entries with
   /// fewer than [minOperatorReports] reports for that operator use the global score instead.
   static Future<Map<String, double>?> fetchScores({String? proxy, String? op}) async {
