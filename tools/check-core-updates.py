@@ -225,16 +225,8 @@ def check_singbox(ctx: Ctx) -> None:
     minor = pin_get(ctx.pins, "SINGBOX_WINDOWS_MINOR")
     base = minor + ".0"
     if newest and not same_minor(newest, base) and is_newer(newest, base):
-        v = parse_version(newest)
-        ctx.review.append({
-            "title": f"Core update needs review: sing-box {v[0]}.{v[1]}.x",
-            "body": (f"sing-box {newest} is out; Windows is pinned to the {minor}.x series "
-                     "(newest patch at build time).\n\n"
-                     "Minor/major sing-box releases change the config schema and are not applied "
-                     "automatically. To adopt it: bump `SINGBOX_WINDOWS_MINOR` in `tools/core-pins.json` "
-                     "and `SINGBOX_VERSION` + hashes in molidovpn-android `tools/fetch-binaries.sh`, then "
-                     "check the generated configs and the emulator connection test."),
-        })
+        # Owner decision: new sing-box minors are ignored (no issue); only patches of the pinned series.
+        print(f"sing-box: {newest} ignored; staying on {minor}.x")
     else:
         print(f"sing-box: {minor}.x is the newest series")
 
