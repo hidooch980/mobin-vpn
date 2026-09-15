@@ -90,12 +90,14 @@ jobs:
           done
           echo "::error::push to main failed after 5 attempts"
           exit 1
-      - name: Start release for Android core update
-        if: steps.android.outputs.sha != '' && steps.commit.outputs.mobin == ''
+      # A push made with GITHUB_TOKEN never starts other workflows, so the release is always dispatched
+      # explicitly: after a mobin-vpn core update, or for a new "Core update (Android)" commit.
+      - name: Start release
+        if: steps.android.outputs.sha != '' || steps.commit.outputs.mobin != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo "molidovpn-android ${{ steps.android.outputs.sha }}: dispatching release.yml"
+          echo "mobin: '${{ steps.commit.outputs.mobin }}' android: '${{ steps.android.outputs.sha }}' -> dispatching release.yml"
           gh workflow run release.yml -R "$GITHUB_REPOSITORY" --ref main
       - name: Summary
         if: always()
