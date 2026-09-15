@@ -1381,7 +1381,7 @@ class VpnController extends ChangeNotifier {
         country != null &&
         country != favoritesMode &&
         (settings.transport == 'auto' || settings.transport == 'v2ray');
-    final noCountryServer = countryMode && country != null
+    final noCountryServer = countryMode
         ? 'سرور سالمی از ${countryName(country)} پیدا نشد؛ کشور دیگری انتخاب کنید یا «خودکار» را بزنید'
         : '';
     if (engine case final WindowsEngine eng) eng.allowWarpMember = !countryMode;
