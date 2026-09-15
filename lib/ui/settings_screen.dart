@@ -45,6 +45,19 @@ class SettingsScreen extends StatelessWidget {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text), behavior: SnackBarBehavior.floating));
   }
 
+  /// "آخرین اسکن: N دقیقه پیش · M سرور سالم" for the background scanner row.
+  String _scanSummary() {
+    final at = controller.lastScanAt;
+    if (at == null) {
+      return tr('هر ساعت همه سرورها از اینترنت شما تست می‌شوند؛ هنوز اسکنی انجام نشده',
+          'Tests every server from your internet hourly; no scan yet');
+    }
+    final minutes = DateTime.now().difference(at).inMinutes;
+    final healthy = controller.lastScanHealthy;
+    return tr('آخرین اسکن: $minutes دقیقه پیش · $healthy سرور سالم',
+        'Last scan: $minutes min ago · $healthy working servers');
+  }
+
   void _push(BuildContext context, Widget page) =>
       Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
 
@@ -366,6 +379,14 @@ class SettingsScreen extends StatelessWidget {
                       'Blocks QUIC (UDP 443) so browsers use TCP through the tunnel; background probing is turned off'),
                   value: s.dataSaver,
                   onChanged: (v) => s.update((x) => x.dataSaver = v),
+                ),
+              if (Platform.isWindows)
+                SwitchSettingRow(
+                  icon: Icons.radar_rounded,
+                  title: tr('اسکنر پس‌زمینه', 'Background scanner'),
+                  subtitle: _scanSummary(),
+                  value: s.backgroundScanner,
+                  onChanged: (v) => s.update((x) => x.backgroundScanner = v),
                 ),
               if (Platform.isAndroid)
                 ChoiceSettingRow<String>(

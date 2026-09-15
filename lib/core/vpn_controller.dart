@@ -9,6 +9,7 @@ import 'account.dart';
 import 'amnezia.dart';
 import 'android_engine.dart';
 import 'app_log.dart';
+import 'background_scanner.dart';
 import 'cf_clean_ip.dart';
 import 'countries.dart';
 import 'free_routes.dart';
@@ -106,9 +107,11 @@ class VpnController extends ChangeNotifier {
 
   double? get progress => progressTotal == 0 ? null : progressDone / progressTotal;
 
-  EngineOptions get _options => EngineOptions(
+  EngineOptions get _options => _optionsWith();
+
+  EngineOptions _optionsWith({Duration? timeout}) => EngineOptions(
         testUrl: settings.testUrl,
-        timeout: Duration(seconds: settings.timeoutSeconds),
+        timeout: timeout ?? Duration(seconds: settings.timeoutSeconds),
         proxyOnly: settings.proxyOnly,
         systemProxy: settings.systemProxy,
         tunMode: settings.tunMode,
@@ -177,6 +180,7 @@ class VpnController extends ChangeNotifier {
     }
     if (!ready.isCompleted) ready.complete();
     unawaited(_loadScores());
+    unawaited(_health.load().catchError((Object _) {}));
     // Auto-connect uses the normal connect path, so the selected location (favorites, country) is respected.
     if (settings.connectOnLaunch && servers.isNotEmpty && state == VpnState.disconnected) {
       AppLog.add('auto-connect on launch (mode=${selectedCountry ?? 'auto'})');
@@ -196,6 +200,9 @@ class VpnController extends ChangeNotifier {
     // Pre-warm: keep delays of the top servers fresh while idle, so Connect starts with the fastest ones.
     Timer(const Duration(minutes: 1), () => _prewarm());
     Timer.periodic(const Duration(minutes: 20), (_) => _prewarm());
+    // Background scanner: real probes of every server from the user's own internet, hourly.
+    Timer(const Duration(minutes: 3), () => _backgroundScan());
+    Timer.periodic(_scanEvery, (_) => _backgroundScan());
     // Clean Cloudflare IP scan (Windows): checks the network every 5 min, rescans on change or after 30 min.
     Timer(const Duration(seconds: 20), _cleanIpTick);
     Timer.periodic(const Duration(minutes: 5), (_) => _cleanIpTick());
@@ -1038,6 +1045,77 @@ class VpnController extends ChangeNotifier {
     }
   }
 
+  // ---- Background scanner ----
+
+  static const _scanEvery = Duration(minutes: 60);
+  static const _scanTimeout = Duration(seconds: 5);
+  static const _scanCap = Duration(minutes: 5);
+  static const _scanConcurrency = 8;
+
+  final HealthBook _health = HealthBook();
+  final HourlyBudget _scanReports = HourlyBudget(200);
+  bool _scanning = false, _scanStop = false;
+
+  /// When the last background scan finished and how many servers passed; null = none yet.
+  DateTime? lastScanAt;
+  int lastScanHealthy = 0;
+
+  /// Memory key of the user's own network: Windows has one network key, so the ISP bucket separates networks.
+  String get _healthNet => 'desktop|${NetworkInfo.operatorBucket ?? '-'}';
+
+  /// Hourly real probe (HTTP 204 through a temporary sing-box) of every server: built-in list, user configs and
+  /// user subscriptions. Runs only on the user's own network: disconnected, or connected in system-proxy mode
+  /// (the probe core dials servers directly and ignores the Windows proxy); never with TUN. Stops at connect.
+  Future<void> _backgroundScan() async {
+    final eng = engine;
+    if (eng is! WindowsEngine || !settings.backgroundScanner || settings.dataSaver) return;
+    if (_scanning || _prewarming || pinging || loading || _connectRun != null) return;
+    bool allowed() =>
+        settings.backgroundScanner &&
+        !settings.tunMode &&
+        (state == VpnState.disconnected || (state == VpnState.connected && settings.systemProxy));
+    if (!allowed()) return;
+    final list = servers.where((s) => !_isWarp(s) && !FreeRoutes.isFree(s) && !WinFreeRoutes.isChain(s)).toList();
+    if (list.isEmpty) return;
+    _scanning = true;
+    _scanStop = false;
+    final startedIn = state;
+    final started = DateTime.now();
+    final net = _healthNet;
+    bool stop() =>
+        _scanStop || !allowed() || state != startedIn || DateTime.now().difference(started) > _scanCap;
+    try {
+      final result = await eng.probeAll(list, _optionsWith(timeout: _scanTimeout),
+          isCancelled: stop, concurrency: _scanConcurrency);
+      if (stop()) {
+        AppLog.add('background scan: stopped after ${DateTime.now().difference(started).inSeconds} s, results dropped');
+        return;
+      }
+      for (var i = 0; i < list.length; i++) {
+        _health.record(net, list[i].uri, result[i]);
+        if (state == VpnState.disconnected) delays[list[i].uri] = result[i];
+      }
+      lastScanAt = DateTime.now();
+      lastScanHealthy = result.where((d) => d > 0).length;
+      AppLog.add('background scan: $lastScanHealthy/${list.length} servers work on this network');
+      unawaited(_health.save().catchError((Object _) {}));
+      notifyListeners(); // once per scan
+      if (settings.anonymousReports) {
+        final n = _scanReports.take(list.length);
+        final proxy = state == VpnState.connected ? engine.httpProxy : null;
+        unawaited(runPool(n, 2, (i) async {
+          final node = await ServerReports.fingerprint(list[i].uri);
+          await ServerReports.send(node: node, ok: result[i] > 0, ms: result[i] > 0 ? result[i] : null, proxy: proxy);
+          return 0;
+        }));
+      }
+    } catch (e) {
+      AppLog.add('background scan: $e');
+    } finally {
+      _scanning = false;
+    }
+  }
+
   /// Fresh idle ping results: responsive servers first (fastest first), untested next, failed last.
   List<Server> _byFreshDelay(List<Server> pool) {
     final at = _prewarmAt;
@@ -1092,9 +1170,17 @@ class VpnController extends ChangeNotifier {
     } else {
       pool = _byFreshDelay(_roundRobin(countries, size));
     }
+    // Background scanner results for this network: recent successes first, repeated failures last.
+    final net = _healthNet;
+    final ordered = _health.order(net, pool, (s) => s.uri);
+    pool
+      ..clear()
+      ..addAll(ordered);
     final last = await _lastWinner();
     final lastServer = servers.where((s) => s.uri == last).firstOrNull;
-    if (lastServer != null && (country == null || _inCountry(lastServer, country))) {
+    if (lastServer != null &&
+        (country == null || _inCountry(lastServer, country)) &&
+        !_health.isDeprioritised(net, lastServer.uri)) {
       pool
         ..remove(lastServer)
         ..insert(0, lastServer);
@@ -1184,6 +1270,7 @@ class VpnController extends ChangeNotifier {
   Future<void> _connect(Server? only) async {
     error = null;
     _cancel = false;
+    _scanStop = true; // a running background scan stops at once (its sing-box is killed when in-flight probes end)
     // The ISP became known (or changed) since scores were loaded: refresh them for this operator.
     if (_scoresOp != null && (NetworkInfo.operatorBucket ?? '') != _scoresOp) unawaited(_loadScores());
     state = VpnState.connecting;

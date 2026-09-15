@@ -53,6 +53,7 @@ class AppSettings extends ChangeNotifier {
   String dnsPreset = 'auto'; // auto | a gamingDnsPresets id
   bool fragment = false;
   bool dataSaver = false; // Windows: block QUIC (UDP 443) and skip background pre-warm / clean-IP probing
+  bool backgroundScanner = true; // Windows: hourly real probe of every server from the user's own internet
   bool multiPath = false; // Windows: "proxy" is a urltest group (main + backups + WARP) instead of a selector
   Set<String> excludedApps = {}; // Android package names that skip the VPN
 
@@ -113,6 +114,7 @@ class AppSettings extends ChangeNotifier {
     fragment = p.getBool('s_fragment') ?? fragment;
     multiPath = p.getBool('s_multiPath') ?? multiPath;
     dataSaver = p.getBool('s_dataSaver') ?? dataSaver;
+    backgroundScanner = p.getBool('s_bgScanner') ?? backgroundScanner;
     excludedApps = (p.getStringList('s_excludedApps') ?? const []).toSet();
     warp = p.getBool('s_warp') ?? warp;
     v2rayOverPsiphon = p.getBool('s_v2rayOverPsiphon') ?? v2rayOverPsiphon;
@@ -166,6 +168,7 @@ class AppSettings extends ChangeNotifier {
       p.setBool('s_fragment', fragment),
       p.setBool('s_multiPath', multiPath),
       p.setBool('s_dataSaver', dataSaver),
+      p.setBool('s_bgScanner', backgroundScanner),
       p.setStringList('s_excludedApps', excludedApps.toList()),
       p.setBool('s_warp', warp),
       p.setBool('s_v2rayOverPsiphon', v2rayOverPsiphon),
@@ -212,6 +215,7 @@ class AppSettings extends ChangeNotifier {
         'fragment': fragment,
         'multiPath': multiPath,
         'dataSaver': dataSaver,
+        'backgroundScanner': backgroundScanner,
         'v2rayOverPsiphon': v2rayOverPsiphon,
         'poolSize': poolSize,
         'timeoutSeconds': timeoutSeconds,
@@ -254,6 +258,7 @@ class AppSettings extends ChangeNotifier {
         ..fragment = pick<bool>('fragment') ?? s.fragment
         ..multiPath = pick<bool>('multiPath') ?? s.multiPath
         ..dataSaver = pick<bool>('dataSaver') ?? s.dataSaver
+        ..backgroundScanner = pick<bool>('backgroundScanner') ?? s.backgroundScanner
         ..v2rayOverPsiphon = pick<bool>('v2rayOverPsiphon') ?? s.v2rayOverPsiphon
         ..poolSize = pick<int>('poolSize') ?? s.poolSize
         ..timeoutSeconds = pick<int>('timeoutSeconds') ?? s.timeoutSeconds
@@ -311,6 +316,7 @@ class AppSettings extends ChangeNotifier {
           ..fragment = false
           ..multiPath = false
           ..dataSaver = false
+          ..backgroundScanner = true
           ..excludedApps = {}
           ..poolSize = 40
           ..timeoutSeconds = 8
