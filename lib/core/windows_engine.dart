@@ -420,11 +420,14 @@ class WindowsEngine implements VpnEngine {
   bool _dnsOnly = false;
 
   /// Resolves www.google.com through the system resolver (hijacked by the TUN to the gaming DNS).
-  static Future<bool> _systemLookupOk() async {
+  /// [log]: write the result (or error) to the diagnostic log.
+  static Future<bool> _systemLookupOk({bool log = false, Duration timeout = const Duration(seconds: 5)}) async {
     try {
-      final result = await InternetAddress.lookup('www.google.com').timeout(const Duration(seconds: 5));
+      final result = await InternetAddress.lookup('www.google.com').timeout(timeout);
+      if (log) AppLog.add('windows: dns-only lookup ok (${result.first.address})');
       return result.isNotEmpty;
-    } catch (_) {
+    } catch (e) {
+      if (log) AppLog.add('windows: dns-only lookup failed ($e)');
       return false;
     }
   }
@@ -438,8 +441,10 @@ class WindowsEngine implements VpnEngine {
     final mtu = await NetworkInfo.tunMtu(options.tunMtu);
     AppLog.add('windows: dns-only mode via $dns, tun mtu $mtu');
     final proc = await _core.start(_core.dnsOnlyConfig(dns, api, mtu: mtu));
+    AppLog.add('windows: dns-only config written, sing-box started (pid ${proc.pid})');
     unawaited(proc.stdout.drain<void>().whenComplete(() {
       if (!identical(_core.process, proc)) return;
+      AppLog.add('windows: dns-only sing-box exited');
       _core.process = null;
       _dnsOnly = false;
       _states.add(VpnState.disconnected);
@@ -449,10 +454,19 @@ class WindowsEngine implements VpnEngine {
       await disconnect();
       return false;
     }
+    AppLog.add('windows: dns-only core api up');
     _api = api;
     _dnsOnly = true;
-    if (!await _systemLookupOk()) {
-      AppLog.add('windows: dns-only lookup of www.google.com failed');
+    // The TUN routes and firewall rules appear a moment after the API: retry the lookup for about 6 s.
+    final until = DateTime.now().add(const Duration(seconds: 6));
+    var ok = false;
+    while (!ok && !isCancelled() && _core.process != null) {
+      ok = await _systemLookupOk(log: true, timeout: const Duration(seconds: 2));
+      if (ok || DateTime.now().isAfter(until)) break;
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+    }
+    if (!ok) {
+      AppLog.add('windows: dns-only gave up: www.google.com did not resolve through $dns');
       await disconnect();
       return false;
     }

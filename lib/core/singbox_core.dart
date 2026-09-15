@@ -458,7 +458,9 @@ class SingboxCore {
             'address': ['172.19.0.1/30', 'fdfe:dcba:9876::1/126'],
             'mtu': mtu,
             'auto_route': true,
-            'strict_route': false,
+            // Windows sends DNS to every adapter's server (router/LAN routes skip the TUN); strict_route
+            // blocks those so queries really reach the gaming DNS.
+            'strict_route': true,
             'stack': 'mixed',
           },
         ],
@@ -472,7 +474,8 @@ class SingboxCore {
             {'port': 53, 'action': 'hijack-dns'},
           ],
           'final': 'direct',
-          if (detectInterface) 'auto_detect_interface': true,
+          // Direct traffic must bind to the physical adapter, otherwise it loops back into the TUN.
+          'auto_detect_interface': true,
           'default_domain_resolver': 'local',
         },
         'experimental': {
