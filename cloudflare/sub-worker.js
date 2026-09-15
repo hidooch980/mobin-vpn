@@ -109,7 +109,7 @@ function limited(ip) {
 
 const bad = () => new Response('bad request', { status: 400, headers: CORS });
 
-async function reportRoute(request, env) {
+async function reportRoute(request, env, ctx) {
   if (request.method !== 'POST') return new Response('method not allowed', { status: 405, headers: CORS });
   const len = Number(request.headers.get('content-length') || 0);
   if (len > 1024) return bad();
@@ -131,6 +131,29 @@ async function reportRoute(request, env) {
   if (!(ms === null || ms === undefined || (Number.isInteger(ms) && ms >= 1 && ms <= 60000))) return bad();
 
   if (limited(request.headers.get('cf-connecting-ip') || 'unknown')) return new Response(null, { status: 204, headers: CORS });
+
+  // Local Iran tester result for an owner config: kept separately (latest run + consecutive failures) so
+  // the reports table for owner configs holds only real app reports from users.
+  if (r.owner === true && r.ver === 'local-iran-test') {
+    let isOwner = false;
+    try {
+      isOwner = (await ownerFps(env, ctx)).has(r.node);
+    } catch {}
+    if (isOwner) {
+      const now = Date.now();
+      await env.DB.prepare(
+        `INSERT INTO owner_tests (fp, ok, ms, tested_at, fail_streak) VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(fp) DO UPDATE SET
+           fail_streak = CASE WHEN excluded.ok = 1 THEN 0
+             WHEN owner_tests.ok = 0 AND owner_tests.tested_at > ?6 THEN owner_tests.fail_streak
+             ELSE owner_tests.fail_streak + 1 END,
+           ok = excluded.ok, ms = excluded.ms, tested_at = excluded.tested_at`
+      )
+        .bind(r.node, r.ok ? 1 : 0, r.ok && Number.isInteger(ms) ? ms : null, now, r.ok ? 0 : 1, now - OWNER_RUN_GAP_MS)
+        .run();
+      return new Response(null, { status: 204, headers: CORS });
+    }
+  }
 
   const day = new Date().toISOString().slice(0, 10);
   const hasMs = Number.isInteger(ms) ? 1 : 0;
@@ -468,7 +491,15 @@ async function ensureOwnerSchema(env) {
     env.DB.prepare(
       'CREATE TABLE IF NOT EXISTS admin_fails (ip_hash TEXT PRIMARY KEY, fails INTEGER NOT NULL, locked_until INTEGER NOT NULL, updated INTEGER NOT NULL)'
     ),
+    // Latest local Iran test per owner config fingerprint (from iran_node_test.py via /report with owner:true).
+    env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS owner_tests (fp TEXT PRIMARY KEY, ok INTEGER NOT NULL, ms INTEGER, tested_at INTEGER NOT NULL, fail_streak INTEGER NOT NULL DEFAULT 0)'
+    ),
   ]);
+  // Columns added after the first release; ALTER fails harmlessly when they already exist.
+  for (const col of ['always_show INTEGER NOT NULL DEFAULT 0', 'due_at INTEGER NOT NULL DEFAULT 0']) {
+    await env.DB.prepare(`ALTER TABLE owner_items ADD COLUMN ${col}`).run().catch(() => {});
+  }
   ownerSchemaReady = true;
 }
 
@@ -529,26 +560,101 @@ async function fetchOwnerSub(link, ctx) {
   }
 }
 
-// All enabled owner configs (single configs first, then sub-link configs), deduped. Never throws.
+// All enabled owner configs (single configs first, then sub-link configs), deduped, as
+// { line, fp, item }. Throws on DB errors.
+async function ownerEntries(env, ctx) {
+  await ensureOwnerSchema(env);
+  const { results } = await env.DB.prepare(
+    'SELECT id, kind, value, always_show, due_at FROM owner_items WHERE enabled = 1 ORDER BY id'
+  ).all();
+  const configs = results.filter((r) => r.kind === 'config');
+  const subs = results.filter((r) => r.kind === 'sub');
+  const subLines = await Promise.all(subs.map((r) => fetchOwnerSub(r.value, ctx)));
+  const src = [...configs.map((r) => [r, r.value]), ...subs.flatMap((r, i) => subLines[i].map((l) => [r, l]))];
+  const seen = new Set();
+  const out = [];
+  for (const [item, line] of src) {
+    const core = lineCore(line);
+    if (!validConfig(line) || seen.has(core)) continue;
+    seen.add(core);
+    out.push({ line: line.trim(), fp: await nodeFingerprint(line), item });
+    if (out.length >= OWNER_MAX_LINES) break;
+  }
+  return out;
+}
+
+const OWNER_FAIL_RUNS = 2; // hide after this many consecutive failed local Iran test runs
+const OWNER_RETEST_MS = 3600000; // owner configs are due for the quick local test after 1 h
+const OWNER_RUN_GAP_MS = 5 * 60000; // failures closer than this count as the same run
+
+// Local Iran tests (owner_tests) and app reports from Iranian users for owner fingerprints. Never throws.
+async function ownerStatus(env) {
+  const tests = new Map();
+  const users = new Map();
+  try {
+    const { results } = await env.DB.prepare('SELECT fp, ok, ms, tested_at, fail_streak FROM owner_tests').all();
+    for (const r of results) tests.set(r.fp, r);
+  } catch {}
+  try {
+    const day = (d) => new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
+    const { results } = await env.DB.prepare(
+      `SELECT node, SUM(ok) ok, SUM(fail) fail, SUM(CASE WHEN day >= ?2 THEN ok ELSE 0 END) recent_ok
+       FROM reports WHERE day >= ?1 GROUP BY node`
+    )
+      .bind(day(6), day(1))
+      .all();
+    for (const r of results) users.set(r.node, r);
+  } catch {}
+  return { tests, users };
+}
+
+// Hidden from users: failed the latest OWNER_FAIL_RUNS local Iran runs, no user success in ~2 days, no override.
+function ownerHidden(entry, st) {
+  if (entry.item.always_show) return false;
+  const t = st.tests.get(entry.fp);
+  if (!t || t.ok || t.fail_streak < OWNER_FAIL_RUNS) return false;
+  return !((st.users.get(entry.fp) || {}).recent_ok > 0);
+}
+
+function ownerDue(entry, st, now) {
+  const t = st.tests.get(entry.fp);
+  return !t || t.tested_at < now - OWNER_RETEST_MS || entry.item.due_at > t.tested_at;
+}
+
+// Owner configs served to users (Iran-failed ones removed). Never throws.
 async function ownerLines(env, ctx) {
   try {
-    await ensureOwnerSchema(env);
-    const { results } = await env.DB.prepare('SELECT kind, value FROM owner_items WHERE enabled = 1 ORDER BY id').all();
-    const configs = results.filter((r) => r.kind === 'config').map((r) => r.value);
-    const subs = await Promise.all(results.filter((r) => r.kind === 'sub').map((r) => fetchOwnerSub(r.value, ctx)));
-    const seen = new Set();
-    const out = [];
-    for (const line of [...configs, ...subs.flat()]) {
-      const core = lineCore(line);
-      if (!validConfig(line) || seen.has(core)) continue;
-      seen.add(core);
-      out.push(line.trim());
-      if (out.length >= OWNER_MAX_LINES) break;
-    }
-    return out;
+    const entries = await ownerEntries(env, ctx);
+    if (!entries.length) return [];
+    const st = await ownerStatus(env);
+    return entries.filter((e) => !ownerHidden(e, st)).map((e) => e.line);
   } catch {
     return [];
   }
+}
+
+// /owner/configs — public list of owner config URIs for the local Iran tester (they are public inside / anyway).
+// id is the report fingerprint; due = never tested, older than 1 h, or "test again" pressed in /admin.
+async function ownerConfigsRoute(env, ctx) {
+  const headers = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
+  try {
+    const entries = await ownerEntries(env, ctx);
+    const st = entries.length ? await ownerStatus(env) : { tests: new Map(), users: new Map() };
+    const now = Date.now();
+    const configs = entries.map((e) => ({ id: e.fp, uri: e.line, due: ownerDue(e, st, now) }));
+    return new Response(JSON.stringify({ configs }), { headers });
+  } catch {
+    return new Response(JSON.stringify({ error: 'unavailable' }), { status: 500, headers });
+  }
+}
+
+// Owner fingerprints, cached per isolate for a minute (used to accept owner test results in /report).
+let ownerFpCache = { at: 0, set: new Set() };
+async function ownerFps(env, ctx) {
+  if (Date.now() - ownerFpCache.at > 60000) {
+    ownerFpCache = { at: Date.now(), set: new Set((await ownerEntries(env, ctx)).map((e) => e.fp)) };
+  }
+  return ownerFpCache.set;
 }
 
 // Owner configs first, then the normal list without duplicates of them.
@@ -605,7 +711,7 @@ async function adminAuth(request, env) {
   return adminJson({ error: lockedUntil ? 'locked' : 'unauthorized' }, lockedUntil ? 429 : 401);
 }
 
-async function adminApi(request, env, url) {
+async function adminApi(request, env, url, ctx) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 405, headers: ADMIN_HEADERS });
   const denied = await adminAuth(request, env);
   if (denied) return denied;
@@ -613,8 +719,48 @@ async function adminApi(request, env, url) {
   const DB = env.DB;
 
   if (path === '/admin/api/items' && request.method === 'GET') {
-    const { results } = await DB.prepare('SELECT id, kind, value, note, enabled, created_at FROM owner_items ORDER BY id DESC').all();
-    return adminJson({ items: results });
+    const { results } = await DB.prepare(
+      'SELECT id, kind, value, note, enabled, always_show, due_at, created_at FROM owner_items ORDER BY id DESC'
+    ).all();
+    const st = await ownerStatus(env);
+    const now = Date.now();
+    // Iran status per config: last local test, consecutive failed runs, 7-day user reports, hidden/due.
+    const one = (item, line, fp) => {
+      const t = st.tests.get(fp);
+      const u = st.users.get(fp) || { ok: 0, fail: 0 };
+      const e = { item, fp, line };
+      return {
+        tested: !!t,
+        ok: t ? !!t.ok : null,
+        ms: t ? t.ms : null,
+        tested_at: t ? t.tested_at : null,
+        fail_streak: t ? t.fail_streak : 0,
+        user_ok: u.ok || 0,
+        user_fail: u.fail || 0,
+        hidden: ownerHidden(e, st),
+        due: ownerDue(e, st, now),
+      };
+    };
+    const items = await Promise.all(
+      results.map(async (it) => {
+        if (it.kind === 'config') return { ...it, status: one(it, it.value, await nodeFingerprint(it.value)) };
+        const lines = await fetchOwnerSub(it.value, ctx);
+        const s = await Promise.all(lines.map(async (l) => one(it, l, await nodeFingerprint(l))));
+        return {
+          ...it,
+          status: {
+            total: s.length,
+            ok: s.filter((x) => x.ok === true).length,
+            failed: s.filter((x) => x.ok === false).length,
+            untested: s.filter((x) => !x.tested).length,
+            hidden: s.filter((x) => x.hidden).length,
+            due: s.some((x) => x.due),
+            tested_at: Math.max(0, ...s.map((x) => x.tested_at || 0)) || null,
+          },
+        };
+      })
+    );
+    return adminJson({ items });
   }
 
   const readBody = async () => {
@@ -666,8 +812,14 @@ async function adminApi(request, env, url) {
     }
     if (request.method === 'PATCH') {
       const b = await readBody();
-      if (!b || typeof b.enabled !== 'boolean') return adminJson({ error: 'bad request' }, 400);
-      await DB.prepare('UPDATE owner_items SET enabled = ?1 WHERE id = ?2').bind(b.enabled ? 1 : 0, id).run();
+      // { enabled?: bool, always_show?: bool, retest?: true } — retest makes the item due for the quick local Iran test.
+      const ups = [];
+      if (b && typeof b.enabled === 'boolean') ups.push(DB.prepare('UPDATE owner_items SET enabled = ?1 WHERE id = ?2').bind(b.enabled ? 1 : 0, id));
+      if (b && typeof b.always_show === 'boolean')
+        ups.push(DB.prepare('UPDATE owner_items SET always_show = ?1 WHERE id = ?2').bind(b.always_show ? 1 : 0, id));
+      if (b && b.retest === true) ups.push(DB.prepare('UPDATE owner_items SET due_at = ?1 WHERE id = ?2').bind(Date.now(), id));
+      if (!ups.length) return adminJson({ error: 'bad request' }, 400);
+      await DB.batch(ups);
       return adminJson({ ok: true });
     }
   }
@@ -742,14 +894,30 @@ function load(){
       var b1=document.createElement('span');b1.className='badge';b1.textContent=it.kind==='sub'?'لینک اشتراک':'کانفیگ';
       var b2=document.createElement('span');b2.className='badge '+(it.enabled?'on':'off');b2.textContent=it.enabled?'فعال':'غیرفعال';
       var n=document.createElement('span');n.className='mute';n.textContent=(it.note?it.note+' · ':'')+String(it.created_at).slice(0,10);
-      h.append(b1,b2,n);
+      var st=it.status||{},b3=document.createElement('span'),b4=document.createElement('span');b4.className='mute';
+      var when=function(ms){return ms?new Date(ms).toLocaleString('fa-IR',{dateStyle:'short',timeStyle:'short'}):''};
+      if(it.kind==='sub'){
+        b3.className='badge '+(st.total&&st.ok===st.total?'on':st.failed?'off':'');
+        b3.textContent=st.total?(st.ok+' از '+st.total+' سالم'):'⏳ کانفیگی دریافت نشد';
+        b4.textContent=[st.untested?st.untested+' هنوز تست نشده':'',st.hidden?st.hidden+' پنهان از کاربران':'',st.tested_at?'آخرین تست '+when(st.tested_at):''].filter(Boolean).join(' · ');
+      }else if(!st.tested){b3.className='badge';b3.textContent='⏳ هنوز تست نشده'}
+      else if(st.ok){b3.className='badge on';b3.textContent='✅ ایران OK ('+(st.ms||'?')+' ms، '+when(st.tested_at)+')'}
+      else{b3.className='badge off';b3.textContent='❌ از ایران وصل نشد';b4.textContent=when(st.tested_at)+(st.hidden?' · پنهان از کاربران':'')}
+      if(it.kind==='config'&&(st.user_ok+st.user_fail))b4.textContent=(b4.textContent?b4.textContent+' · ':'')+'گزارش کاربران ایران: '+Math.round(100*st.user_ok/(st.user_ok+st.user_fail))+'% از '+(st.user_ok+st.user_fail);
+      if(st.due&&it.due_at&&(!st.tested_at||it.due_at>st.tested_at))b4.textContent=(b4.textContent?b4.textContent+' · ':'')+'در صف تست';
+      h.append(b1,b2,b3,b4,n);
       var v=document.createElement('div');v.className='val';v.textContent=it.value.length>300?it.value.slice(0,300)+'…':it.value;
       var a=document.createElement('div');a.className='row';
       var t=document.createElement('button');t.className='ghost';t.textContent=it.enabled?'غیرفعال کن':'فعال کن';
       t.onclick=function(){api('PATCH','/items/'+it.id,{enabled:!it.enabled}).then(function(r){r._s===200?load():msg(err(r))})};
+      var re=document.createElement('button');re.className='ghost';re.textContent='تست دوباره';
+      re.onclick=function(){api('PATCH','/items/'+it.id,{retest:true}).then(function(r){if(r._s===200){msg('در صف تست؛ حداکثر ۱۵ دقیقه');load()}else msg(err(r))})};
+      var al=document.createElement('label');al.className='row mute';var cb=document.createElement('input');cb.type='checkbox';cb.style.width='auto';cb.style.margin='0';cb.checked=!!it.always_show;
+      cb.onchange=function(){api('PATCH','/items/'+it.id,{always_show:cb.checked}).then(function(r){r._s===200?load():msg(err(r))})};
+      al.append(cb,document.createTextNode('همیشه نشان بده'));
       var del=document.createElement('button');del.className='danger';del.textContent='حذف';
       del.onclick=function(){if(confirm('حذف شود؟'))api('DELETE','/items/'+it.id).then(function(r){r._s===200?load():msg(err(r))})};
-      a.append(t,del);d.append(h,v,a);list.append(d);
+      a.append(t,re,al,del);d.append(h,v,a);list.append(d);
     });
   }).catch(function(){msg('خطای شبکه')});
 }
@@ -783,7 +951,12 @@ export default {
     ctx.waitUntil(env.DB.prepare('DELETE FROM reports WHERE day < ?1').bind(cutoff).run());
     ctx.waitUntil(
       ensureOwnerSchema(env)
-        .then(() => env.DB.prepare('DELETE FROM admin_fails WHERE updated < ?1').bind(Date.now() - 86400000).run())
+        .then(() =>
+          env.DB.batch([
+            env.DB.prepare('DELETE FROM admin_fails WHERE updated < ?1').bind(Date.now() - 86400000),
+            env.DB.prepare('DELETE FROM owner_tests WHERE tested_at < ?1').bind(Date.now() - 30 * 86400000),
+          ])
+        )
         .catch(() => {})
     );
   },
@@ -792,7 +965,8 @@ export default {
     const url = new URL(request.url);
     if (request.method === 'OPTIONS' && (url.pathname === '/report' || url.pathname === '/scores'))
       return new Response(null, { status: 204, headers: CORS });
-    if (url.pathname === '/report') return reportRoute(request, env);
+    if (url.pathname === '/report') return reportRoute(request, env, ctx);
+    if (url.pathname === '/owner/configs') return ownerConfigsRoute(env, ctx);
     if (url.pathname === '/scores') return scoresRoute(request, env, ctx);
     if (url.pathname.startsWith('/remote/')) return remoteRoute(url);
     if (url.pathname.startsWith('/app/')) return appRoute(url);
@@ -800,7 +974,7 @@ export default {
     if (url.pathname === '/admin' || url.pathname === '/admin/') return adminPage(env);
     if (url.pathname.startsWith('/admin/api')) {
       try {
-        return await adminApi(request, env, url);
+        return await adminApi(request, env, url, ctx);
       } catch {
         return adminJson({ error: 'server error' }, 500);
       }

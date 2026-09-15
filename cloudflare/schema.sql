@@ -18,7 +18,18 @@ CREATE TABLE IF NOT EXISTS owner_items (
   value TEXT NOT NULL,
   note TEXT NOT NULL DEFAULT '',
   enabled INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  always_show INTEGER NOT NULL DEFAULT 0, -- serve even if the local Iran test fails
+  due_at INTEGER NOT NULL DEFAULT 0       -- "test again" pressed (ms); quick local test picks it up
+);
+
+-- Latest local Iran test per owner config fingerprint (iran_node_test.py, uploaded via /report with owner:true).
+CREATE TABLE IF NOT EXISTS owner_tests (
+  fp TEXT PRIMARY KEY,
+  ok INTEGER NOT NULL,
+  ms INTEGER,
+  tested_at INTEGER NOT NULL,
+  fail_streak INTEGER NOT NULL DEFAULT 0
 );
 
 -- Failed admin logins per salted IP hash (lockout); rows removed after one day.
