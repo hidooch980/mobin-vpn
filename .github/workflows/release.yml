@@ -138,6 +138,11 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Load core pins (tools/core-pins.json, rewritten by core-updates)
+        shell: pwsh
+        run: |
+          $pins = Get-Content tools/core-pins.json -Raw | ConvertFrom-Json
+          foreach ($p in $pins.PSObject.Properties) { "$($p.Name)=$($p.Value)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -147,23 +152,21 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: flutter build windows --release --build-name $env:VERSION --build-number ${{ github.run_number }}
-      - name: Bundle sing-box (latest 1.12.x)
+      - name: Bundle sing-box (latest patch of SINGBOX_WINDOWS_MINOR)
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG=$(gh release list -R SagerNet/sing-box --exclude-pre-releases --limit 100 --json tagName \
-                --jq '[.[].tagName | select(startswith("v1.12."))][0]')
+                --jq '[.[].tagName | select(startswith("v'"$SINGBOX_WINDOWS_MINOR"'."))][0]')
           VER=${TAG#v}
           gh release download "$TAG" -R SagerNet/sing-box -p "sing-box-${VER}-windows-amd64.zip" -O sb.zip
           unzip -q sb.zip
           cp "sing-box-${VER}-windows-amd64/sing-box.exe" build/windows/x64/runner/Release/
       - name: Bundle Xray-core for XHTTP servers (pinned, SHA-256 verified)
         shell: pwsh
-        env:
-          # sing-box 1.12 has no XHTTP transport; the app runs XHTTP nodes through a local Xray SOCKS inbound.
-          XRAY_VERSION: 'v26.3.27'
-          XRAY_SHA256: d004c39288ce9ada487c6f398c7c545f7d749e44bdfdd59dbc9f865afba4e1ad
+        # sing-box 1.12 has no XHTTP transport; the app runs XHTTP nodes through a local Xray SOCKS inbound.
+        # XRAY_VERSION / XRAY_SHA256 come from tools/core-pins.json.
         run: |
           $ErrorActionPreference = 'Stop'
           $ProgressPreference = 'SilentlyContinue'
@@ -180,13 +183,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'xray.exe does not run' }
       - name: Bundle Psiphon and Tor (pinned, SHA-256 verified)
         shell: pwsh
-        env:
-          # psiphon-tunnel-core-binaries commit (2026-08-31); Windows only ships the i686 ConsoleClient.
-          PSIPHON_COMMIT: bc5e85f72d28984c335dd0b1c538041ed2287bc3
-          PSIPHON_SHA256: 0fef46f80eaa3eea87a0e13f4be349f3108164f90cdc229692776b12adbc131d
-          TOR_BROWSER_VERSION: '14.5.6'
-          # Optional extra pin; when empty the checksum published by the Tor Project for this version is used.
-          TOR_BUNDLE_SHA256: ''
+        # PSIPHON_COMMIT / PSIPHON_SHA256 (Windows i686 ConsoleClient), TOR_BROWSER_VERSION and
+        # TOR_BUNDLE_SHA256 (empty = use the Tor Project's published checksum) come from tools/core-pins.json.
         run: |
           $ErrorActionPreference = 'Stop'
           $ProgressPreference = 'SilentlyContinue'
@@ -240,9 +238,7 @@ jobs:
           Get-ChildItem "$rel/psiphon", "$rel/tor"
       - name: Bundle AmneziaWG (pinned MSI, SHA-256 verified)
         shell: pwsh
-        env:
-          AWG_VERSION: '3.1.0'
-          AWG_MSI_SHA256: a1b48ea8699cd347832a3691d832004574ef8ad65bcf887611ac8acb99b7de8b
+        # AWG_VERSION / AWG_MSI_SHA256 come from tools/core-pins.json.
         run: |
           $ErrorActionPreference = 'Stop'
           $ProgressPreference = 'SilentlyContinue'

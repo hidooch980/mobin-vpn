@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-"""Checks upstream releases of the bundled cores/tunnels and rewrites the pins.
+"""Checks upstream releases of the bundled Windows cores/tunnels and rewrites tools/core-pins.json.
 
 Stdlib only. Used by .github/workflows/core-updates.yml, but runs locally too:
 
-  python tools/check-core-updates.py                     # dry run, prints what it would do
-  python tools/check-core-updates.py --apply \
-      --android-dir ../molidovpn-android                 # rewrite pins (+ mirror when a token is set)
+  python tools/check-core-updates.py            # dry run, prints what it would do
+  python tools/check-core-updates.py --apply    # rewrite tools/core-pins.json, open issues
+
+Never edits .github/workflows/* (GITHUB_TOKEN may not push workflow files): release.yml reads the pins
+from tools/core-pins.json at build time. Android pins live in hidooch980/molidovpn-android, which has its
+own core-updates workflow; this repo only notices its "Core update (Android)" commits and starts a release.
 
 Environment:
   GITHUB_TOKEN       token for API calls and issues in mobin-vpn
-  CROSS_REPO_TOKEN   optional; contents:write on hidooch980/molidovpn-android. Without it the Android
-                     side is not touched and the needed Android updates are reported in an issue.
 
 Safety policy (auto-apply only non-breaking updates, never pre-releases):
-  sing-box   same major.minor as the current pin (1.12.x patches); a new minor/major opens an issue
+  sing-box   Windows takes the newest patch of SINGBOX_WINDOWS_MINOR at build time; a new minor/major
+             only opens an issue
   Xray-core  any newer stable release
   Tor        newest stable Tor Browser version on dist.torproject.org
   Psiphon    newer commit touching windows/psiphon-tunnel-core-i686.exe
@@ -21,27 +23,21 @@ Safety policy (auto-apply only non-breaking updates, never pre-releases):
   MSN-GUARD  (Rust core / Android mirror upstream) never merged automatically, only reported
 
 Outputs a JSON summary (--summary) consumed by the workflow:
-  {"mobin_commit": "...", "android_commit": "...", "applied": [...], "review": [...]}
+  {"mobin_commit": "...", "review": [...], "report": [...], "errors": [...]}
 """
 from __future__ import annotations
 
 import argparse
 import datetime as dt
 import hashlib
-import io
 import json
 import os
 import re
-import shutil
-import subprocess
 import sys
-import tempfile
 import urllib.error
 import urllib.request
-import zipfile
 
 MOBIN_REPO = "hidooch980/mobin-vpn"
-ANDROID_REPO = "hidooch980/molidovpn-android"
 RETRY_WINDOW = dt.timedelta(hours=24)
 ISSUE_TITLE_REPORT = "Core updates: manual follow-up"
 
@@ -82,42 +78,12 @@ def newest_stable(tags: list[str], prefix_minor: tuple[int, int] | None = None) 
     return best
 
 
-# ---------------------------------------------------------------- pin rewriting
+# ---------------------------------------------------------------- pins (tools/core-pins.json)
 
-# release.yml
-RX_XRAY_VER = r"^(\s*XRAY_VERSION:\s*')([^']*)(')"
-RX_XRAY_SHA = r"^(\s*XRAY_SHA256:\s*)([0-9a-fA-F]{64})"
-RX_PSI_COMMIT = r"^(\s*PSIPHON_COMMIT:\s*)([0-9a-f]{40})"
-RX_PSI_SHA = r"^(\s*PSIPHON_SHA256:\s*)([0-9a-fA-F]{64})"
-RX_TOR_VER = r"^(\s*TOR_BROWSER_VERSION:\s*')([^']*)(')"
-RX_TOR_SHA = r"^(\s*TOR_BUNDLE_SHA256:\s*')([0-9a-fA-F]{64}|)(')"
-RX_AWG_VER = r"^(\s*AWG_VERSION:\s*')([^']*)(')"
-RX_AWG_SHA = r"^(\s*AWG_MSI_SHA256:\s*)([0-9a-fA-F]{64})"
-RX_WIN_SB_MINOR = r'(select\(startswith\("v)(\d+\.\d+)(\."\)\))'
-# fetch-binaries.sh
-RX_SB_VER = r'^(SINGBOX_VERSION=")([^"]*)(")'
-RX_BIN_TAG = r'(\$\{BINARIES_TAG:-)(binaries-\d+)(\})'
-
-
-def rx_sb_sha(abi: str) -> str:
-    return r"^(\s*" + re.escape(abi) + r"\) echo )([0-9a-f]{64})( ;;)"
-
-
-def pin_group(pattern: str, text: str, what: str) -> str:
-    m = list(re.finditer(pattern, text, flags=re.M))
-    if len(m) != 1:
-        raise ValueError(f"expected exactly one {what} pin, found {len(m)}")
-    return m[0].group(2)
-
-
-def set_pin(pattern: str, value: str, text: str, what: str) -> str:
-    def repl(m: re.Match) -> str:
-        tail = m.group(3) if m.re.groups >= 3 else ""
-        return m.group(1) + value + tail
-    new, n = re.subn(pattern, repl, text, flags=re.M)
-    if n != 1:
-        raise ValueError(f"expected exactly one {what} pin, found {n}")
-    return new
+def pin_get(pins: dict, key: str) -> str:
+    if key not in pins:
+        raise ValueError(f"tools/core-pins.json has no {key}")
+    return pins[key]
 
 
 # ---------------------------------------------------------------- network
@@ -223,21 +189,11 @@ class Ctx:
         self.args = args
         self.now = dt.datetime.now(dt.timezone.utc)
         self.state = load_state(args.state)
-        with open(args.release_yml, encoding="utf-8", newline="") as f:
-            self.yml = f.read()
-        self.sh = None
-        self.sh_path = None
-        if args.android_dir:
-            self.sh_path = os.path.join(args.android_dir, "tools", "fetch-binaries.sh")
-            with open(self.sh_path, encoding="utf-8", newline="") as f:
-                self.sh = f.read()
-        self.cross = bool(os.environ.get("CROSS_REPO_TOKEN")) and self.sh is not None
+        with open(args.pins, encoding="utf-8") as f:
+            self.pins = json.load(f)
         self.mobin_changes: list[str] = []
-        self.android_changes: list[str] = []
         self.review: list[dict] = []   # {"title": ..., "body": ...} -> one issue each
         self.report: list[str] = []    # lines for the manual follow-up issue
-        self.mirror_replace: dict[str, bytes] = {}
-        self.needs_token = False       # an Android update was skipped for lack of CROSS_REPO_TOKEN
 
     def skip_recent(self, component: str, version: str) -> bool:
         if recently_attempted(self.state, component, version, self.now):
@@ -247,7 +203,7 @@ class Ctx:
 
 
 def check_xray(ctx: Ctx) -> None:
-    cur = pin_group(RX_XRAY_VER, ctx.yml, "XRAY_VERSION")
+    cur = pin_get(ctx.pins, "XRAY_VERSION")
     rels = stable_releases("XTLS/Xray-core")
     latest = newest_stable([r["tag_name"] for r in rels])
     if not latest or not is_newer(latest, cur):
@@ -257,72 +213,30 @@ def check_xray(ctx: Ctx) -> None:
         return
     rel = next(r for r in rels if r["tag_name"] == latest)
     win = download_verified_dgst(rel, "Xray-windows-64.zip")
-    ctx.yml = set_pin(RX_XRAY_VER, latest, ctx.yml, "XRAY_VERSION")
-    ctx.yml = set_pin(RX_XRAY_SHA, sha256(win), ctx.yml, "XRAY_SHA256")
+    ctx.pins["XRAY_VERSION"] = latest
+    ctx.pins["XRAY_SHA256"] = sha256(win)
     ctx.mobin_changes.append(f"Xray {cur} → {latest}")
     record(ctx.state, "xray", latest, ctx.now)
-    # Android: libxray.so in the mirror release is the plain xray executable per ABI.
-    android_assets = {"arm64-v8a__libxray.so": "Xray-android-arm64-v8a.zip",
-                      "armeabi-v7a__libxray.so": "Xray-linux-arm32-v7a.zip"}
-    if ctx.cross:
-        for mirror_name, zname in android_assets.items():
-            z = zipfile.ZipFile(io.BytesIO(download_verified_dgst(rel, zname)))
-            ctx.mirror_replace[mirror_name] = z.read("xray")
-        ctx.android_changes.append(f"Xray {cur} → {latest}")
-    else:
-        ctx.needs_token = True
-        ctx.report.append(f"- Android: rebuild mirror `binaries-N` with Xray {latest} "
-                          f"(`Xray-android-arm64-v8a.zip`, `Xray-linux-arm32-v7a.zip` → `libxray.so`).")
 
 
 def check_singbox(ctx: Ctx) -> None:
     rels = stable_releases("SagerNet/sing-box")
-    tags = [r["tag_name"] for r in rels]
-    newest = newest_stable(tags)
-    win_minor = pin_group(RX_WIN_SB_MINOR, ctx.yml, "Windows sing-box minor")
-    base = ctx.sh and pin_group(RX_SB_VER, ctx.sh, "SINGBOX_VERSION")
-    base = base or win_minor + ".0"
-    # New minor/major: never automatic.
+    newest = newest_stable([r["tag_name"] for r in rels])
+    minor = pin_get(ctx.pins, "SINGBOX_WINDOWS_MINOR")
+    base = minor + ".0"
     if newest and not same_minor(newest, base) and is_newer(newest, base):
         v = parse_version(newest)
-        series = f"{v[0]}.{v[1]}.x"
         ctx.review.append({
-            "title": f"Core update needs review: sing-box {series}",
-            "body": (f"sing-box {newest} is out; the app is pinned to the {win_minor}.x series "
-                     f"(Windows: latest v{win_minor}.x at build time, Android: {base}).\n\n"
+            "title": f"Core update needs review: sing-box {v[0]}.{v[1]}.x",
+            "body": (f"sing-box {newest} is out; Windows is pinned to the {minor}.x series "
+                     "(newest patch at build time).\n\n"
                      "Minor/major sing-box releases change the config schema and are not applied "
-                     "automatically. To adopt it: bump the `startswith(\"v{0}.\")` filter in "
-                     "`.github/workflows/release.yml`, `SINGBOX_VERSION` + hashes in "
-                     "molidovpn-android `tools/fetch-binaries.sh`, then check the generated configs "
-                     "(`sing-box check` step) and the emulator connection test.".format(win_minor)),
+                     "automatically. To adopt it: bump `SINGBOX_WINDOWS_MINOR` in `tools/core-pins.json` "
+                     "and `SINGBOX_VERSION` + hashes in molidovpn-android `tools/fetch-binaries.sh`, then "
+                     "check the generated configs and the emulator connection test."),
         })
-    # Windows already takes the newest v1.12.x at build time; only the Android pin needs bumping.
-    if ctx.sh is None:
-        return
-    minor = parse_version(base)[:2]
-    patch = newest_stable(tags, minor)
-    if not patch or not is_newer(patch, base):
-        print(f"sing-box: {base} is current in its series")
-        return
-    ver = patch.lstrip("v")
-    if ctx.skip_recent("sing-box-android", ver):
-        return
-    if not ctx.cross:
-        ctx.needs_token = True
-        ctx.report.append(f"- Android: `SINGBOX_VERSION` {base} → {ver} in `tools/fetch-binaries.sh` (+ both SHA-256).")
-        return
-    rel = next(r for r in rels if r["tag_name"] == patch)
-    sh = set_pin(RX_SB_VER, ver, ctx.sh, "SINGBOX_VERSION")
-    for abi, arch in (("arm64-v8a", "arm64"), ("armeabi-v7a", "arm")):
-        name = f"sing-box-{ver}-android-{arch}.tar.gz"
-        url = asset_url(rel, name)
-        if not url:
-            raise RuntimeError(f"sing-box {ver}: {name} missing")
-        sh = set_pin(rx_sb_sha(abi), sha256(http_get(url)), sh, f"sing-box {abi} sha")
-    ctx.sh = sh
-    ctx.android_changes.append(f"sing-box {base} → {ver}")
-    ctx.mobin_changes.append(f"sing-box (Android) {base} → {ver}")
-    record(ctx.state, "sing-box-android", ver, ctx.now)
+    else:
+        print(f"sing-box: {minor}.x is the newest series")
 
 
 def _commit_date(repo: str, sha: str) -> str:
@@ -331,7 +245,7 @@ def _commit_date(repo: str, sha: str) -> str:
 
 def check_psiphon(ctx: Ctx) -> None:
     repo = "Psiphon-Labs/psiphon-tunnel-core-binaries"
-    cur = pin_group(RX_PSI_COMMIT, ctx.yml, "PSIPHON_COMMIT")
+    cur = pin_get(ctx.pins, "PSIPHON_COMMIT")
     cur_date = _commit_date(repo, cur)
     latest = gh_api(f"repos/{repo}/commits?path=windows/psiphon-tunnel-core-i686.exe&per_page=1")[0]
     sha, date = latest["sha"], latest["commit"]["committer"]["date"]
@@ -339,8 +253,8 @@ def check_psiphon(ctx: Ctx) -> None:
         data = http_get(f"https://raw.githubusercontent.com/{repo}/{sha}/windows/psiphon-tunnel-core-i686.exe")
         if len(data) < 1_000_000 or data[:2] != b"MZ":
             raise RuntimeError("Psiphon download is not a Windows executable")
-        ctx.yml = set_pin(RX_PSI_COMMIT, sha, ctx.yml, "PSIPHON_COMMIT")
-        ctx.yml = set_pin(RX_PSI_SHA, sha256(data), ctx.yml, "PSIPHON_SHA256")
+        ctx.pins["PSIPHON_COMMIT"] = sha
+        ctx.pins["PSIPHON_SHA256"] = sha256(data)
         ctx.mobin_changes.append(f"Psiphon {cur[:7]} → {sha[:7]}")
         record(ctx.state, "psiphon", sha, ctx.now)
     else:
@@ -358,7 +272,7 @@ def check_psiphon(ctx: Ctx) -> None:
 
 
 def check_tor(ctx: Ctx) -> None:
-    cur = pin_group(RX_TOR_VER, ctx.yml, "TOR_BROWSER_VERSION")
+    cur = pin_get(ctx.pins, "TOR_BROWSER_VERSION")
     index = http_get("https://dist.torproject.org/torbrowser/").decode("utf-8", "replace")
     versions = re.findall(r'href="(\d+\.\d+(?:\.\d+)*)/"', index)   # alphas look like 15.0a2 -> excluded
     latest = newest_stable(versions)
@@ -387,8 +301,8 @@ def check_tor(ctx: Ctx) -> None:
     actual = sha256(http_get(f"{base}/{name}"))
     if actual != expected:
         raise RuntimeError(f"Tor {latest}: SHA-256 mismatch {actual} vs {expected}")
-    ctx.yml = set_pin(RX_TOR_VER, latest, ctx.yml, "TOR_BROWSER_VERSION")
-    ctx.yml = set_pin(RX_TOR_SHA, actual, ctx.yml, "TOR_BUNDLE_SHA256")
+    ctx.pins["TOR_BROWSER_VERSION"] = latest
+    ctx.pins["TOR_BUNDLE_SHA256"] = actual
     ctx.mobin_changes.append(f"Tor {cur} → {latest}")
     record(ctx.state, "tor", latest, ctx.now)
     ctx.report.append(f"- Android: Tor {latest} is out; `libtor.so` / `libobfs4proxy.so` come from the "
@@ -396,7 +310,7 @@ def check_tor(ctx: Ctx) -> None:
 
 
 def check_amneziawg(ctx: Ctx) -> None:
-    cur = pin_group(RX_AWG_VER, ctx.yml, "AWG_VERSION")
+    cur = pin_get(ctx.pins, "AWG_VERSION")
     rels = stable_releases("amnezia-vpn/amneziawg-windows-client")
     latest = newest_stable([r["tag_name"] for r in rels])
     if not latest or not is_newer(latest, cur):
@@ -412,8 +326,8 @@ def check_amneziawg(ctx: Ctx) -> None:
                                    "the download step in release.yml needs adjusting."})
         record(ctx.state, "amneziawg", latest, ctx.now, applied=False)
         return
-    ctx.yml = set_pin(RX_AWG_VER, latest, ctx.yml, "AWG_VERSION")
-    ctx.yml = set_pin(RX_AWG_SHA, sha256(http_get(url)), ctx.yml, "AWG_MSI_SHA256")
+    ctx.pins["AWG_VERSION"] = latest
+    ctx.pins["AWG_MSI_SHA256"] = sha256(http_get(url))
     ctx.mobin_changes.append(f"AmneziaWG {cur} → {latest}")
     record(ctx.state, "amneziawg", latest, ctx.now)
 
@@ -430,39 +344,7 @@ def check_msn_guard(ctx: Ctx) -> None:
         comp["seen"] = latest
 
 
-# ---------------------------------------------------------------- mirror + issues
-
-def publish_mirror(ctx: Ctx) -> None:
-    """Copies the current mirror release, replaces changed assets, publishes binaries-N+1."""
-    env = dict(os.environ, GH_TOKEN=os.environ["CROSS_REPO_TOKEN"])
-    cur_tag = pin_group(RX_BIN_TAG, ctx.sh, "BINARIES_TAG")
-    tags = subprocess.run(["gh", "release", "list", "-R", ANDROID_REPO, "--limit", "200",
-                           "--json", "tagName", "--jq", ".[].tagName"],
-                          env=env, check=True, capture_output=True, text=True).stdout.split()
-    n = max([int(t.split("-")[1]) for t in tags if re.fullmatch(r"binaries-\d+", t)] + [0]) + 1
-    new_tag = f"binaries-{n}"
-    work = tempfile.mkdtemp()
-    try:
-        subprocess.run(["gh", "release", "download", cur_tag, "-R", ANDROID_REPO, "-D", work],
-                       env=env, check=True)
-        for name, data in ctx.mirror_replace.items():
-            with open(os.path.join(work, name), "wb") as f:
-                f.write(data)
-        files = sorted(f for f in os.listdir(work) if f != "SHA256SUMS.txt")
-        with open(os.path.join(work, "SHA256SUMS.txt"), "w", newline="\n") as out:
-            for f in files:
-                with open(os.path.join(work, f), "rb") as fh:
-                    out.write(f"{sha256(fh.read())} *{f}\n")
-        notes = f"Mirror of {cur_tag} with updated: {', '.join(sorted(ctx.mirror_replace))}"
-        subprocess.run(["gh", "release", "create", new_tag, "-R", ANDROID_REPO, "--title", new_tag,
-                        "--notes", notes, "--latest=false",
-                        *[os.path.join(work, f) for f in files + ["SHA256SUMS.txt"]]],
-                       env=env, check=True)
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
-    ctx.sh = set_pin(RX_BIN_TAG, new_tag, ctx.sh, "BINARIES_TAG")
-    ctx.sh = ctx.sh.replace(f'our own release "{cur_tag}"', f'our own release "{new_tag}"')
-
+# ---------------------------------------------------------------- issues
 
 def upsert_issue(title: str, body: str) -> None:
     q = gh_api(f"repos/{MOBIN_REPO}/issues?state=open&per_page=100")
@@ -480,10 +362,9 @@ def upsert_issue(title: str, body: str) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--release-yml", default=".github/workflows/release.yml")
+    ap.add_argument("--pins", default="tools/core-pins.json")
     ap.add_argument("--state", default=".github/core-versions.json")
-    ap.add_argument("--android-dir", help="checkout of molidovpn-android (fetch-binaries.sh pins)")
-    ap.add_argument("--apply", action="store_true", help="write files, publish mirror, open issues")
+    ap.add_argument("--apply", action="store_true", help="write pins/state, open issues")
     ap.add_argument("--summary", default="core-updates-summary.json")
     args = ap.parse_args()
 
@@ -496,21 +377,11 @@ def main() -> int:
             errors.append(f"{check.__name__}: {e}")
             print(f"::warning::{check.__name__} failed: {e}")
 
-    if ctx.android_changes and not ctx.cross:
-        ctx.android_changes.clear()
-    if ctx.needs_token:
-        ctx.report.append("\nAndroid updates above need the `CROSS_REPO_TOKEN` secret (fine-grained PAT with "
-                          "Contents: read and write on hidooch980/molidovpn-android) to be applied automatically.")
-
     if args.apply:
-        if ctx.mirror_replace:
-            publish_mirror(ctx)
-        if ctx.mobin_changes or ctx.android_changes:
-            with open(args.release_yml, "w", encoding="utf-8", newline="") as f:
-                f.write(ctx.yml)
-            if ctx.android_changes:
-                with open(ctx.sh_path, "w", encoding="utf-8", newline="") as f:
-                    f.write(ctx.sh)
+        if ctx.mobin_changes:
+            with open(args.pins, "w", encoding="utf-8", newline="\n") as f:
+                json.dump(ctx.pins, f, indent=2, sort_keys=True)
+                f.write("\n")
         # No timestamp here: an unchanged file means nothing to commit.
         with open(args.state, "w", encoding="utf-8", newline="\n") as f:
             json.dump(ctx.state, f, indent=2, sort_keys=True)
@@ -524,7 +395,6 @@ def main() -> int:
 
     summary = {
         "mobin_commit": ("Core update: " + "; ".join(ctx.mobin_changes)) if ctx.mobin_changes else "",
-        "android_commit": ("Core update: " + "; ".join(ctx.android_changes)) if ctx.android_changes else "",
         "review": [r["title"] for r in ctx.review],
         "report": ctx.report,
         "errors": errors,

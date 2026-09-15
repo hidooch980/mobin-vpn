@@ -1,16 +1,17 @@
 name: Core updates
 
-# Every 6 h: look for new sing-box / Xray-core / Tor / Psiphon / AmneziaWG releases, rewrite the pins and
-# commit "Core update: <component> <old> → <new>" to main. That push starts "Build & Release", which is
-# gated by the tests and the emulator connection check, so a broken core is never published.
-# Policy and details: tools/check-core-updates.py. Applied versions and attempts live in
-# .github/core-versions.json; a version is attempted at most once per 24 h, and a failed release does not
-# cause a retry (the pin already points at the new version, so there is nothing new to commit).
+# Every 6 h: look for new sing-box / Xray-core / Tor / Psiphon / AmneziaWG releases, rewrite the pins in
+# tools/core-pins.json (never a workflow file: GITHUB_TOKEN may not push those) and commit
+# "Core update: <component> <old> → <new>" to main. That push starts "Build & Release", which is gated by
+# the tests and the emulator connection check, so a broken core is never published.
 #
-# Android (hidooch980/molidovpn-android) needs a secret: add a fine-grained personal access token with
-# "Contents: read and write" on hidooch980/molidovpn-android as repository secret CROSS_REPO_TOKEN.
-# Without it only mobin-vpn is updated and the Android changes are listed in an issue.
-# MSN-GUARD (Rust core upstream) changes are never merged automatically, only reported in that issue.
+# Android: hidooch980/molidovpn-android updates itself (its own core-updates workflow, its own token) and
+# commits "Core update (Android): ...". This workflow sees such a commit newer than the last successful
+# release and, if mobin-vpn had no change of its own this run, dispatches release.yml. No personal tokens.
+#
+# Policy and details: tools/check-core-updates.py. Applied versions, attempts and the last dispatched
+# Android commit live in .github/core-versions.json; a version is attempted at most once per 24 h.
+# MSN-GUARD (Rust core upstream) changes are never merged automatically, only reported in an issue.
 
 on:
   schedule:
@@ -20,6 +21,7 @@ on:
 permissions:
   contents: write
   issues: write
+  actions: write
 
 concurrency:
   group: core-updates
@@ -29,61 +31,72 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      CROSS_REPO_TOKEN: ${{ secrets.CROSS_REPO_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
-      - name: Check out molidovpn-android (only with CROSS_REPO_TOKEN)
-        if: env.CROSS_REPO_TOKEN != ''
-        uses: actions/checkout@v4
-        with:
-          repository: hidooch980/molidovpn-android
-          token: ${{ secrets.CROSS_REPO_TOKEN }}
-          path: android
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Check upstream releases and rewrite pins
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          ANDROID_ARG=""
-          [ -d android/tools ] && ANDROID_ARG="--android-dir android"
-          python tools/check-core-updates.py --apply $ANDROID_ARG --summary "$RUNNER_TEMP/summary.json"
-      - name: Commit and push
+        run: python tools/check-core-updates.py --apply --summary "$RUNNER_TEMP/summary.json"
+      - name: Android core updates since the last release
+        id: android
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          S="$RUNNER_TEMP/summary.json"
-          MOBIN_MSG=$(jq -r .mobin_commit "$S")
-          ANDROID_MSG=$(jq -r .android_commit "$S")
-          bot() { git -C "$1" config user.name molido-bot; git -C "$1" config user.email molido-bot@users.noreply.github.com; }
-
-          # Android first: the release workflow checks out molidovpn-android main.
-          if [ -n "$ANDROID_MSG" ] && [ -d android ]; then
-            bot android
-            git -C android add tools/fetch-binaries.sh
-            git -C android commit -m "$ANDROID_MSG"
-            git -C android push origin HEAD:main
+          LAST=$(gh run list -R "$GITHUB_REPOSITORY" -w release.yml -s success -L 1 --json startedAt -q '.[0].startedAt // ""')
+          echo "last successful release started: ${LAST:-none}"
+          Q="repos/hidooch980/molidovpn-android/commits?sha=main&per_page=50"
+          [ -n "$LAST" ] && Q="$Q&since=$LAST"
+          SHA=$(gh api "$Q" -q '[.[] | select(.commit.message | startswith("Core update (Android)"))][0].sha // ""')
+          PREV=$(python -c 'import json;print(json.load(open(".github/core-versions.json")).get("android_dispatch",{}).get("sha",""))')
+          echo "android core update commit: ${SHA:-none} (last recorded: ${PREV:-none})"
+          if [ -n "$SHA" ] && [ "$SHA" != "$PREV" ]; then
+            python - "$SHA" <<'PY'
+          import json, sys
+          p = ".github/core-versions.json"
+          s = json.load(open(p, encoding="utf-8"))
+          s["android_dispatch"] = {"sha": sys.argv[1]}
+          with open(p, "w", encoding="utf-8", newline="\n") as f:
+              json.dump(s, f, indent=2, sort_keys=True)
+              f.write("\n")
+          PY
+            echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           fi
-
-          bot .
-          git add .github/workflows/release.yml .github/core-versions.json
+      - name: Commit and push
+        id: commit
+        run: |
+          set -euo pipefail
+          MOBIN_MSG=$(jq -r .mobin_commit "$RUNNER_TEMP/summary.json")
+          echo "mobin=$MOBIN_MSG" >> "$GITHUB_OUTPUT"
+          git config user.name molido-bot
+          git config user.email molido-bot@users.noreply.github.com
+          git add tools/core-pins.json .github/core-versions.json
           git diff --cached --quiet && { echo "nothing to commit"; exit 0; }
           if [ -n "$MOBIN_MSG" ]; then
             git commit -m "$MOBIN_MSG"
           else
-            # Only bookkeeping (seen upstream versions): do not start a release.
+            # Only bookkeeping (seen upstream versions / dispatched Android commit): do not start a release.
             git commit -m "Core update state [skip ci]"
           fi
           # main may have moved while the check ran (e.g. a manual push): rebase, retry a few times.
           for i in 1 2 3 4 5; do
-            git pull --rebase origin main && git push origin HEAD:main && break
+            if git pull --rebase origin main && git push origin HEAD:main; then exit 0; fi
             sleep 15
           done
+          echo "::error::push to main failed after 5 attempts"
+          exit 1
+      - name: Start release for Android core update
+        if: steps.android.outputs.sha != '' && steps.commit.outputs.mobin == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "molidovpn-android ${{ steps.android.outputs.sha }}: dispatching release.yml"
+          gh workflow run release.yml -R "$GITHUB_REPOSITORY" --ref main
       - name: Summary
         if: always()
         run: |
